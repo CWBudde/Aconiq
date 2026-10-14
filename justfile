@@ -74,6 +74,15 @@ test:
 test-race:
     cd backend && go test -race ./...
 
+# Compare the RLS-19 receiver-side reflection search and barrier fan against
+# their references on every pair, not the sample `just test` takes, and the full
+# synthetic city against its golden. Minutes, not seconds — hence not in go-ci;
+# .github/workflows/rls19-exhaustive.yml runs it weekly and on demand.
+test-reflections-exhaustive:
+    cd backend && ACONIQ_EXHAUSTIVE_REFLECTION_CHECK=1 go test -count=1 -timeout 60m \
+        -run 'TestReceiverSearch|TestFan|TestCityLevels|TestFullCityLevels|TestReceiverWalkAllocation' \
+        ./internal/standards/rls19/road/
+
 # Run tests with coverage
 #
 # `-covermode=atomic` is not cosmetic: the engine runs a worker pool and much of

@@ -137,16 +137,15 @@ func BenchmarkComputeReceiverOutputs(b *testing.B) {
 // stand in for a real 200-building run, which this engine cannot compute at
 // grid scale.
 //
-// What holds that cost is no longer the search. Spatial pruning cut the
-// second-order wall-pair tests on this scene by ~24x, exactly — the same
-// reflected paths come out. What remains is the *number* of those paths: ~307
-// valid Spiegelschallquellen per (Teilstück, receiver) pair, each of which
-// RLS-19 Nr. 3.5 treats as a source in its own right and therefore gives its
-// own diffraction search. No exact prune reduces that count, because the model
-// says those paths are there. Bringing a building-dense model within reach of
-// grid-scale receiver counts needs a decision about which mirrored paths the
-// model admits — an occlusion test on the reflected legs, or a normatively
-// defensible cutoff — not a faster search. See PLAN.md.
+// What holds that cost is the *number* of mirrored paths: ~307 valid
+// Spiegelschallquellen per (Teilstück, receiver) pair, each of which RLS-19
+// Nr. 3.5 treats as a source in its own right and therefore gives its own
+// diffraction search. No exact prune reduces that count, because the model
+// says those paths are there, and PLAN.md records why neither an occlusion
+// test nor a cutoff is admissible. The search that finds them now runs from
+// the receiver's side (reflections_receiver.go) and the diffraction search
+// reads the receiver's barrier fan (shielding_fan.go); what is left per path
+// is the crossing test against the barriers the ray actually passes.
 func BenchmarkComputeReceiverOutputsBuildings(b *testing.B) {
 	sources := []RoadSource{benchRoadSource()}
 	buildings := benchBuildings(benchBuildingCount)
@@ -195,5 +194,46 @@ func BenchmarkComputeReceiverOutputsParallel(b *testing.B) {
 				}
 			})
 		}
+	}
+}
+
+// BenchmarkComputeReceiverOutputsCity is the building-dense case: the synthetic
+// city of city_scene_test.go, ~800 perimeter-block buildings with ~8 000 facade
+// segments and ~35 km of road, which is the shape of the OSM extracts where
+// the reflection search and the mirrored paths' shielding are nearly all of
+// the cost.
+//
+// size=small is the same generator at three by three blocks, small enough to
+// run every Teilstück at a 4 m split against four receivers. size=full is the
+// whole city against one receiver of the patch, at the 1 m Teilstück length a
+// real run uses, in distance-scaled mode so that a single iteration stays in
+// the tens of seconds rather than the hours.
+func BenchmarkComputeReceiverOutputsCity(b *testing.B) {
+	cases := []struct {
+		name           string
+		spec           citySpec
+		receivers      int
+		segmentLengthM float64
+		mode           SegmentLengthMode
+	}{
+		{"size=small", smallCity(), 4, 4, SegmentLengthFixed},
+		{"size=full", fullCity(), 1, 1, SegmentLengthDistanceScaled},
+	}
+
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			city := tc.spec.build()
+			receivers := city.receivers[:tc.receivers]
+			cfg := city.config(tc.segmentLengthM, tc.mode)
+
+			b.ReportAllocs()
+
+			for b.Loop() {
+				_, err := ComputeReceiverOutputs(receivers, city.sources, city.barriers, cfg)
+				if err != nil {
+					b.Fatalf("compute failed: %v", err)
+				}
+			}
+		})
 	}
 }

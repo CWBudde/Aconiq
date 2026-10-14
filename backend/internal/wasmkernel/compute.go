@@ -196,12 +196,16 @@ func (w *progressWalk) over(
 	cfg road.PropagationConfig,
 	dst []road.ReceiverOutput,
 ) ([]road.ReceiverOutput, error) {
+	// One walker across the progress chunks, so the receiver-side tables and
+	// their buffers are built once for this slice rather than once per chunk.
+	walker := scene.NewWalker()
+
 	for at := 0; at < len(receivers); {
 		end := min(at+w.chunkSize, len(receivers))
 
 		startedAt := time.Now()
 
-		chunk, err := scene.ComputeReceivers(receivers[at:end], cfg)
+		chunk, err := walker.ComputeReceivers(receivers[at:end], cfg)
 		if err != nil {
 			return nil, fmt.Errorf("%w", err)
 		}

@@ -51,19 +51,40 @@ const SilenceThresholdDB = -900.0
 // arithmetic here is byte for byte what the seven module-local copies this
 // helper replaced performed. See PLAN.md Priority 7.
 func EnergySum(levels []float64) float64 {
-	total := 0.0
+	var sum EnergyAccumulator
 
 	for _, level := range levels {
-		if math.IsNaN(level) || math.IsInf(level, 0) || level <= SilenceThresholdDB {
-			continue
-		}
-
-		total += math.Pow(10, level/10)
+		sum.Add(level)
 	}
 
-	if total <= 0 {
+	return sum.Level()
+}
+
+// EnergyAccumulator is EnergySum one term at a time, for a caller with more
+// terms than it should hold at once. Adding a slice's terms in order and then
+// reading Level gives exactly EnergySum of that slice, bit for bit: EnergySum is
+// this accumulator run over the slice, so the two cannot drift apart.
+//
+// The zero value is an empty sum.
+type EnergyAccumulator struct {
+	total float64
+}
+
+// Add adds one level, under EnergySum's silence contract.
+func (a *EnergyAccumulator) Add(level float64) {
+	if math.IsNaN(level) || math.IsInf(level, 0) || level <= SilenceThresholdDB {
+		return
+	}
+
+	a.total += math.Pow(10, level/10)
+}
+
+// Level returns the energetic sum of the levels added so far, or SilenceDB
+// when there is no energy to report.
+func (a *EnergyAccumulator) Level() float64 {
+	if a.total <= 0 {
 		return SilenceDB
 	}
 
-	return 10 * math.Log10(total)
+	return 10 * math.Log10(a.total)
 }

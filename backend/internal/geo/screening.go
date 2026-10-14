@@ -45,12 +45,18 @@ type HullPoint struct {
 // neighbours, which is exactly the rubber band laid over the cross-section:
 // what survives is what the band rests on.
 func UpperConvexHull(points []HullPoint) []HullPoint {
-	n := len(points)
-	if n <= 2 {
+	if len(points) <= 2 {
 		return points
 	}
 
-	hull := make([]HullPoint, 0, n)
+	return appendUpperConvexHull(make([]HullPoint, 0, len(points)), points)
+}
+
+// appendUpperConvexHull is UpperConvexHull into a caller's buffer: the hull of
+// points, which must number more than two, is appended to hull — pass a
+// zero-length slice — and returned.
+func appendUpperConvexHull(hull, points []HullPoint) []HullPoint {
+	n := len(points)
 
 	for i := range n {
 		for len(hull) >= 2 {
@@ -109,13 +115,35 @@ func SelectDiffractionEdges(
 	sourceHeightM, receiverHeightM, totalDistM float64,
 	candidates []ScreeningPoint,
 ) []int {
+	return AppendDiffractionEdges(nil, &HullBuffer{}, sourceHeightM, receiverHeightM, totalDistM, candidates)
+}
+
+// HullBuffer is the working memory of AppendDiffractionEdges, for a caller
+// that selects edges in a loop and would otherwise allocate it every time.
+// The zero value is ready to use; it must not be shared between goroutines.
+type HullBuffer struct {
+	points []HullPoint
+	hull   []HullPoint
+}
+
+// AppendDiffractionEdges is SelectDiffractionEdges appending to dst and
+// working in buf, so that a hot loop allocates nothing once the buffers have
+// grown. It selects exactly what SelectDiffractionEdges selects — that
+// function is this one with fresh buffers — and appends nothing when nothing
+// is selected, so a nil dst stays nil.
+func AppendDiffractionEdges(
+	dst []int,
+	buf *HullBuffer,
+	sourceHeightM, receiverHeightM, totalDistM float64,
+	candidates []ScreeningPoint,
+) []int {
 	if len(candidates) == 0 {
-		return nil
+		return dst
 	}
 
 	// The source and receiver bookend the section so the hull has something to
 	// rest on at both ends; they carry index -1 and are dropped again below.
-	points := make([]HullPoint, 0, len(candidates)+2)
+	points := buf.points[:0]
 	points = append(points, HullPoint{Dist: 0, Height: sourceHeightM, Index: -1})
 
 	for i, candidate := range candidates {
@@ -127,18 +155,22 @@ func SelectDiffractionEdges(
 	}
 
 	points = append(points, HullPoint{Dist: totalDistM, Height: receiverHeightM, Index: -1})
+	buf.points = points
 
-	var edges []int
+	// At least three points here — two bookends and a candidate — which is
+	// what appendUpperConvexHull requires.
+	hull := appendUpperConvexHull(buf.hull[:0], points)
+	buf.hull = hull
 
-	for _, point := range UpperConvexHull(points) {
+	for _, point := range hull {
 		if point.Index < 0 {
 			continue
 		}
 
-		edges = append(edges, point.Index)
+		dst = append(dst, point.Index)
 	}
 
-	return edges
+	return dst
 }
 
 // RayCrossing records where a source→receiver ray crosses one obstacle in plan

@@ -1,0 +1,12 @@
+[
+  {
+    "receiver": "r-0-0",
+    "lr_day": "78.433106",
+    "lr_night": "71.966469",
+    "lr_day_bits": "40539bb802d0e368",
+    "lr_night_bits": "4051fddaa0b85c7a",
+    "segment_mode": "distance_scaled",
+    "segment_length_m": "1",
+    "city": "full"
+  }
+]

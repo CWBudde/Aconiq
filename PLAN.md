@@ -2234,14 +2234,28 @@ before the pages they protect are cut apart.
       plan-shadow and across a Bild-14 active/inactive boundary is cheap against
       `Scene.barrierGrid` and `reflectors.grid`, and it is the condition for this mode ever
       becoming the default. Until it exists the mode stays opt-in.
-- [ ] **The per-pair cost of a _distant_ Teilstück is the next target.** Cutting Teilstück·receiver
-      pairs by 39x on a 44 km OSM extract cut CPU by only about 7x, so a Teilstück 500 m out
-      costs roughly five times one at 50 m. The suspect is the reflection and diffraction search
-      along a long path — `appendReflectedContribs` was already 91 % of the building-dense
-      profile — where the candidate set grows with path length while almost none of those
-      candidates can contribute audibly. Profile a coarse-rung scene before proposing a fix; note
-      that an energy cutoff is still rejected for the reasons recorded above, so whatever this is,
-      it has to be exact.
+- [ ] **What is left of a building-dense RLS-19 run is the mirrored paths' crossing test.** With
+      the reflection search running from the receiver's side and the barrier fan in place, a
+      fixed-mode Linden receiver spends ~70 % of its CPU shielding mirrored paths and ~30 % in
+      the remaining search. The fan's candidates are already the crossed buildings, so the exact
+      levers left are cheaper arithmetic, not fewer candidates. First, a sign pre-test that
+      rejects a facade edge before `geo.SegmentIntersection`'s two divisions (~27 % on its own);
+      it needs an error-bound argument that every skipped edge is one the division would have
+      rejected, and the function is shared with Schall 03 and ISO 9613-2, so the argument has to
+      hold for their callers too. Second, integer reflector exclusion in place of
+      `dropExcludedBarriers`' string compares (~6 %): an ID class per barrier and per wall owner,
+      resolved when the scene is prepared. One constraint stays live for both: the receiver-side
+      search is bit-identical to the source-side one on every scene compared, but it can _add_ a
+      second-order path the old search's fixed-margin source-side prune dropped by rounding
+      (source millimetres off a facade's line, second wall far away) — see "The one way it can
+      differ" in `reflections_receiver.go`. A mismatch of that shape against
+      `reflections_reference_test.go` is that, not a regression.
+- [ ] **The receiver-side reflection table is not bounded.** It holds one entry per wall pair a
+      receiver can see, 40 bytes each, per worker for the worker's lifetime (`road.Walker`). The
+      pair count grows faster than the facade count — ~1 M (~40 MB) on Linden's 8 083 facades —
+      so a larger extract costs proportionally more per worker, times the worker count, and
+      nothing caps it. A cap needs a fallback that stays exact: the source-side search for a
+      receiver over the limit, or a table built and consumed in second-wall slices.
 - [x] **The Linden scene can be profiled through the real binary** (#96). `aconiq run --cpuprofile`
       and `--memprofile` write pprof profiles, on a failed or cancelled run too, and
       `just repro-linden DIR` reruns the scene from `SOURCE_PROJECT` or a fresh OSM import (which

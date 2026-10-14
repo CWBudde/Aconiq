@@ -357,7 +357,7 @@ func ComputeReceiverLevels(receiver geo.Point2D, sources []RoadSource, barriers 
 // for the same reason — the source shape settles the starting power, and
 // everything below is the §3.5 chain, which does not care how it was reached.
 func appendSegmentContributions(
-	dayContrib, nightContrib *[]float64,
+	sums *periodSums,
 	baseDayDB, baseNightDB float64,
 	seg Segment,
 	receiver geo.Point2D,
@@ -421,14 +421,13 @@ func appendSegmentContributions(
 
 	att = applyShielding(att, math.Max(barrierLoss, terrainLoss))
 
-	*dayContrib = append(*dayContrib, baseDayDB-att.Total)
-	*nightContrib = append(*nightContrib, baseNightDB-att.Total)
+	sums.add(baseDayDB-att.Total, baseNightDB-att.Total)
 
 	// Reflected paths: each adds an independent energy contribution via
 	// the image-source method. Ground correction uses mean height along
 	// the reflected path (flat terrain approximation for reflected legs).
 	appendReflectedContribs(
-		dayContrib, nightContrib,
+		sums,
 		baseDayDB, baseNightDB,
 		seg.MidPoint, sourceHeightM, sourceZ, receiver, receiverZ,
 		effectiveBarriers, reflectors, effectiveCfg, scratch,
@@ -509,7 +508,7 @@ func buildingReflectors(explicit []Reflector, buildings []Building) []Reflector 
 // chain, which Nr. 3.5 applies to a Spiegelschallquelle exactly as to an
 // original source.
 func appendReflectedContribs(
-	dayContrib, nightContrib *[]float64,
+	sums *periodSums,
 	baseDayDB, baseNightDB float64,
 	source geo.Point2D, sourceHeightM, sourceZ float64,
 	receiver geo.Point2D, receiverZ float64,
@@ -533,7 +532,9 @@ func appendReflectedContribs(
 		scratch.reflectedPaths = reflPaths
 	}
 
-	for _, rp := range reflPaths {
+	for k := range reflPaths {
+		rp := &reflPaths[k]
+
 		// Ground correction uses the mean height along the reflected path
 		// (flat-terrain approximation for reflected legs). Terrain edges are
 		// left off the mirrored leg for the same reason: the image path does
@@ -554,8 +555,7 @@ func appendReflectedContribs(
 		// has settled that maximum, never folded into it.
 		attRefl.Total += rp.lossDB
 
-		*dayContrib = append(*dayContrib, baseDayDB-attRefl.Total)
-		*nightContrib = append(*nightContrib, baseNightDB-attRefl.Total)
+		sums.add(baseDayDB-attRefl.Total, baseNightDB-attRefl.Total)
 	}
 }
 
@@ -574,7 +574,7 @@ func appendReflectedContribs(
 // building does not shield that building's own mirrored path. That direction
 // over-predicts the level and is declared in the conformance document.
 func reflectedPathShielding(
-	rp reflectedPath,
+	rp *reflectedPath,
 	sourceHeightM float64,
 	receiver geo.Point2D,
 	effectiveBarriers []Barrier,
@@ -584,6 +584,6 @@ func reflectedPathShielding(
 	return computeShielding(
 		rp.imagePoint, sourceHeightM,
 		receiver, cfg.ReceiverHeightM,
-		effectiveBarriers, rp.reflectorIDs, scratch,
+		effectiveBarriers, rp.reflectors(), scratch,
 	).InsertionLoss
 }

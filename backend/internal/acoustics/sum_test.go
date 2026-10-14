@@ -110,3 +110,36 @@ func TestEnergySumLosesTermsAnUncompensatedSumMustLose(t *testing.T) {
 		t.Fatalf("the fixture no longer demonstrates the loss: compensated %v, uncompensated %v", compensated, got)
 	}
 }
+
+// TestEnergyAccumulatorIsEnergySumStreamed pins the property a streaming caller
+// relies on: adding a slice's terms one by one gives EnergySum of the slice to
+// the bit, silence and all.
+func TestEnergyAccumulatorIsEnergySumStreamed(t *testing.T) {
+	t.Parallel()
+
+	long := make([]float64, 0, 10000)
+	for i := range 10000 {
+		long = append(long, 30+math.Mod(float64(i)*7.31, 55))
+	}
+
+	cases := [][]float64{
+		nil,
+		{SilenceDB, SilenceThresholdDB},
+		{math.NaN(), math.Inf(1), 60},
+		{70.1, 40.25, 63.333, -3, 99.99, 12.5, 81.7},
+		long,
+	}
+
+	for i, levels := range cases {
+		var sum EnergyAccumulator
+
+		for _, level := range levels {
+			sum.Add(level)
+		}
+
+		got, want := sum.Level(), EnergySum(levels)
+		if math.Float64bits(got) != math.Float64bits(want) {
+			t.Errorf("case %d: streamed %v, EnergySum %v", i, got, want)
+		}
+	}
+}

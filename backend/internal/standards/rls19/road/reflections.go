@@ -134,8 +134,20 @@ type reflectedPath struct {
 	slantDistM float64 // 3D slant distance [m]
 	lossDB     float64 // total reflection loss (sum over all bounces) [dB]
 
-	imagePoint   geo.Point2D // final image source position (1st or 2nd order)
-	reflectorIDs []string    // reflectors this path bounced off, in bounce order
+	imagePoint geo.Point2D // final image source position (1st or 2nd order)
+
+	// reflectorIDs are the reflectors this path bounced off, in bounce order;
+	// the first bounces of them are set. An array rather than a slice, so
+	// that a path — of which a building-dense model produces thousands per
+	// Teilstück — costs no allocation of its own.
+	reflectorIDs [2]string
+	bounces      int
+}
+
+// reflectors returns the IDs of the reflectors the path bounced off, in
+// bounce order.
+func (rp *reflectedPath) reflectors() []string {
+	return rp.reflectorIDs[:rp.bounces]
 }
 
 // wallSeg is an internal view of one wall segment from a Reflector.
@@ -156,6 +168,12 @@ type wallSeg struct {
 	// and the reflection search skips the wall exactly as the condition does.
 	maxRangeM   float64
 	maxRangeSqM float64
+
+	// tangent is the unit vector from a to b and lengthM the distance between
+	// them: the wall's own frame, which the receiver-side search measures
+	// lights and sources in. A zero-length wall has a zero tangent.
+	tangent geo.Point2D
+	lengthM float64
 }
 
 // reflectorWalls flattens all reflectors into individual wall segments.
@@ -183,6 +201,13 @@ func newWallSeg(a, b geo.Point2D, ownerID string, loss, heightM float64) wallSeg
 		maxRange = (heightM/0.3)*(heightM/0.3)*(1+1e-9) + queryMarginM
 	}
 
+	length := math.Hypot(b.X-a.X, b.Y-a.Y)
+
+	tangent := geo.Point2D{}
+	if length > 0 {
+		tangent = geo.Point2D{X: (b.X - a.X) / length, Y: (b.Y - a.Y) / length}
+	}
+
 	return wallSeg{
 		a:           a,
 		b:           b,
@@ -192,6 +217,8 @@ func newWallSeg(a, b geo.Point2D, ownerID string, loss, heightM float64) wallSeg
 		bbox:        segmentBBox(a, b),
 		maxRangeM:   maxRange,
 		maxRangeSqM: maxRange * maxRange,
+		tangent:     tangent,
+		lengthM:     length,
 	}
 }
 
@@ -211,19 +238,38 @@ type reflectorField struct {
 	// held rather than built so that the unindexed path allocates nothing per
 	// call either.
 	all []int
+
+	// bounds encloses every wall, when boundsOK; receiverShadowMargin sizes
+	// its margin from it.
+	bounds   geo.BBox
+	boundsOK bool
 }
 
 // newReflectorField flattens the reflectors and indexes the result.
 func newReflectorField(reflectors []Reflector) reflectorField {
 	walls := reflectorWalls(reflectors)
 
-	return reflectorField{
+	field := reflectorField{
 		walls: walls,
 		grid: buildBBoxGrid(len(walls), func(i int) (geo.BBox, bool) {
 			return walls[i].bbox, walls[i].bbox.IsFinite() && walls[i].bbox.IsValid()
 		}),
-		all: appendAllIndices(nil, len(walls)),
+		all:      appendAllIndices(nil, len(walls)),
+		bounds:   geo.BBox{},
+		boundsOK: false,
 	}
+
+	if len(walls) > 0 {
+		bounds := walls[0].bbox
+		for i := range walls {
+			bounds = bounds.ExpandToIncludeBBox(walls[i].bbox)
+		}
+
+		field.bounds = bounds
+		field.boundsOK = bounds.IsFinite() && bounds.IsValid()
+	}
+
+	return field
 }
 
 // mirrorPoint mirrors p across the infinite line defined by segment a→b.
@@ -278,6 +324,10 @@ func computeReflectedPaths(
 // slice order, so reordering the paths moves the result in the last bits.
 // Every prune below therefore keeps the surviving paths in the order the
 // unpruned search would have produced them.
+//
+// The search runs from the receiver's side: see reflections_receiver.go for
+// what is precomputed per receiver and why the paths that come out are exactly
+// the ones the source-side search found.
 func (f *reflectorField) appendPaths(
 	dst []reflectedPath,
 	source geo.Point2D, sourceZ float64,
@@ -289,31 +339,44 @@ func (f *reflectorField) appendPaths(
 	}
 
 	dz := receiverZ - sourceZ
+	mirrors := f.mirrorsFor(receiver, scratch)
 
-	dst = f.appendFirstOrder(dst, source, receiver, sourceZ, dz)
+	dst = f.appendFirstOrder(dst, mirrors, source, receiver, sourceZ, dz)
 
-	return f.appendSecondOrder(dst, source, receiver, sourceZ, dz, scratch)
+	return f.appendSecondOrder(dst, mirrors, source, receiver, sourceZ, dz)
 }
 
 // appendFirstOrder walks every wall, because a single bounce admits no exact
 // spatial prune: the specular point of a distant wall can be anywhere, and
 // RLS-19 sets no distance beyond which a reflection stops counting.
 //
-// What it does skip is the wall whose own Tabelle 8 range cannot reach either
-// end of the path — the same condition the loop tests below, in the only form
-// that can be checked before the mirror is computed. For a tall facade that
-// range is hundreds of metres and the prune barely bites; for a low screen it
-// removes the wall outright.
+// What it does skip is a wall the source cannot see the receiver in: one whose
+// shadow, cast from the receiver's image, the source does not stand in. And
+// the wall whose own Tabelle 8 range cannot reach either end of the path —
+// the same condition the loop tests below, in the only form that can be
+// checked before the mirror is computed. For a tall facade that range is
+// hundreds of metres and the prune barely bites; for a low screen it removes
+// the wall outright.
 func (f *reflectorField) appendFirstOrder(
 	dst []reflectedPath,
+	mirrors *receiverMirrors,
 	source, receiver geo.Point2D,
 	sourceZ, dz float64,
 ) []reflectedPath {
 	paths := dst
 
 	for i := range f.walls {
+		wedge := &mirrors.first[i]
+		if wedge.flags&wedgeInadmissible != 0 {
+			continue
+		}
+
 		w := &f.walls[i]
-		if !w.inTabelle8Range(w.bbox.SquaredDistanceToPoint(source), w.bbox.SquaredDistanceToPoint(receiver)) {
+		if wedge.flags&wedgeNeedsSourceRange != 0 && w.bbox.SquaredDistanceToPoint(source) > w.maxRangeSqM {
+			continue
+		}
+
+		if !wedge.admits(w.a, w.b, source, sideOf(w.a, w.b, source)) {
 			continue
 		}
 
@@ -351,68 +414,47 @@ func (f *reflectorField) appendFirstOrder(
 			slantDistM:   slantDist,
 			lossDB:       w.loss, // D_RV1 for this 1st-order path (RLS-19 Eq. 2)
 			imagePoint:   img,
-			reflectorIDs: []string{w.ownerID},
+			reflectorIDs: [2]string{w.ownerID, ""},
+			bounces:      1,
 		})
 	}
 
 	return paths
 }
 
-// appendSecondOrder walks the wall pairs that can carry a second-order path.
+// appendSecondOrder walks the wall pairs the receiver admits, first wall by
+// first wall, and runs the two-bounce geometry on those the source stands in
+// the wedge of.
 //
-// The search is the same one it has always been; what changed is which pairs
-// reach it. Two prunes narrow the inner loop, and both are exact — a pair they
-// drop is a pair the loop below would have rejected anyway:
-//
-//   - The second bounce P2 lies on the ray from the image source through the
-//     first bounce P1, extended beyond it: the ok1 test is precisely that P1
-//     sits on the segment P2→S'. So P2 lies in the shadow w1 casts away from
-//     S', and a wall outside that shadow cannot hold it. See
-//     geo.SegmentShadow.
-//   - Tabelle 8's height condition caps how far a bounce point may be from
-//     the two path legs that meet there. The legs are at least as long as the
-//     gaps between the bounding boxes they run between, so a wall out of
-//     range of both of its own legs fails the condition the loop tests.
+// Every pair it skips is one the exact test below would have rejected: the
+// receiver-side entries already exclude the pairs whose second bounce cannot
+// be reached or whose second wall Tabelle 8 rules out, admittedPairs drops
+// the ones whose wedge the source is not in, and the source-side half of
+// Tabelle 8's range prune is the one the source-side search applied.
 func (f *reflectorField) appendSecondOrder(
 	dst []reflectedPath,
+	mirrors *receiverMirrors,
 	source, receiver geo.Point2D,
 	sourceZ, dz float64,
-	scratch *pathScratch,
 ) []reflectedPath {
 	paths := dst
 
 	for i := range f.walls {
+		if mirrors.start[i] == mirrors.start[i+1] {
+			continue
+		}
+
 		w1 := &f.walls[i]
-		if w1.maxRangeM < 0 {
-			continue // below 1.0 m: Tabelle 8 rejects it at either bounce
+
+		admitted := mirrors.admittedPairs(i, w1, source)
+		if len(admitted) == 0 {
+			continue
 		}
 
 		img1 := mirrorPoint(source, w1.a, w1.b) // image after 1st bounce
 
-		shadow := geo.NewSegmentShadow(img1, w1.a, w1.b, queryMarginM)
-
-		candidates, reachable := f.secondBounceCandidates(&shadow, scratch)
-		if !reachable {
-			continue
-		}
-
-		sourceGapSq := w1.bbox.SquaredDistanceToPoint(source)
-
-		for _, j := range candidates {
-			if i == j {
-				continue // same wall segment: skip
-			}
-
-			w2 := &f.walls[j]
-			if !shadow.MayContainSegment(w2.a, w2.b) {
-				continue // the second bounce cannot land on this wall
-			}
-
-			gapSq := w1.bbox.SquaredDistanceToBBox(w2.bbox)
-			if !w1.inTabelle8Range(sourceGapSq, gapSq) ||
-				!w2.inTabelle8Range(gapSq, w2.bbox.SquaredDistanceToPoint(receiver)) {
-				continue
-			}
+		for _, k := range admitted {
+			w2 := &f.walls[mirrors.pairs[k].other]
 
 			path, ok := secondOrderPath(w1, w2, img1, source, receiver, sourceZ, dz)
 			if ok {
@@ -479,27 +521,9 @@ func secondOrderPath(
 		slantDistM:   math.Sqrt(planDist*planDist + dz*dz),
 		lossDB:       w1.loss + w2.loss, // D_RV1 + D_RV2 (RLS-19 Eq. 3)
 		imagePoint:   img2,
-		reflectorIDs: []string{w1.ownerID, w2.ownerID},
+		reflectorIDs: [2]string{w1.ownerID, w2.ownerID},
+		bounces:      2,
 	}, true
-}
-
-// secondBounceCandidates returns the walls that can hold the second bounce of
-// a path whose first bounce is on w1, in ascending wall order, and reports
-// false when no wall can.
-//
-// Without an index it answers with every wall, so an unindexed field runs the
-// same search over the same order and only does more work.
-func (f *reflectorField) secondBounceCandidates(
-	shadow *geo.SegmentShadow,
-	scratch *pathScratch,
-) ([]int, bool) {
-	if scratch == nil || !scratch.wallCursor.Ready() {
-		return f.all, true
-	}
-
-	scratch.wallCandidates = scratch.wallCursor.QueryShadow(shadow, queryMarginM, scratch.wallCandidates[:0])
-
-	return scratch.wallCandidates, len(scratch.wallCandidates) > 0
 }
 
 // inTabelle8Range reports whether a bounce on this wall can satisfy RLS-19

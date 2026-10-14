@@ -405,7 +405,7 @@ func DefaultMovementsPerHour(ft ParkingFacilityType, period TimePeriod) (float64
 // einschließlich etwaiger Spiegelschallquellen". A lot therefore reflects on
 // exactly the chain a Teilstück does, which is why the same helper serves both.
 func appendParkingContributions(
-	dayContrib, nightContrib *[]float64,
+	sums *periodSums,
 	parkingSources []ParkingSource,
 	receiver geo.Point2D,
 	receiverZ float64,
@@ -440,15 +440,14 @@ func appendParkingContributions(
 
 		att = applyShielding(att, parkingShielding(parking, receiver, sourceZ, receiverZ, effectiveBarriers, cfg, scratch))
 
-		*dayContrib = append(*dayContrib, emission.LWDay-att.Total)
-		*nightContrib = append(*nightContrib, emission.LWNight-att.Total)
+		sums.add(emission.LWDay-att.Total, emission.LWNight-att.Total)
 
 		// A silent lot stays silent: ComputeParkingEmission returns the
 		// silenceDB sentinel for a zero movement rate, and a mirrored path only
 		// subtracts from it, so the contribution stays below silenceThresholdDB
 		// and acoustics.EnergySum still drops it.
 		appendReflectedContribs(
-			dayContrib, nightContrib,
+			sums,
 			emission.LWDay, emission.LWNight,
 			parking.Center, pointSourceHeightM, sourceZ, receiver, receiverZ,
 			effectiveBarriers, reflectors, cfg, scratch,

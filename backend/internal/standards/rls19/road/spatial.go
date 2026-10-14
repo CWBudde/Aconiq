@@ -11,18 +11,21 @@ import (
 //
 // Everything here is a *prune*, never an approximation. A prune may skip work
 // only where the skipped work provably contributes exactly zero, which for
-// these three is:
+// these is:
 //
 //   - A barrier whose bounding box the source→receiver ray does not pass
 //     through cannot intersect that ray — the crossing point would have to
 //     lie on both — so LineStringIntersectsSegment would have answered !ok
-//     for it and geo.RayCrossings would have dropped it.
+//     for it and geo.RayCrossings would have dropped it. The same holds for a
+//     barrier outside the directions, seen from the receiver, the ray can
+//     take; see barrierFan.
 //   - A reflector wall further from both the source and the receiver than
 //     RLS-19 Tabelle 8's height condition allows fails that condition, which
 //     the reflection search already tests and rejects on.
-//   - A wall outside the shadow the first reflector casts away from the image
-//     source cannot hold the second bounce, because the second bounce lies on
-//     the ray from the image source through the first bounce, extended.
+//   - A mirrored path exists only if the source stands in the shadow its
+//     walls cast from the receiver's mirror images, and the first wall of a
+//     second-order path stands in the shadow the second casts from the
+//     receiver's first image; see reflections_receiver.go.
 //
 // The order of what survives a prune matters as much as the set. Contributions
 // are energy-summed in slice order and barrier crossings are sorted stably, so
@@ -62,21 +65,18 @@ type pathScratch struct {
 	barrierCrossings []barrierCrossing
 	reflectedPaths   []reflectedPath
 
-	// dayContrib and nightContrib are the energy contributions of one
-	// receiver: one entry per Teilstück plus one per mirrored path. They are
-	// per-receiver rather than per-Teilstück like the rest, and they are the
-	// walk's largest allocation by far — see receiverLevelsOn, which resets
-	// them to zero length and writes them back grown.
-	dayContrib   []float64
-	nightContrib []float64
+	// mirrors is the receiver-side half of the reflection search, kept for
+	// the receiver the walk is at and rebuilt when it moves on.
+	mirrors receiverMirrors
+
+	// fan is the receiver-side index over the barriers, kept the same way.
+	fan barrierFan
+
+	// edges is the Gummibandmethode's working memory.
+	edges edgeBuffers
 }
 
 // newScratch returns the scratch for one receiver walk over this scene.
-//
-// The contribution slices are sized from the scene's total Teilstück count, so
-// a walk without reflections never reallocates them: that is the same one
-// allocation the per-receiver make gave, taken once for the whole walk instead
-// of once per receiver.
 func (s *Scene) newScratch() *pathScratch {
 	return &pathScratch{
 		barrierCursor:     s.barrierGrid.NewCursor(),
@@ -86,8 +86,9 @@ func (s *Scene) newScratch() *pathScratch {
 		rayCrossings:      nil,
 		barrierCrossings:  nil,
 		reflectedPaths:    nil,
-		dayContrib:        make([]float64, 0, s.segmentCount),
-		nightContrib:      make([]float64, 0, s.segmentCount),
+		mirrors:           receiverMirrors{},
+		fan:               barrierFan{},
+		edges:             edgeBuffers{},
 	}
 }
 
