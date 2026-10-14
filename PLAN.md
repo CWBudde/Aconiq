@@ -2226,7 +2226,7 @@ before the pages they protect are cut apart.
       plan-shadow and across a Bild-14 active/inactive boundary is cheap against
       `Scene.barrierGrid` and `reflectors.grid`, and it is the condition for this mode ever
       becoming the default. Until it exists the mode stays opt-in.
-- [x] **A mirrored path drops its own reflectors by integer class** (#NN). Every wall owner
+- [x] **A mirrored path drops its own reflectors by integer class** (#102). Every wall owner
       gets a class (the index of its first wall) and every barrier the class of the reflector
       sharing its ID, resolved once in `prepareScene` (`reflectorField.bindBarriers`), so
       `dropExcludedBarriers` compares two `int32`s per candidate instead of string IDs — ~4x
@@ -2279,7 +2279,7 @@ before the pages they protect are cut apart.
       `hashPayload` must produce the same bytes — which gets its own test, one request down both
       paths asserting equal `output_hash`. Keep the JSON path as the reference it compares against.
 - [x] **Schall 03 writes progress, Schall 03 and ISO 9613-2 stop inside a receiver, and the
-      frontend listens to `/api/v1/events`** (#NN). Three constraints stay live.
+      frontend listens to `/api/v1/events`** (#102). Three constraints stay live.
       **Schall 03 logs through `runLog` as it goes**, not into a buffer appended afterwards, so
       progress lines land after the lines that precede them and a failed run keeps what it had
       logged.
