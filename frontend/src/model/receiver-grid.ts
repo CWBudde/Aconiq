@@ -37,7 +37,13 @@ export function gridReceiverAt(
       x: grid.origin_x + col * grid.resolution_m,
       y: grid.origin_y + row * grid.resolution_m,
     },
-    height_m: grid.height_m,
+    // `+ 0` turns -0 into the 0 JSON.stringify writes for it. The receiver
+    // list path sends its receivers through that and stores the kernel's
+    // echo, so a "-0" receiver height reaches its table as 0; named here
+    // unchanged it would reach the CSV as "-0", and the two paths would store
+    // different bytes for the same run. The coordinates need no such care:
+    // origin + 0 is +0 even for an origin of -0.
+    height_m: grid.height_m + 0,
   };
 }
 

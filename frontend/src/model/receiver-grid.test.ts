@@ -29,6 +29,26 @@ describe("receiver grid", () => {
     expect(gridReceiverAt(grid, 8513).point.x).toBe(477895.77800000005);
   });
 
+  // The receiver-list path sends its receivers through JSON.stringify, which
+  // writes -0 as 0, and stores the kernel's echo; a grid run names them here.
+  // A height of "-0" must come out as the same 0 both ways, or the stored CSV
+  // differs ("-0" against "0") for the same run.
+  it("names a negative-zero height as the zero the wire carries", () => {
+    const grid = {
+      origin_x: -0,
+      origin_y: -0,
+      resolution_m: 10,
+      width: 2,
+      height: 1,
+      height_m: -0,
+    };
+    const first = gridReceiverAt(grid, 0);
+    expect(Object.is(first.height_m, 0)).toBe(true);
+    expect(Object.is(first.point.x, 0)).toBe(true);
+    expect(Object.is(first.point.y, 0)).toBe(true);
+    expect(first).toEqual(JSON.parse(JSON.stringify(first)));
+  });
+
   it("walks row-major from cell (0,0), as the run's receivers always did", () => {
     const grid = {
       origin_x: 100.5,
