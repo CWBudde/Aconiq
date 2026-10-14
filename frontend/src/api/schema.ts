@@ -344,6 +344,13 @@ export interface components {
             hint?: string;
             message: string;
         };
+        /** @description One open run in `ProjectStatusResponse.active_runs`: the status stream carries every one of them, so a client can follow concurrent runs without polling for them. */
+        ActiveRunStatus: {
+            id: string;
+            progress?: components["schemas"]["RunProgress"];
+            standard_id: string;
+            status: string;
+        };
         ArtifactRef: {
             /** Format: date-time */
             created_at: string;
@@ -537,6 +544,8 @@ export interface components {
             updated_at: string;
         };
         ProjectStatusResponse: {
+            /** @description Every pending or running run, in manifest order; absent while none is open */
+            active_runs?: components["schemas"]["ActiveRunStatus"][];
             crs: string;
             last_run?: components["schemas"]["LastRunStatus"];
             manifest_version: number;
@@ -613,7 +622,7 @@ export interface components {
             lines: string[];
             run_id: string;
         };
-        /** @description How far a run's compute has got, as the process computing it last reported — at most once a second, and always at the first and the last receiver. Present only while the run is `pending` or `running` and its standard reports progress (today `rls19-road` and `iso9613`). Absent means not known, never nothing done. */
+        /** @description How far a run's compute has got, as the process computing it last reported — at most once a second, and always at the first and the last receiver. Present only while the run is `pending` or `running` and its standard reports progress (every standard but `dummy-freefield`; `beb-exposure` counts the facade receivers it computes levels for). Absent means not known, never nothing done. */
         RunProgress: {
             /** @description Receivers computed so far */
             done: number;

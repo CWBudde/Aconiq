@@ -79,6 +79,8 @@ export type APIError = Schemas["APIError"];
 export type ErrorEnvelope = Schemas["ErrorEnvelope"];
 export type HealthResponse = Schemas["HealthResponse"];
 export type LastRunStatus = Schemas["LastRunStatus"];
+/** One open run as the project status carries it in `active_runs`. */
+export type ActiveRunStatus = Schemas["ActiveRunStatus"];
 export type ProjectStatusResponse = Schemas["ProjectStatusResponse"];
 
 /**
@@ -304,7 +306,7 @@ export interface LglnImportResponse extends GeoJSONFeatureCollection {
  * declare as a string. It sends two named events: `heartbeat` every couple of
  * seconds, carrying the server time and nothing a client needs, and
  * `project_status` whenever the project's status has changed since the last
- * one — a running run's progress included. Its `project` member is the
+ * one — every open run's progress included, in `active_runs`. Its `project` member is the
  * document `GET /api/v1/project/status` answers with: one builder serves both
  * (`Handler.projectStatus`). Mirrors `buildProjectStatusStreamEvent` in
  * `backend/internal/api/httpv1/events.go`.

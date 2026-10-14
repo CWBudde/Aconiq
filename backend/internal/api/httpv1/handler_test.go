@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/standards"
+	"github.com/aconiq/backend/internal/standards/framework"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -125,6 +127,100 @@ func TestProjectStatusStreamEventMatchesRESTStatus(t *testing.T) {
 	if !bytes.Contains(restBytes, []byte(`"context":"planning"`)) {
 		t.Fatalf("expected the last run's context in the status payload: %s", restBytes)
 	}
+}
+
+// The stream used to name only the last run, so a second run computing at the
+// same time was invisible to it and its client fell back to polling. Every
+// open run is carried now, in manifest order, with its progress; a finished
+// one is not, because its status already says how far it got.
+func TestProjectStatusCarriesEveryOpenRun(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Open Runs")
+	started := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+
+	first := mustCreateRunWithStatus(t, store, project.RunStatusRunning)
+	mustCreateRunWithStatus(t, store, project.RunStatusCompleted)
+	pending := mustCreateRunWithStatus(t, store, project.RunStatusPending)
+	last := mustCreateRunWithStatus(t, store, project.RunStatusRunning)
+
+	for _, progress := range []struct {
+		id          string
+		done, total int
+	}{{first.ID, 3, 10}, {last.ID, 1, 4}} {
+		err := store.WriteRunProgress(progress.id, projectfs.NewRunProgress(progress.done, progress.total, started, started.Add(time.Minute)))
+		if err != nil {
+			t.Fatalf("write progress: %v", err)
+		}
+	}
+
+	status := Handler{store: store, now: time.Now}.projectStatus(mustLoad(t, store))
+
+	if len(status.ActiveRuns) != 3 {
+		t.Fatalf("active runs = %+v, want the two running runs and the pending one", status.ActiveRuns)
+	}
+
+	want := []struct {
+		id       string
+		status   string
+		progress bool
+		done     int
+	}{
+		{first.ID, project.RunStatusRunning, true, 3},
+		{pending.ID, project.RunStatusPending, false, 0},
+		{last.ID, project.RunStatusRunning, true, 1},
+	}
+
+	for i, w := range want {
+		got := status.ActiveRuns[i]
+		if got.ID != w.id || got.Status != w.status || (got.Progress != nil) != w.progress {
+			t.Fatalf("active run %d = %+v, want %s %s with progress=%v", i, got, w.id, w.status, w.progress)
+		}
+
+		if w.progress && got.Progress.Done != w.done {
+			t.Fatalf("active run %d progress = %d, want %d", i, got.Progress.Done, w.done)
+		}
+	}
+
+	if status.LastRun == nil || status.LastRun.ID != last.ID {
+		t.Fatalf("last run = %+v, want %s unchanged", status.LastRun, last.ID)
+	}
+
+	finished := Handler{store: mustStore(t, "No Open Runs"), now: time.Now}
+	if quiet := finished.projectStatus(project.Project{}); quiet.ActiveRuns != nil {
+		t.Fatalf("a project with no open run carries active runs: %+v", quiet.ActiveRuns)
+	}
+}
+
+func mustCreateRunWithStatus(t *testing.T, store projectfs.Store, status string) project.Run {
+	t.Helper()
+
+	run, _, err := store.CreateRun(projectfs.CreateRunSpec{
+		ScenarioID: "default",
+		Standard: project.StandardRef{
+			Context: framework.StandardContextPlanning,
+			ID:      "rls19-road",
+			Version: "2019",
+			Profile: "default",
+		},
+		Status: status,
+	})
+	if err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	return run
+}
+
+func mustLoad(t *testing.T, store projectfs.Store) project.Project {
+	t.Helper()
+
+	proj, err := store.Load()
+	if err != nil {
+		t.Fatalf("load project: %v", err)
+	}
+
+	return proj
 }
 
 // remarshalJSON re-encodes a JSON document so two payloads can be compared as

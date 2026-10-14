@@ -10,7 +10,7 @@ import type {
   ReceiverTable,
   RunSummary,
 } from "./client";
-import { acquireProjectEvents, pushedRunId } from "./project-events";
+import { acquireProjectEvents, pushedRunIds } from "./project-events";
 import { queryKeys } from "./query-keys";
 import { queryClient } from "./query-client";
 import { withLegacyUnits } from "@/map/result-units";
@@ -53,8 +53,9 @@ export function useStandards() {
  * nothing is running, and every couple of seconds while something is, each
  * poll bringing every running run's `progress` with it. While it is up, the
  * list polls at the idle rate unless a run is active that the stream is not
- * carrying — it only ever names the *last* run. Run logs are not on the stream
- * at all and are polled while their run is running.
+ * carrying — it carries every open run, so that is one it has not said yet
+ * or one that has just settled. Run logs are not on the stream at all and are
+ * polled while their run is running.
  */
 
 /**
@@ -83,8 +84,8 @@ function isRunActive(run: RunSummary): boolean {
  */
 function runsRefetchInterval(query: Query<RunSummary[]>): number {
   const runs = query.state.data ?? [];
-  const pushed = pushedRunId();
-  const unpushed = runs.some((run) => isRunActive(run) && run.id !== pushed);
+  const pushed = pushedRunIds();
+  const unpushed = runs.some((run) => isRunActive(run) && !pushed.has(run.id));
   return unpushed ? ACTIVE_RUNS_POLL_MS : IDLE_RUNS_POLL_MS;
 }
 

@@ -130,7 +130,11 @@ func openapiProjectSchemas() map[string]any {
 				"scenario_count":   map[string]any{"type": "integer"},
 				"run_count":        map[string]any{"type": "integer"},
 				"last_run":         map[string]any{"$ref": "#/components/schemas/LastRunStatus"},
-				"model":            map[string]any{"$ref": "#/components/schemas/ProjectModelStatus"},
+				"active_runs": map[string]any{
+					"type": "array", "items": map[string]any{"$ref": "#/components/schemas/ActiveRunStatus"},
+					"description": "Every pending or running run, in manifest order; absent while none is open",
+				},
+				"model": map[string]any{"$ref": "#/components/schemas/ProjectModelStatus"},
 			},
 		},
 		"ProjectModelStatus": map[string]any{
