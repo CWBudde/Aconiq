@@ -323,11 +323,12 @@ func TestEstimateSamplesDeterministically(t *testing.T) {
 		t.Fatalf("a fixed-mode estimate should cost the distance-scaled run (%d units), got %+v", first.Inputs.Units, fixed.Alts)
 	}
 
-	// And its preparation is its own measurement, not the fixed scene's
-	// borrowed: two wall-clock readings in nanoseconds do not coincide.
+	// It reports a preparation of its own (which one is pinned by
+	// TestDistanceScaledAlternativeReportsItsOwnPreparation), and its wall
+	// time includes it.
 	alt := fixed.Alts[0]
-	if alt.PrepareSeconds == nil || *alt.PrepareSeconds <= 0 || *alt.PrepareSeconds == fixed.Probe.PrepareSeconds {
-		t.Fatalf("the alternative's preparation %v, the fixed run's %v", alt.PrepareSeconds, fixed.Probe.PrepareSeconds)
+	if alt.PrepareSeconds == nil || *alt.PrepareSeconds < 0 {
+		t.Fatalf("the alternative's preparation %v", alt.PrepareSeconds)
 	}
 
 	if alt.WallSeconds.Low < *alt.PrepareSeconds {
@@ -335,32 +336,53 @@ func TestEstimateSamplesDeterministically(t *testing.T) {
 	}
 }
 
-// TestScenesRecordTheirSourcePreparation pins what the alternative's
-// preparation is computed from: a scene prepared from scratch and one
-// re-prepared in another mode each record how long their own sources took,
-// and the alternative is the run's preparation with the one swapped for the
-// other.
-func TestScenesRecordTheirSourcePreparation(t *testing.T) {
+// TestDistanceScaledAlternativeReportsItsOwnPreparation pins what the
+// alternative's preparation is: the fixed run's measured preparation with the
+// fixed scene's sources swapped for the ones the alternative prepared. It
+// reads both from the scenes rather than asserting anything about their
+// size, so it holds on a clock too coarse to time this scene's sources.
+func TestDistanceScaledAlternativeReportsItsOwnPreparation(t *testing.T) {
 	t.Parallel()
 
-	sources, barriers, fixedCfg := probeScene(SegmentLengthFixed)
-	_, _, scaledCfg := probeScene(SegmentLengthDistanceScaled)
+	sources, barriers, cfg := probeScene(SegmentLengthFixed)
+	receivers := probeReceivers(3)
 
-	fixed, err := PrepareSceneFor(probeReceivers(3), sources, barriers, fixedCfg)
+	fixed, err := PrepareSceneFor(receivers, sources, barriers, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	scaled, err := fixed.withSegmentLengthMode(sources, scaledCfg)
+	// A preparation the fixed scene's own sources cannot outlast, so the
+	// expected figure cannot go negative whatever the clock read.
+	prepare := fixed.sourcesPrepare + time.Second
+
+	kernel, got, err := distanceScaledAlternative(fixed, receivers, sources, cfg, prepare).NewKernel()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if fixed.sourcesPrepare <= 0 || scaled.sourcesPrepare <= 0 {
-		t.Fatalf("sources prepared in %v fixed, %v distance-scaled", fixed.sourcesPrepare, scaled.sourcesPrepare)
+	built, ok := kernel.(*estimateKernel)
+	if !ok {
+		t.Fatalf("the alternative's kernel is a %T", kernel)
 	}
 
-	fixed.sourcesPrepare, scaled.sourcesPrepare = 3*time.Second, 7*time.Second
+	scaled := built.scene
+	if scaled.sources[0].coarser == nil {
+		t.Fatal("the alternative's scene is not distance-scaled")
+	}
+
+	if want := prepare - fixed.sourcesPrepare + scaled.sourcesPrepare; got != want || got < 0 {
+		t.Fatalf("the alternative reports %v of preparation, want %v (%v - %v fixed + %v scaled sources)",
+			got, want, prepare, fixed.sourcesPrepare, scaled.sourcesPrepare)
+	}
+}
+
+// TestAlternativePrepareSwapsTheSources is the arithmetic on its own, with
+// durations a clock could not produce by accident.
+func TestAlternativePrepareSwapsTheSources(t *testing.T) {
+	t.Parallel()
+
+	fixed, scaled := &Scene{sourcesPrepare: 3 * time.Second}, &Scene{sourcesPrepare: 7 * time.Second}
 
 	if got := alternativePrepare(10*time.Second, fixed, scaled); got != 14*time.Second {
 		t.Fatalf("a 10 s preparation with 3 s of fixed sources swapped for 7 s of scaled ones gave %v, want 14 s", got)

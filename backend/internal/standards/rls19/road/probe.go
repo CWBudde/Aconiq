@@ -63,23 +63,7 @@ func Estimate(
 	opts.Prepare = prepare
 
 	if cfg.SegmentLengthMode.resolved() == SegmentLengthFixed {
-		scaledCfg := cfg
-		scaledCfg.SegmentLengthMode = SegmentLengthDistanceScaled
-
-		// Built only if the budget leaves time for it, and priced with the
-		// preparation a distance-scaled run would spend: its own ladders in
-		// place of the fixed Teilstücke, everything else as measured here.
-		opts.Alternatives = append(opts.Alternatives, runestimate.AlternativeKernel{
-			Params: map[string]string{"segment_length_mode": string(SegmentLengthDistanceScaled)},
-			NewKernel: func() (runestimate.Kernel, time.Duration, error) {
-				scaled, err := scene.withSegmentLengthMode(sources, scaledCfg)
-				if err != nil {
-					return nil, 0, err
-				}
-
-				return newEstimateKernel(scaled, receivers, scaledCfg), alternativePrepare(prepare, scene, scaled), nil
-			},
-		})
+		opts.Alternatives = append(opts.Alternatives, distanceScaledAlternative(scene, receivers, sources, cfg, prepare))
 	}
 
 	points := make([]geo.Point2D, len(receivers))
@@ -96,6 +80,35 @@ func Estimate(
 	estimate.Inputs.Counts = scene.estimateCounts(len(barriers), cfg)
 
 	return estimate, nil
+}
+
+// distanceScaledAlternative is the distance-scaled run a fixed-mode estimate
+// also costs, over scene, which the estimate prepared in prepare.
+//
+// Its kernel is built only if the budget leaves time for it, and priced with
+// the preparation a distance-scaled run would spend: its own ladders in place
+// of the fixed Teilstücke, everything else as measured for scene.
+func distanceScaledAlternative(
+	scene *Scene,
+	receivers []geo.PointReceiver,
+	sources []RoadSource,
+	cfg PropagationConfig,
+	prepare time.Duration,
+) runestimate.AlternativeKernel {
+	scaledCfg := cfg
+	scaledCfg.SegmentLengthMode = SegmentLengthDistanceScaled
+
+	return runestimate.AlternativeKernel{
+		Params: map[string]string{"segment_length_mode": string(SegmentLengthDistanceScaled)},
+		NewKernel: func() (runestimate.Kernel, time.Duration, error) {
+			scaled, err := scene.withSegmentLengthMode(sources, scaledCfg)
+			if err != nil {
+				return nil, 0, err
+			}
+
+			return newEstimateKernel(scaled, receivers, scaledCfg), alternativePrepare(prepare, scene, scaled), nil
+		},
+	}
 }
 
 // withSegmentLengthMode is the scene a run in cfg's segment_length_mode would

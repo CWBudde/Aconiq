@@ -168,11 +168,14 @@ export function suggestFasterRun(
 
   const suggestions: EstimateSuggestion[] = [];
 
-  const coarser = (perReceiver: EstimateBand) => {
+  // `prepare` is the scene preparation of the run being resized: the fixed
+  // run's for the grid alone, the distance-scaled run's own once its ladders
+  // are part of the run.
+  const coarser = (perReceiver: EstimateBand, prepare: number) => {
     if (extent === null) return null;
     // The receiver budget the target allows, at the point estimate.
     const budget = Math.floor(
-      ((ESTIMATE_TARGET_SECONDS - prepareS) * Math.max(1, parallelism)) /
+      ((ESTIMATE_TARGET_SECONDS - prepare) * Math.max(1, parallelism)) /
         Math.max(perReceiver.estimate, 1e-9),
     );
     const resolutionM = resolutionForReceiverBudget(
@@ -189,7 +192,7 @@ export function suggestFasterRun(
     return { resolutionM, receivers: shape.count };
   };
 
-  const grid = coarser(cpuPerReceiver);
+  const grid = coarser(cpuPerReceiver, prepareS);
   if (grid !== null) {
     suggestions.push({
       params: { grid_resolution_m: String(grid.resolutionM) },
@@ -220,7 +223,11 @@ export function suggestFasterRun(
 
     if (scaled.wall_s.estimate > ESTIMATE_TARGET_SECONDS) {
       const scaledPerReceiver = scale(scaled.cpu_s, 1 / receivers);
-      const both = coarser(scaledPerReceiver);
+      // The distance-scaled run's own preparation, which its `wall_s`
+      // already carries; a backend that does not report it leaves the fixed
+      // run's as the nearest figure there is.
+      const scaledPrepareS = scaled.prepare_s ?? prepareS;
+      const both = coarser(scaledPerReceiver, scaledPrepareS);
       if (both !== null) {
         suggestions.push({
           params: {
@@ -233,7 +240,7 @@ export function suggestFasterRun(
           wall: wallForReceivers(
             scaledPerReceiver,
             parallelism,
-            prepareS,
+            scaledPrepareS,
             both.receivers,
           ),
         });
