@@ -88,7 +88,24 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []IndustrySou
 // ComputeReceiverOutputsContext is ComputeReceiverOutputs under a context: once
 // ctx is done it stops before the next receiver and returns ctx.Err().
 func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointReceiver, sources []IndustrySource, cfg PropagationConfig) ([]ReceiverOutput, error) {
-	outputs, err := cnossosindustry.ComputeReceiverOutputsContext(ctx, receivers, sources, cfg)
+	return ComputeReceiverOutputsProgress(ctx, receivers, sources, cfg, nil)
+}
+
+// ComputeReceiverOutputsProgress is ComputeReceiverOutputsContext that also
+// reports (receivers done, receivers in total) after each receiver. It forwards
+// to cnossosindustry.ComputeReceiverOutputsProgress, whose callback contract it
+// keeps: done increases by one from the first completed receiver, exactly one
+// call has done == total on a walk that succeeds, a failed or cancelled walk
+// stops reporting at the last receiver it completed, and a nil progress
+// reports nothing.
+func ComputeReceiverOutputsProgress(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []IndustrySource,
+	cfg PropagationConfig,
+	progress func(done, total int),
+) ([]ReceiverOutput, error) {
+	outputs, err := cnossosindustry.ComputeReceiverOutputsProgress(ctx, receivers, sources, cfg, progress)
 	if err != nil {
 		return nil, fmt.Errorf("compute receiver outputs: %w", err)
 	}

@@ -44,12 +44,38 @@ func ComputeOutputs(buildings []BuildingUnit, roads []road.RoadSource, cfg Expos
 // ComputeOutputsContext is ComputeOutputs under a context: once ctx is done the
 // facade receivers stop before the next one and ctx.Err() is returned.
 func ComputeOutputsContext(ctx context.Context, buildings []BuildingUnit, roads []road.RoadSource, cfg ExposureConfig, propagation road.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
+	return ComputeOutputsProgress(ctx, buildings, roads, cfg, propagation, receiverHeightM, nil)
+}
+
+// ComputeOutputsProgress is ComputeOutputsContext that also reports progress
+// over the facade receivers the level step computes: one per building at its
+// representative point, plus one per facade under max-facade evaluation, so
+// total is that receiver count and not the building count. It reports
+// (receivers done, receivers in total) through
+// road.ComputeReceiverOutputsProgress: done increases by one from the first
+// completed receiver, and exactly one call has done == total on a run that
+// succeeds. A failed or cancelled level step stops reporting at the last
+// receiver it completed, and nothing is reported for the per-building
+// aggregation that follows it, which computes no level. A nil progress
+// reports nothing.
+//
+// The report is read by nothing in the computation, so the outputs and the
+// summary are those ComputeOutputsContext returns, bit for bit.
+func ComputeOutputsProgress(
+	ctx context.Context,
+	buildings []BuildingUnit,
+	roads []road.RoadSource,
+	cfg ExposureConfig,
+	propagation road.PropagationConfig,
+	receiverHeightM float64,
+	progress func(done, total int),
+) ([]BuildingExposureOutput, Summary, error) {
 	return computeOutputs(buildings, cfg, receiverHeightM, func(receivers []geo.PointReceiver) (map[string]levelIndicators, error) {
 		if len(roads) == 0 {
 			return nil, errors.New("at least one road source is required")
 		}
 
-		roadOutputs, err := road.ComputeReceiverOutputsContext(ctx, receivers, roads, propagation)
+		roadOutputs, err := road.ComputeReceiverOutputsProgress(ctx, receivers, roads, propagation, progress)
 		if err != nil {
 			return nil, fmt.Errorf("compute road receiver outputs: %w", err)
 		}
@@ -66,12 +92,28 @@ func ComputeOutputsFromAircraft(buildings []BuildingUnit, aircraftSources []bufa
 // ComputeOutputsFromAircraftContext is ComputeOutputsFromAircraft under a
 // context, with the same cancellation as ComputeOutputsContext.
 func ComputeOutputsFromAircraftContext(ctx context.Context, buildings []BuildingUnit, aircraftSources []bufaircraft.AircraftSource, cfg ExposureConfig, propagation bufaircraft.PropagationConfig, receiverHeightM float64) ([]BuildingExposureOutput, Summary, error) {
+	return ComputeOutputsFromAircraftProgress(ctx, buildings, aircraftSources, cfg, propagation, receiverHeightM, nil)
+}
+
+// ComputeOutputsFromAircraftProgress is ComputeOutputsFromAircraftContext that
+// also reports progress over the facade receivers, through
+// bufaircraft.ComputeReceiverOutputsProgress, with the counting and the
+// callback contract ComputeOutputsProgress documents.
+func ComputeOutputsFromAircraftProgress(
+	ctx context.Context,
+	buildings []BuildingUnit,
+	aircraftSources []bufaircraft.AircraftSource,
+	cfg ExposureConfig,
+	propagation bufaircraft.PropagationConfig,
+	receiverHeightM float64,
+	progress func(done, total int),
+) ([]BuildingExposureOutput, Summary, error) {
 	return computeOutputs(buildings, cfg, receiverHeightM, func(receivers []geo.PointReceiver) (map[string]levelIndicators, error) {
 		if len(aircraftSources) == 0 {
 			return nil, errors.New("at least one aircraft source is required")
 		}
 
-		aircraftOutputs, err := bufaircraft.ComputeReceiverOutputsContext(ctx, receivers, aircraftSources, propagation)
+		aircraftOutputs, err := bufaircraft.ComputeReceiverOutputsProgress(ctx, receivers, aircraftSources, propagation, progress)
 		if err != nil {
 			return nil, fmt.Errorf("compute aircraft receiver outputs: %w", err)
 		}
