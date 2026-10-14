@@ -23,7 +23,7 @@ import (
 // runModuleTable is what `aconiq run` dispatches on. One entry per registered
 // standard; adding a standard means adding an entry, not editing a switch.
 //
-// Nine of the thirteen are the same shape and say so by being built from
+// Eight of the thirteen are the same shape and say so by being built from
 // receiverRunModule — the per-standard part is five functions and three log
 // strings. The other four differ in kind, not in detail: dummy-freefield runs
 // through the compute engine, RLS-19 extracts barriers and buildings alongside
@@ -40,8 +40,8 @@ var runModuleTable = map[string]runModule{
 		parseOptions:   parseCnossosRoadRunOptions,
 		extract:        extractCnossosRoadSources,
 		buildReceivers: buildCnossosRoadReceivers,
-		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosroad.RoadSource, options cnossosRoadRunOptions) ([]acoustics.ReceiverOutput, error) {
-			return cnossosroad.ComputeReceiverOutputsContext(ctx, receivers, sources, options.PropagationConfig())
+		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosroad.RoadSource, options cnossosRoadRunOptions, progress func(done, total int)) ([]acoustics.ReceiverOutput, error) {
+			return cnossosroad.ComputeReceiverOutputsProgress(ctx, receivers, sources, options.PropagationConfig(), progress)
 		},
 		persist: endPersist(cnossosroad.StandardID),
 	}.run,
@@ -53,8 +53,8 @@ var runModuleTable = map[string]runModule{
 		parseOptions:   parseCnossosRailRunOptions,
 		extract:        extractCnossosRailSources,
 		buildReceivers: buildCnossosRailReceivers,
-		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosrail.RailSource, options cnossosRailRunOptions) ([]acoustics.ReceiverOutput, error) {
-			return cnossosrail.ComputeReceiverOutputsContext(ctx, receivers, sources, options.PropagationConfig())
+		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosrail.RailSource, options cnossosRailRunOptions, progress func(done, total int)) ([]acoustics.ReceiverOutput, error) {
+			return cnossosrail.ComputeReceiverOutputsProgress(ctx, receivers, sources, options.PropagationConfig(), progress)
 		},
 		persist: endPersist(cnossosrail.StandardID),
 	}.run,
@@ -66,8 +66,8 @@ var runModuleTable = map[string]runModule{
 		parseOptions:   parseCnossosIndustryRunOptions,
 		extract:        extractCnossosIndustrySources,
 		buildReceivers: buildCnossosIndustryReceivers,
-		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosindustry.IndustrySource, options cnossosIndustryRunOptions) ([]acoustics.ReceiverOutput, error) {
-			return cnossosindustry.ComputeReceiverOutputsContext(ctx, receivers, sources, options.PropagationConfig())
+		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosindustry.IndustrySource, options cnossosIndustryRunOptions, progress func(done, total int)) ([]acoustics.ReceiverOutput, error) {
+			return cnossosindustry.ComputeReceiverOutputsProgress(ctx, receivers, sources, options.PropagationConfig(), progress)
 		},
 		persist: endPersist(cnossosindustry.StandardID),
 	}.run,
@@ -79,8 +79,8 @@ var runModuleTable = map[string]runModule{
 		parseOptions:   parseCnossosAircraftRunOptions,
 		extract:        extractCnossosAircraftSources,
 		buildReceivers: buildCnossosAircraftReceivers,
-		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosaircraft.AircraftSource, options cnossosAircraftRunOptions) ([]acoustics.ReceiverOutput, error) {
-			return cnossosaircraft.ComputeReceiverOutputsContext(ctx, receivers, sources, options.PropagationConfig())
+		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosaircraft.AircraftSource, options cnossosAircraftRunOptions, progress func(done, total int)) ([]acoustics.ReceiverOutput, error) {
+			return cnossosaircraft.ComputeReceiverOutputsProgress(ctx, receivers, sources, options.PropagationConfig(), progress)
 		},
 		persist: endPersist(cnossosaircraft.StandardID),
 	}.run,
@@ -96,8 +96,8 @@ var runModuleTable = map[string]runModule{
 		parseOptions:   parseBUBRailRunOptions,
 		extract:        extractCnossosRailSources,
 		buildReceivers: buildCnossosRailReceivers,
-		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosrail.RailSource, options bubRailRunOptions) ([]acoustics.ReceiverOutput, error) {
-			return bubrail.ComputeReceiverOutputsContext(ctx, receivers, sources, options.PropagationConfig())
+		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosrail.RailSource, options bubRailRunOptions, progress func(done, total int)) ([]acoustics.ReceiverOutput, error) {
+			return bubrail.ComputeReceiverOutputsProgress(ctx, receivers, sources, options.PropagationConfig(), progress)
 		},
 		persist: endPersist(bubrail.StandardID),
 	}.run,
@@ -109,8 +109,8 @@ var runModuleTable = map[string]runModule{
 		parseOptions:   parseBUBIndustryRunOptions,
 		extract:        extractCnossosIndustrySources,
 		buildReceivers: buildCnossosIndustryReceivers,
-		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosindustry.IndustrySource, options bubIndustryRunOptions) ([]acoustics.ReceiverOutput, error) {
-			return bubindustry.ComputeReceiverOutputsContext(ctx, receivers, sources, options.PropagationConfig())
+		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosindustry.IndustrySource, options bubIndustryRunOptions, progress func(done, total int)) ([]acoustics.ReceiverOutput, error) {
+			return bubindustry.ComputeReceiverOutputsProgress(ctx, receivers, sources, options.PropagationConfig(), progress)
 		},
 		persist: endPersist(bubindustry.StandardID),
 	}.run,
@@ -124,8 +124,8 @@ var runModuleTable = map[string]runModule{
 		parseOptions:   parseBUBRoadRunOptions,
 		extract:        extractBUBRoadSources,
 		buildReceivers: buildBUBRoadReceivers,
-		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []bubroad.RoadSource, options bubRoadRunOptions) ([]acoustics.ReceiverOutput, error) {
-			return bubroad.ComputeReceiverOutputsContext(ctx, receivers, sources, options.PropagationConfig())
+		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []bubroad.RoadSource, options bubRoadRunOptions, progress func(done, total int)) ([]acoustics.ReceiverOutput, error) {
+			return bubroad.ComputeReceiverOutputsProgress(ctx, receivers, sources, options.PropagationConfig(), progress)
 		},
 		persist: endPersist(bubroad.StandardID),
 	}.run,
@@ -141,8 +141,8 @@ var runModuleTable = map[string]runModule{
 		parseOptions:   parseBUFAircraftRunOptions,
 		extract:        extractBUFAircraftSources,
 		buildReceivers: buildBUFAircraftReceivers,
-		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosaircraft.AircraftSource, options bufAircraftRunOptions) ([]acoustics.ReceiverOutput, error) {
-			return bufaircraft.ComputeReceiverOutputsContext(ctx, receivers, sources, options.PropagationConfig())
+		compute: func(ctx context.Context, receivers []geo.PointReceiver, sources []cnossosaircraft.AircraftSource, options bufAircraftRunOptions, progress func(done, total int)) ([]acoustics.ReceiverOutput, error) {
+			return bufaircraft.ComputeReceiverOutputsProgress(ctx, receivers, sources, options.PropagationConfig(), progress)
 		},
 		persist: endPersist(bufaircraft.StandardID),
 	}.run,

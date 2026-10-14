@@ -11,11 +11,12 @@ import { queryKeys } from "./query-keys";
  * The one connection to the project's event stream, shared by every runs list
  * on screen, and what it does to the query cache.
  *
- * The stream's `project_status` event carries the last run's status and
- * progress, and the server sends one whenever either moves — at most every
- * couple of seconds. That is everything the progress bar of a running run
- * reads, so while the stream is up the runs list does not have to poll for it:
- * the summary in the cache is patched in place, and the list falls back to the
+ * The stream's `project_status` event carries every open run's status and
+ * progress (`active_runs`) besides the last run, and the server sends one
+ * whenever any of them moves — at most every couple of seconds. That is
+ * everything the progress bar of a running run reads, so while the stream is
+ * up the runs list does not have to poll for the runs it carries: their
+ * summaries in the cache are patched in place, and the list falls back to the
  * idle poll (`useRuns`). Anything the event cannot say — a new run, a status
  * that moved, which brings artifacts and a finish time — invalidates the list,
  * and the next fetch says it.
@@ -38,14 +39,15 @@ let unsubscribe: (() => void) | null = null;
 /** Bumped per connection, so a late callback from a closed one is ignored. */
 let generation = 0;
 let connected = false;
-let lastRunId: string | null = null;
+let carriedRunIds: ReadonlySet<string> = new Set();
+const noRuns: ReadonlySet<string> = new Set();
 
 /**
- * The id of the run the stream is carrying, or `null` while the stream is down
- * or has not said yet. A running run with this id needs no fast poll.
+ * The ids of the runs the stream is carrying, empty while the stream is down
+ * or has not said yet. A running run in this set needs no fast poll.
  */
-export function pushedRunId(): string | null {
-  return connected ? lastRunId : null;
+export function pushedRunIds(): ReadonlySet<string> {
+  return connected ? carriedRunIds : noRuns;
 }
 
 /**
@@ -109,7 +111,7 @@ function open() {
       if (mine !== generation) return;
       connected = next;
       if (!next) {
-        lastRunId = null;
+        carriedRunIds = noRuns;
         // The list may be on the idle poll because the stream was carrying
         // its running run. Refetching now is what puts it back on the fast
         // one at once — its interval is only re-read when its data changes.
@@ -124,48 +126,71 @@ function close() {
   unsubscribe?.();
   unsubscribe = null;
   connected = false;
-  lastRunId = null;
+  carriedRunIds = noRuns;
 }
 
 /** Apply one `project_status` event to the runs list in the cache. */
 export function applyProjectStatusEvent(event: ProjectStatusEvent): void {
   if (!event.project_available) return;
 
-  const lastRun = event.project.last_run;
-  const carriedBefore = pushedRunId();
-  // Only an active run counts as carried. A settled one is fetched, and until
+  const { last_run: lastRun, active_runs: activeRuns = [] } = event.project;
+  const carriedBefore = pushedRunIds();
+  // Only an open run counts as carried. A settled one is fetched, and until
   // that fetch lands — it may fail — the list still holds it as running and
   // must keep polling fast for it.
-  lastRunId =
-    lastRun !== undefined && isActiveStatus(lastRun.status) ? lastRun.id : null;
-  // The runs list reads its poll interval off the carried run, but only when
+  carriedRunIds = new Set(
+    activeRuns.filter((run) => isActiveStatus(run.status)).map((run) => run.id),
+  );
+  // The runs list reads its poll interval off the carried runs, but only when
   // its own data changes; a refetch is what makes it read again.
-  const carriedChanged = pushedRunId() !== carriedBefore;
+  const carriedChanged = !sameIds(pushedRunIds(), carriedBefore);
 
   const runs = queryClient.getQueryData<RunSummary[]>(queryKeys.runs.list());
   // Nobody holds the list, so there is nothing to keep current.
-  if (lastRun === undefined || runs === undefined) {
+  if (runs === undefined) {
     if (carriedChanged) invalidateRuns();
     return;
   }
 
-  const known = runs.find((run) => run.id === lastRun.id);
-  if (known?.status !== lastRun.status) {
+  const byId = new Map(runs.map((run) => [run.id, run]));
+  // A run the list holds as open that the stream no longer carries has
+  // settled, and the last run may be one the list has never seen: either way
+  // the event cannot say what the summary now holds.
+  const settled = runs.some(
+    (run) => isActiveStatus(run.status) && !carriedRunIds.has(run.id),
+  );
+  const lastMoved =
+    lastRun !== undefined && byId.get(lastRun.id)?.status !== lastRun.status;
+  const statusMoved = activeRuns.some(
+    (active) => byId.get(active.id)?.status !== active.status,
+  );
+  if (lastMoved || statusMoved || (settled && carriedChanged)) {
     invalidateRuns();
     return;
   }
 
-  if (sameProgress(known.progress, lastRun.progress)) {
+  const moved = activeRuns.filter(
+    (active) => !sameProgress(byId.get(active.id)?.progress, active.progress),
+  );
+  if (moved.length === 0) {
     if (carriedChanged) invalidateRuns();
     return;
   }
 
+  const progressById = new Map(moved.map((active) => [active.id, active]));
   queryClient.setQueryData<RunSummary[]>(
     queryKeys.runs.list(),
-    runs.map((run) =>
-      run.id === lastRun.id ? withProgress(run, lastRun.progress) : run,
-    ),
+    runs.map((run) => {
+      const active = progressById.get(run.id);
+      return active === undefined ? run : withProgress(run, active.progress);
+    }),
   );
+}
+
+function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
 }
 
 function isActiveStatus(status: string): boolean {

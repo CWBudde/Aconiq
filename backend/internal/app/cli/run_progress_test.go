@@ -37,18 +37,43 @@ type progressSnapshot struct {
 func TestRunWritesItsLogAndProgressWhileItComputes(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
+	type progressCase struct {
 		standard string
 		fixture  []string
-	}{
-		{"rls19-road", registryRunFixtures["rls19-road"]},
-		{"iso9613", registryRunFixtures["iso9613"]},
+		extra    []string
+		// logged is a line the module writes before its compute, which a
+		// mid-run log must already hold.
+		logged string
+	}
+
+	const scaffolds = 8
+
+	cases := make([]progressCase, 0, 4+scaffolds)
+	cases = append(cases, []progressCase{
+		{"rls19-road", registryRunFixtures["rls19-road"], nil, "receivers="},
+		{"iso9613", registryRunFixtures["iso9613"], nil, "receivers="},
 		// Schall 03 used to buffer its log lines and append them after the
 		// compute, so a progress line would have landed ahead of the lines
 		// that preceded it; it logs through the run's log now, and the
 		// "receivers=" check below is what holds it to that.
-		{"schall03", registryRunFixtures["schall03"]},
+		{"schall03", registryRunFixtures["schall03"], nil, "receivers="},
+		// BEB counts the facade receivers it computes levels for, which only
+		// the package knows; its total arrives with the first report. It logs
+		// no receiver count of its own before the compute.
+		{"beb-exposure", registryRunFixtures["beb-exposure"], []string{"--experimental"}, "evidence_tier="},
+	}...)
+
+	// The scaffolds share one walk, but each reaches it through its own
+	// table entry, and an entry left on the progress-less call is exactly the
+	// regression this is here to catch.
+	for _, standard := range []string{
+		"cnossos-road", "cnossos-rail", "cnossos-industry", "cnossos-aircraft",
+		"bub-road", "bub-rail", "bub-industry", "buf-aircraft",
 	} {
+		cases = append(cases, progressCase{standard, registryRunFixtures[standard], []string{"--experimental"}, "receivers="})
+	}
+
+	for _, tc := range cases {
 		t.Run(tc.standard, func(t *testing.T) {
 			t.Parallel()
 
@@ -90,7 +115,9 @@ func TestRunWritesItsLogAndProgressWhileItComputes(t *testing.T) {
 				snapshots = append(snapshots, progressSnapshot{done: done, total: total, log: string(logBytes), progress: progress})
 			})
 
-			err := runCLIContext(ctx, "--project", projectDir, "run", "--standard", tc.standard, "--run-id", runID, "--workers", "2")
+			args := append([]string{"--project", projectDir, "run", "--standard", tc.standard, "--run-id", runID, "--workers", "2"}, tc.extra...)
+
+			err := runCLIContext(ctx, args...)
 			if err != nil {
 				t.Fatalf("run: %v", err)
 			}
@@ -113,7 +140,7 @@ func TestRunWritesItsLogAndProgressWhileItComputes(t *testing.T) {
 				// The lines logged before the compute are on disk too, not
 				// only the progress line: the log streams, it does not just
 				// grow a feed at the end.
-				if !strings.Contains(snap.log, "receivers=") || !strings.Contains(snap.log, "evidence_tier=") {
+				if !strings.Contains(snap.log, tc.logged) || !strings.Contains(snap.log, "evidence_tier=") {
 					t.Fatalf("run.log mid-run lacks the lines logged before the compute:\n%s", snap.log)
 				}
 

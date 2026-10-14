@@ -8,6 +8,9 @@ import (
 	"github.com/aconiq/backend/internal/geo"
 )
 
+// errNoReceivers is how a run, and its estimate, refuse an empty receiver set.
+var errNoReceivers = errors.New("at least one receiver is required")
+
 // ReceiverIndicators stores exported indicators for one receiver.
 type ReceiverIndicators struct {
 	LpAeqDW float64
@@ -28,28 +31,9 @@ func ComputeReceiverIndicators(receiver geo.PointReceiver, sources []PointSource
 // computeReceiverIndicators is ComputeReceiverIndicators under a context,
 // checked before every source→receiver path (computeDownwindAndLongTermLevels).
 func computeReceiverIndicators(ctx context.Context, receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (ReceiverIndicators, error) {
-	err := cfg.Validate()
+	err := checkReceiverInputs(receiver, sources, cfg)
 	if err != nil {
 		return ReceiverIndicators{}, err
-	}
-
-	if receiver.ID == "" {
-		return ReceiverIndicators{}, errors.New("receiver id is required")
-	}
-
-	if !receiver.Point.IsFinite() {
-		return ReceiverIndicators{}, errors.New("receiver point is not finite")
-	}
-
-	if len(sources) == 0 {
-		return ReceiverIndicators{}, errors.New("at least one source is required")
-	}
-
-	for _, source := range sources {
-		err := source.Validate()
-		if err != nil {
-			return ReceiverIndicators{}, err
-		}
 	}
 
 	// C_met is applied per source-receiver path inside the summation
@@ -60,6 +44,50 @@ func computeReceiverIndicators(ctx context.Context, receiver geo.PointReceiver, 
 	}
 
 	return ReceiverIndicators{LpAeqDW: dwLevel, LpAeqLT: ltLevel}, nil
+}
+
+// checkReceiverInputs is what the walk checks before every receiver's first
+// path: the config, the receiver, and every source. The config and the
+// sources are the same for every receiver of a run, but the walk checks them
+// again each time, so on a scene of many sources this is a per-receiver cost
+// the run-time estimate has to time (see estimateWalker.Begin). The order of
+// the checks decides which error a doubly broken input reports.
+func checkReceiverInputs(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) error {
+	err := cfg.Validate()
+	if err != nil {
+		return err
+	}
+
+	err = checkReceiver(receiver)
+	if err != nil {
+		return err
+	}
+
+	if len(sources) == 0 {
+		return errors.New("at least one source is required")
+	}
+
+	for _, source := range sources {
+		err := source.Validate()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// checkReceiver is checkReceiverInputs' check of the receiver itself.
+func checkReceiver(receiver geo.PointReceiver) error {
+	if receiver.ID == "" {
+		return errors.New("receiver id is required")
+	}
+
+	if !receiver.Point.IsFinite() {
+		return errors.New("receiver point is not finite")
+	}
+
+	return nil
 }
 
 // ComputeReceiverLevel computes the combined downwind receiver level for one receiver.
@@ -97,7 +125,7 @@ func ComputeReceiverOutputsProgress(
 	progress func(done, total int),
 ) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
-		return nil, errors.New("at least one receiver is required")
+		return nil, errNoReceivers
 	}
 
 	outputs := make([]ReceiverOutput, 0, len(receivers))

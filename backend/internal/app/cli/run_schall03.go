@@ -77,20 +77,31 @@ func schall03MissingNormativeInputsError(configured string) error {
 	)
 }
 
-// computeSchall03Run resolves the engine, extracts its inputs from the model
-// and computes receiver levels, logging to input.log and reporting to
-// input.progress as it goes.
-func computeSchall03Run(
-	ctx context.Context,
-	input runModuleInput,
-	options schall03RunOptions,
-) (schall03RunResult, error) {
+// schall03Prepared is a Schall 03 run prepared up to its first receiver, on
+// the chain its engine resolved to: what computeSchall03Run computes and what
+// estimateSchall03Run probes, so the two cannot price and run different
+// scenes. Only the resolved chain's half is filled.
+type schall03Prepared struct {
+	result schall03RunResult
+
+	// The normative chain: receivers on their ground datum, and the scene.
+	normativeReceivers []schall03.ReceiverInput
+	scene              schall03.NormativeScene
+
+	// The preview chain: receivers, rail sources and the propagation config.
+	previewReceivers []geo.PointReceiver
+	railSources      []schall03.RailSource
+	previewConfig    schall03.PropagationConfig
+}
+
+// prepareSchall03Run resolves the engine and extracts the chosen chain's
+// inputs from the model, logging to input.log as it goes.
+func prepareSchall03Run(input runModuleInput, options schall03RunOptions) (schall03Prepared, error) {
 	engine, err := resolveSchall03Engine(options.Engine, input.model)
 	if err != nil {
-		return schall03RunResult{}, err
+		return schall03Prepared{}, err
 	}
 
-	result := schall03RunResult{Engine: engine}
 	input.log.addf("schall03_engine=%s", engine)
 
 	if engine == schall03.EnginePreview {
@@ -101,34 +112,67 @@ func computeSchall03Run(
 	}
 
 	if engine == schall03.EngineNormative {
-		return computeSchall03Normative(ctx, input, result, options)
+		return prepareSchall03Normative(input, options)
 	}
 
-	return computeSchall03Preview(ctx, input, result, options)
+	return prepareSchall03Preview(input, options)
 }
 
-func computeSchall03Normative(
+// computeSchall03Run prepares the run and computes receiver levels, reporting
+// to input.progress as it goes.
+func computeSchall03Run(
 	ctx context.Context,
 	input runModuleInput,
-	result schall03RunResult,
 	options schall03RunOptions,
 ) (schall03RunResult, error) {
+	run, err := prepareSchall03Run(input, options)
+	if err != nil {
+		return schall03RunResult{}, err
+	}
+
+	result := run.result
+
+	// The walk reports each receiver as it completes; runProgress throttles
+	// that to the log and progress.json. Nothing the walk computes reads it.
+	if result.Engine == schall03.EngineNormative {
+		input.progress.start(len(run.normativeReceivers))
+
+		result.Outputs, err = schall03.ComputeNormativeReceiverOutputsForSceneProgress(
+			ctx, run.normativeReceivers, run.scene, input.progress.report,
+		)
+		if err != nil {
+			return schall03RunResult{}, fmt.Errorf("compute Schall 03 normative receiver levels: %w", err)
+		}
+
+		return result, nil
+	}
+
+	input.progress.start(len(run.previewReceivers))
+
+	result.Outputs, err = schall03.ComputeReceiverOutputsWithDataPackProgress(
+		ctx, run.previewReceivers, run.railSources, run.previewConfig, schall03.BuiltinDataPack(), input.progress.report,
+	)
+	if err != nil {
+		return schall03RunResult{}, fmt.Errorf("compute Schall 03 preview receiver levels: %w", err)
+	}
+
+	return result, nil
+}
+
+func prepareSchall03Normative(input runModuleInput, options schall03RunOptions) (schall03Prepared, error) {
 	terrainModel := input.terrain
 
 	scene, err := extractSchall03NormativeScene(input.model, input.standard.SupportedSourceTypes)
 	if err != nil {
-		return schall03RunResult{}, err
+		return schall03Prepared{}, err
 	}
 
 	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildSchall03NormativeReceivers(scene.Segments, calcArea, options)
 	})
 	if err != nil {
-		return schall03RunResult{}, err
+		return schall03Prepared{}, err
 	}
-
-	result.SourceCount = len(scene.Segments)
-	result.Layout = layout
 
 	// Barrier panels, not obstacles: one building footprint contributes one
 	// panel per outer-ring edge, so this count is no longer the number of
@@ -139,7 +183,7 @@ func computeSchall03Normative(
 
 	receiverInputs, sampled, err := schall03ReceiverInputs(receivers, terrainModel)
 	if err != nil {
-		return schall03RunResult{}, err
+		return schall03Prepared{}, err
 	}
 
 	if terrainModel != nil {
@@ -148,61 +192,52 @@ func computeSchall03Normative(
 
 	warnOnUngroundedSchall03Elevation(input.log, terrainModel, scene.Segments)
 
-	// The walk reports each receiver as it completes; runProgress throttles
-	// that to the log and progress.json. Nothing the walk computes reads it.
-	input.progress.start(len(receiverInputs))
-
-	// The DTM goes into the scene, not just into the receivers' datum: the
-	// propagation chain samples it along every subsegment→receiver path for
-	// Gl. 15's h_m.
-	result.Outputs, err = schall03.ComputeNormativeReceiverOutputsForSceneProgress(ctx, receiverInputs, schall03.NormativeScene{
-		Segments: scene.Segments,
-		Walls:    scene.Walls,
-		Barriers: scene.Barriers,
-		Terrain:  terrainModel,
-	}, input.progress.report)
-	if err != nil {
-		return schall03RunResult{}, fmt.Errorf("compute Schall 03 normative receiver levels: %w", err)
-	}
-
-	return result, nil
+	return schall03Prepared{
+		result: schall03RunResult{
+			Engine:      schall03.EngineNormative,
+			SourceCount: len(scene.Segments),
+			Layout:      layout,
+		},
+		normativeReceivers: receiverInputs,
+		// The DTM goes into the scene, not just into the receivers' datum:
+		// the propagation chain samples it along every subsegment→receiver
+		// path for Gl. 15's h_m.
+		scene: schall03.NormativeScene{
+			Segments: scene.Segments,
+			Walls:    scene.Walls,
+			Barriers: scene.Barriers,
+			Terrain:  terrainModel,
+		},
+	}, nil
 }
 
-func computeSchall03Preview(
-	ctx context.Context,
-	input runModuleInput,
-	result schall03RunResult,
-	options schall03RunOptions,
-) (schall03RunResult, error) {
+func prepareSchall03Preview(input runModuleInput, options schall03RunOptions) (schall03Prepared, error) {
 	railSources, err := extractSchall03Sources(input.model, options, input.standard.SupportedSourceTypes)
 	if err != nil {
-		return schall03RunResult{}, err
+		return schall03Prepared{}, err
 	}
 
 	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildSchall03Receivers(railSources, calcArea, options)
 	})
 	if err != nil {
-		return schall03RunResult{}, err
+		return schall03Prepared{}, err
 	}
-
-	result.SourceCount = len(railSources)
-	result.Layout = layout
 
 	input.log.addf("schall03_sources=%d", len(railSources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
-	input.progress.start(len(receivers))
-
-	result.Outputs, err = schall03.ComputeReceiverOutputsWithDataPackProgress(
-		ctx, receivers, railSources, options.PropagationConfig(), schall03.BuiltinDataPack(), input.progress.report,
-	)
-	if err != nil {
-		return schall03RunResult{}, fmt.Errorf("compute Schall 03 preview receiver levels: %w", err)
-	}
-
-	return result, nil
+	return schall03Prepared{
+		result: schall03RunResult{
+			Engine:      schall03.EnginePreview,
+			SourceCount: len(railSources),
+			Layout:      layout,
+		},
+		previewReceivers: receivers,
+		railSources:      railSources,
+		previewConfig:    options.PropagationConfig(),
+	}, nil
 }
 
 // warnOnUngroundedSchall03Elevation says out loud which of the two readings of

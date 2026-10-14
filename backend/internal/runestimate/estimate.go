@@ -86,12 +86,15 @@ type Inputs struct {
 
 	// Units is the number of work units the run walks, summed over every
 	// receiver. For RLS-19 a unit is one (source, Teilstück) pair or one
-	// Parkplatz, in the run's own segment_length_mode.
+	// Parkplatz, in the run's own segment_length_mode; for ISO 9613-2 one
+	// source→receiver path; for Schall 03 one line-source walk per (speed-zone
+	// part, operation, period) on the normative chain, one source on the
+	// preview chain.
 	Units int64 `json:"units"`
 
 	// Counts carries the standard's own inputs by name — for RLS-19
 	// road_sources, teilstuecke, buildings, reflector_walls, barriers and
-	// parking_sources.
+	// parking_sources; each standard names its own.
 	Counts map[string]int `json:"counts,omitempty"`
 }
 

@@ -3,7 +3,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelSaveResult, ProjectEventListener, RunSpec } from "./backend";
-import type { LastRunStatus, RunLog, RunSummary } from "./client";
+import type {
+  ActiveRunStatus,
+  LastRunStatus,
+  RunLog,
+  RunSummary,
+} from "./client";
 import { buildCreateRunRequest } from "./http-backend";
 import {
   useCancelRun,
@@ -327,8 +332,30 @@ describe("useRuns with the event stream", () => {
     updated_at: `2026-01-01T00:00:${String(done).padStart(2, "0")}Z`,
   });
 
-  /** Plays the server: one `project_status` event naming `lastRun`. */
-  async function push(lastRun: Partial<LastRunStatus> & { id: string }) {
+  /**
+   * Plays the server: one `project_status` event naming `lastRun`. Like the
+   * server, it carries every open run in `active_runs` — by default the last
+   * run, when it is open; `others` are open runs listed before it.
+   */
+  async function push(
+    lastRun: Partial<LastRunStatus> & { id: string },
+    others: (Partial<ActiveRunStatus> & { id: string })[] = [],
+  ) {
+    const last = { status: "running", ...lastRun };
+    const open = (status: string) =>
+      status === "pending" || status === "running";
+    const activeRuns = [...others, last]
+      .map((run) => ({
+        status: "running",
+        standard_id: "schall03",
+        ...run,
+      }))
+      .filter((run) => open(run.status))
+      .map(({ id, status, standard_id, progress }) =>
+        progress === undefined
+          ? { id, status, standard_id }
+          : { id, status, standard_id, progress },
+      );
     await act(async () => {
       eventStream.listener?.onProjectStatus({
         time: "2026-01-01T00:00:00Z",
@@ -349,6 +376,7 @@ describe("useRuns with the event stream", () => {
             finished_at: "",
             ...lastRun,
           },
+          ...(activeRuns.length > 0 ? { active_runs: activeRuns } : {}),
         },
       });
       await vi.advanceTimersByTimeAsync(1);
@@ -496,6 +524,29 @@ describe("useRuns with the event stream", () => {
     expect(getRuns).toHaveBeenCalledTimes(fetched + 1);
   });
 
+  it("carries every running run, not only the last one", async () => {
+    backendState.runs = [
+      { ...runWithStatus("running"), id: "run-a", progress: progress(1) },
+      { ...runWithStatus("running"), id: "run-b", progress: progress(1) },
+    ];
+    const hook = renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    await setConnected(true);
+    await push({ id: "run-b", progress: progress(3) }, [
+      { id: "run-a", progress: progress(4) },
+    ]);
+
+    // Both moved by push, neither by a request.
+    const byId = new Map(hook.result.current.data?.map((run) => [run.id, run]));
+    expect(byId.get("run-a")?.progress?.done).toBe(4);
+    expect(byId.get("run-b")?.progress?.done).toBe(3);
+    const fetched = getRuns.mock.calls.length;
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(fetched);
+    await advance(13_000);
+    expect(getRuns).toHaveBeenCalledTimes(fetched + 1);
+  });
+
   it("keeps polling fast for an active run the stream is not carrying", async () => {
     backendState.runs = [
       { ...runWithStatus("running"), id: "run-a", progress: progress(1) },
@@ -504,11 +555,14 @@ describe("useRuns with the event stream", () => {
     renderHook(() => useRuns(), { wrapper });
     await advance(0);
     await setConnected(true);
-    // The stream only ever names the last run.
+    // run-a settled on the server while the list still holds it as running:
+    // the stream no longer carries it, and the list is asked again.
     await push({ id: "run-b", progress: progress(3) });
 
+    const fetched = getRuns.mock.calls.length;
+    expect(fetched).toBe(2);
     await advance(2_000);
-    expect(getRuns).toHaveBeenCalledTimes(2);
+    expect(getRuns).toHaveBeenCalledTimes(fetched + 1);
   });
 
   it("refetches the list when the stream names a status the list does not hold", async () => {

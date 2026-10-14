@@ -132,3 +132,22 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []AircraftSou
 func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointReceiver, sources []AircraftSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
 	return cnossosaircraft.ComputeReceiverOutputsContext(ctx, receivers, sources, cfg)
 }
+
+// ComputeReceiverOutputsProgress is ComputeReceiverOutputsContext that also
+// reports (receivers done, receivers in total) after each receiver. It forwards
+// to cnossosaircraft.ComputeReceiverOutputsProgress, whose callback contract
+// it keeps: done increases by one from the first completed receiver, exactly
+// one call has done == total on a walk that succeeds, a failed or cancelled
+// walk stops reporting at the last receiver it completed, and a nil progress
+// reports nothing.
+//
+//nolint:wrapcheck // preserves the error text of the implementation this alias replaced
+func ComputeReceiverOutputsProgress(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []AircraftSource,
+	cfg PropagationConfig,
+	progress func(done, total int),
+) ([]ReceiverOutput, error) {
+	return cnossosaircraft.ComputeReceiverOutputsProgress(ctx, receivers, sources, cfg, progress)
+}

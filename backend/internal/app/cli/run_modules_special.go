@@ -305,6 +305,25 @@ func runBEBExposureModule(ctx context.Context, input runModuleInput) (runModuleR
 	}, nil
 }
 
+// bebProgress adapts a run's progress to BEB, whose total only the package
+// knows: it counts the facade receivers the level step computes, which it
+// builds from the buildings itself. The first report starts the walk, so the
+// 0-of-total line is written as for every other standard, just after the
+// first facade rather than before it.
+func bebProgress(progress *runProgress) func(done, total int) {
+	started := false
+
+	return func(done, total int) {
+		if !started {
+			started = true
+
+			progress.start(total)
+		}
+
+		progress.report(done, total)
+	}
+}
+
 // computeBEBExposure runs the upstream mapping standard the BEB options name
 // and aggregates its sources onto the buildings.
 func computeBEBExposure(
@@ -324,7 +343,7 @@ func computeBEBExposure(
 
 		logBEBUpstream(input, options, len(roadSources), len(buildings))
 
-		outputs, summary, err := bebexposure.ComputeOutputsContext(ctx, buildings, roadSources, options.ExposureConfig(), options.BUBRoadOptions().PropagationConfig(), options.FacadeReceiverHeightM)
+		outputs, summary, err := bebexposure.ComputeOutputsProgress(ctx, buildings, roadSources, options.ExposureConfig(), options.BUBRoadOptions().PropagationConfig(), options.FacadeReceiverHeightM, bebProgress(input.progress))
 		if err != nil {
 			input.log.addf("beb exposure compute failed: %v", err)
 
@@ -342,7 +361,7 @@ func computeBEBExposure(
 
 		logBEBUpstream(input, options, len(aircraftSources), len(buildings))
 
-		outputs, summary, err := bebexposure.ComputeOutputsFromAircraftContext(ctx, buildings, aircraftSources, options.ExposureConfig(), options.BUFAircraftOptions().PropagationConfig(), options.FacadeReceiverHeightM)
+		outputs, summary, err := bebexposure.ComputeOutputsFromAircraftProgress(ctx, buildings, aircraftSources, options.ExposureConfig(), options.BUFAircraftOptions().PropagationConfig(), options.FacadeReceiverHeightM, bebProgress(input.progress))
 		if err != nil {
 			input.log.addf("beb exposure compute failed: %v", err)
 
@@ -375,31 +394,44 @@ func logBEBUpstream(input runModuleInput, options bebExposureRunOptions, sourceC
 // descriptor parameter can express a per-path diffraction geometry either.
 // This is the same bespoke shape rls19-road and schall03 already have, for
 // the same reason.
-func runISO9613Module(ctx context.Context, input runModuleInput) (runModuleResult, error) {
+// iso9613Run is an ISO 9613-2 run prepared up to its first receiver: what
+// runISO9613Module computes and what estimateISO9613Run probes, so the two
+// cannot price and run different scenes.
+type iso9613Run struct {
+	receivers []geo.PointReceiver
+	sources   []iso9613.PointSource
+	config    iso9613.PropagationConfig
+	layout    results.GridLayout
+}
+
+// prepareISO9613Run extracts the sources, barriers and ground zones, builds the
+// receivers and logs what it found. Its refusals are the run's: a parameter it
+// cannot parse is a beforeRunError, anything later is the run's own failure.
+func prepareISO9613Run(input runModuleInput) (iso9613Run, error) {
 	options, err := parseISO9613RunOptions(input.params)
 	if err != nil {
-		return runModuleResult{}, beforeRunError{err: err}
+		return iso9613Run{}, beforeRunError{err: err}
 	}
 
 	sources, err := extractISO9613Sources(input.model, options, input.standard.SupportedSourceTypes)
 	if err != nil {
 		input.log.addf("failed to extract ISO 9613 point sources: %v", err)
 
-		return runModuleResult{}, err
+		return iso9613Run{}, err
 	}
 
 	barriers, err := extractISO9613Barriers(input.model)
 	if err != nil {
 		input.log.addf("failed to extract ISO 9613 barriers: %v", err)
 
-		return runModuleResult{}, err
+		return iso9613Run{}, err
 	}
 
 	groundZones, err := extractISO9613GroundZones(input.model)
 	if err != nil {
 		input.log.addf("failed to extract ISO 9613 ground zones: %v", err)
 
-		return runModuleResult{}, err
+		return iso9613Run{}, err
 	}
 
 	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
@@ -408,7 +440,7 @@ func runISO9613Module(ctx context.Context, input runModuleInput) (runModuleResul
 	if err != nil {
 		input.log.addf("failed to build receivers: %v", err)
 
-		return runModuleResult{}, err
+		return iso9613Run{}, err
 	}
 
 	input.log.addf("iso9613_sources=%d", len(sources))
@@ -417,9 +449,20 @@ func runISO9613Module(ctx context.Context, input runModuleInput) (runModuleResul
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
-	propagationConfig := options.PropagationConfig()
-	propagationConfig.Barriers = barriers
-	propagationConfig.GroundZones = groundZones
+	config := options.PropagationConfig()
+	config.Barriers = barriers
+	config.GroundZones = groundZones
+
+	return iso9613Run{receivers: receivers, sources: sources, config: config, layout: layout}, nil
+}
+
+func runISO9613Module(ctx context.Context, input runModuleInput) (runModuleResult, error) {
+	run, err := prepareISO9613Run(input)
+	if err != nil {
+		return runModuleResult{}, err
+	}
+
+	receivers, sources, propagationConfig, layout := run.receivers, run.sources, run.config, run.layout
 
 	input.progress.start(len(receivers))
 

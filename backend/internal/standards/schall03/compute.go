@@ -466,59 +466,19 @@ func computeNormativeReceiverLevels(
 	receiver ReceiverInput,
 	scene NormativeScene,
 ) (NormativeReceiverLevels, error) {
-	walls, barriers := scene.Walls, scene.Barriers
-	done := ctx.Done()
-
-	err := validateNormativeReceiverScene(receiver, scene)
+	daySum, nightSum, err := walkNormativeReceiver(ctx, receiver, scene)
 	if err != nil {
 		return NormativeReceiverLevels{}, err
-	}
-
-	var daySum, nightSum numeric.CompensatedSum
-
-	parts, err := prepareSpeedZoneParts(scene.Segments)
-	if err != nil {
-		return NormativeReceiverLevels{}, err
-	}
-
-	for _, part := range parts {
-		seg := part.segment
-
-		for _, op := range seg.Operations {
-			dayEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourDay))
-			if emitErr != nil {
-				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
-			}
-
-			addDirectWithBarriersAndReflected(dayEmission, seg, receiver, walls, barriers, scene.Terrain, done, &daySum)
-
-			err = stopped(ctx, done)
-			if err != nil {
-				return NormativeReceiverLevels{}, err
-			}
-
-			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourNight))
-			if emitErr != nil {
-				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
-			}
-
-			addDirectWithBarriersAndReflected(nightEmission, seg, receiver, walls, barriers, scene.Terrain, done, &nightSum)
-
-			err = stopped(ctx, done)
-			if err != nil {
-				return NormativeReceiverLevels{}, err
-			}
-		}
 	}
 
 	lpAeqDay := math.Inf(-1)
-	if daySum.Sum() > 0 {
-		lpAeqDay = 10 * math.Log10(daySum.Sum())
+	if daySum > 0 {
+		lpAeqDay = 10 * math.Log10(daySum)
 	}
 
 	lpAeqNight := math.Inf(-1)
-	if nightSum.Sum() > 0 {
-		lpAeqNight = 10 * math.Log10(nightSum.Sum())
+	if nightSum > 0 {
+		lpAeqNight = 10 * math.Log10(nightSum)
 	}
 
 	const ks = 0.0
@@ -529,6 +489,103 @@ func computeNormativeReceiverLevels(
 		LrDay:      beurteilungspegel(lpAeqDay, ks),
 		LrNight:    beurteilungspegel(lpAeqNight, ks),
 	}, nil
+}
+
+// walkNormativeReceiver is the walk behind computeNormativeReceiverLevels: it
+// validates the receiver and the scene, splits the segments into speed-zone
+// parts, and runs one line-source walk per (part, operation, period), day and
+// night interleaved per operation, into one compensated sum per period. It
+// returns the two linear sums, which computeNormativeReceiverLevels turns
+// into levels.
+//
+// The validation and the split are repeated for every receiver; the
+// estimate's probe times them as the receiver's one-off cost
+// (normativeWalker.Begin), and its units are the line-source walks
+// (addNormativeWalk), in this order.
+func walkNormativeReceiver(ctx context.Context, receiver ReceiverInput, scene NormativeScene) (float64, float64, error) {
+	done := ctx.Done()
+
+	err := validateNormativeReceiverScene(receiver, scene)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	var sums periodSums
+
+	parts, err := prepareSpeedZoneParts(scene.Segments)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	for _, part := range parts {
+		for _, op := range part.segment.Operations {
+			for _, period := range [2]normativePeriod{periodDay, periodNight} {
+				err = addNormativeWalk(part, op, period, receiver, scene, done, &sums[period])
+				if err != nil {
+					return 0, 0, err
+				}
+
+				err = stopped(ctx, done)
+				if err != nil {
+					return 0, 0, err
+				}
+			}
+		}
+	}
+
+	return sums[periodDay].Sum(), sums[periodNight].Sum(), nil
+}
+
+// normativePeriod is the planning period a line-source walk is run for. It
+// indexes periodSums.
+type normativePeriod int
+
+const (
+	periodDay normativePeriod = iota
+	periodNight
+)
+
+// periodSums are a normative walk's two running sums of linear acoustic
+// power, indexed by normativePeriod.
+type periodSums [2]numeric.CompensatedSum
+
+// normativeEmission is the Strecke emission of one operation on one
+// speed-zone part for one period, refused in the walk's words.
+func normativeEmission(part speedZonePart, op TrainOperation, period normativePeriod) (*StreckeEmissionResult, error) {
+	trainsPerHour, name := op.TrainsPerHourDay, "day"
+	if period == periodNight {
+		trainsPerHour, name = op.TrainsPerHourNight, "night"
+	}
+
+	emission, err := ComputeStreckeEmission(buildVehicleInputs(part, op, trainsPerHour))
+	if err != nil {
+		return nil, fmt.Errorf("segment %q %s emission: %w", part.segment.ID, name, err)
+	}
+
+	return emission, nil
+}
+
+// addNormativeWalk is one line-source walk of the normative chain: the
+// emission of one operation on one speed-zone part for one period, propagated
+// to the receiver along the direct path and every reflected one, and added to
+// *sum. It is the walk's unit of work, and the estimate's: both call it.
+func addNormativeWalk(
+	part speedZonePart,
+	op TrainOperation,
+	period normativePeriod,
+	receiver ReceiverInput,
+	scene NormativeScene,
+	done <-chan struct{},
+	sum *numeric.CompensatedSum,
+) error {
+	emission, err := normativeEmission(part, op, period)
+	if err != nil {
+		return err
+	}
+
+	addDirectWithBarriersAndReflected(emission, part.segment, receiver, scene.Walls, scene.Barriers, scene.Terrain, done, sum)
+
+	return nil
 }
 
 // validateNormativeReceiverScene refuses a receiver or a scene the Anlage-2
@@ -647,8 +704,8 @@ func ComputeReceiverOutputsWithDataPackProgress(
 	pack DataPack,
 	progress func(done, total int),
 ) ([]ReceiverOutput, error) {
-	if len(receivers) == 0 {
-		return nil, errors.New("at least one receiver is required")
+	if err := requireReceivers(len(receivers)); err != nil {
+		return nil, err
 	}
 
 	outputs := make([]ReceiverOutput, 0, len(receivers))
@@ -658,12 +715,9 @@ func ComputeReceiverOutputsWithDataPackProgress(
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}
 
-		if receiver.ID == "" {
-			return nil, errors.New("receiver id is required")
-		}
-
-		if !receiver.Point.IsFinite() {
-			return nil, fmt.Errorf("receiver %q coordinates are not finite", receiver.ID)
+		err = validatePreviewReceiver(receiver)
+		if err != nil {
+			return nil, err
 		}
 
 		levels, err := computeReceiverPeriodLevels(ctx, receiver.Point, sources, cfg, pack)
@@ -682,6 +736,44 @@ func ComputeReceiverOutputsWithDataPackProgress(
 	}
 
 	return outputs, nil
+}
+
+// requireReceivers is both runs' refusal of an empty receiver list.
+func requireReceivers(count int) error {
+	if count == 0 {
+		return errors.New("at least one receiver is required")
+	}
+
+	return nil
+}
+
+// checkNormativeInputs is the normative run's refusal of an empty receiver
+// list or a scene without track, made before any receiver is walked.
+func checkNormativeInputs(receivers int, scene NormativeScene) error {
+	err := requireReceivers(receivers)
+	if err != nil {
+		return err
+	}
+
+	if len(scene.Segments) == 0 {
+		return errors.New("at least one TrackSegment is required")
+	}
+
+	return nil
+}
+
+// validatePreviewReceiver is the preview run's check of one receiver record,
+// made before the receiver is walked.
+func validatePreviewReceiver(receiver geo.PointReceiver) error {
+	if receiver.ID == "" {
+		return errors.New("receiver id is required")
+	}
+
+	if !receiver.Point.IsFinite() {
+		return fmt.Errorf("receiver %q coordinates are not finite", receiver.ID)
+	}
+
+	return nil
 }
 
 // ComputeNormativeReceiverOutputsForScene runs the normative Anlage-2 chain for every
@@ -726,14 +818,8 @@ func ComputeNormativeReceiverOutputsForSceneProgress(
 	scene NormativeScene,
 	progress func(done, total int),
 ) ([]ReceiverOutput, error) {
-	segments := scene.Segments
-
-	if len(receivers) == 0 {
-		return nil, errors.New("at least one receiver is required")
-	}
-
-	if len(segments) == 0 {
-		return nil, errors.New("at least one TrackSegment is required")
+	if err := checkNormativeInputs(len(receivers), scene); err != nil {
+		return nil, err
 	}
 
 	outputs := make([]ReceiverOutput, 0, len(receivers))

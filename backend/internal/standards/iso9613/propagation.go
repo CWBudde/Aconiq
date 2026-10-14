@@ -257,25 +257,44 @@ func ComputeDownwindAndLongTermLevels(receiver geo.PointReceiver, sources []Poin
 // and the walk is the same floating-point operations in the same order.
 func computeDownwindAndLongTermLevels(ctx context.Context, receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (float64, float64, error) {
 	done := ctx.Done()
-	dwSum := 0.0
-	ltSum := 0.0
 
-	for _, source := range sources {
+	var sums pathSums
+
+	for i := range sources {
 		select {
 		case <-done:
 			return 0, 0, fmt.Errorf("%w", ctx.Err())
 		default:
 		}
 
-		ratio := sourcePressureRatio(receiver, source, cfg)
-		dwSum += ratio
-
-		dp := geo.Distance(receiver.Point, source.Point)
-		cmet := MeteorologicalCorrection(cfg.C0, source.SourceHeightM, receiver.HeightM, dp)
-		ltSum += ratio * math.Pow(10, -0.1*cmet)
+		sums.addPath(receiver, &sources[i], cfg)
 	}
 
-	return levelFromPressureRatio(dwSum), levelFromPressureRatio(ltSum), nil
+	return levelFromPressureRatio(sums.dw), levelFromPressureRatio(sums.lt), nil
+}
+
+// pathSums are the two energy sums one receiver's walk accumulates: Eq. 5's
+// downwind sum and Eq. 6's long-term sum.
+type pathSums struct {
+	dw float64
+	lt float64
+}
+
+// addPath adds one source→receiver path to both sums — the unit of the walk,
+// and the step the run-time estimate's probe times (see probe.go).
+//
+// It is the one place a path's summands are formed and added, so the walk and
+// the probe cannot drift apart: the C_met-corrected summand is multiplied and
+// added in one expression, as the walk always did, because a compiler that
+// fuses a multiply-add (Go may, on arm64) rounds that expression once, and
+// splitting it across a return value would round it twice.
+func (s *pathSums) addPath(receiver geo.PointReceiver, source *PointSource, cfg PropagationConfig) {
+	ratio := sourcePressureRatio(receiver, *source, cfg)
+	s.dw += ratio
+
+	dp := geo.Distance(receiver.Point, source.Point)
+	cmet := MeteorologicalCorrection(cfg.C0, source.SourceHeightM, receiver.HeightM, dp)
+	s.lt += ratio * math.Pow(10, -0.1*cmet)
 }
 
 // MeteorologicalCorrection computes C_met from Eq. 21-22.

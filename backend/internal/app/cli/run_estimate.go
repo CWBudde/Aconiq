@@ -10,7 +10,9 @@ import (
 
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/runestimate"
+	"github.com/aconiq/backend/internal/standards/iso9613"
 	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
+	"github.com/aconiq/backend/internal/standards/schall03"
 	"github.com/spf13/cobra"
 )
 
@@ -24,6 +26,8 @@ type runEstimator func(context.Context, runModuleInput, runestimate.Options) (ru
 // and not a guess.
 var runEstimatorTable = map[string]runEstimator{
 	rls19road.StandardID: estimateRLS19RoadRun,
+	iso9613.StandardID:   estimateISO9613Run,
+	schall03.StandardID:  estimateSchall03Run,
 }
 
 // estimateRLS19RoadRun probes the RLS-19 run prepareRLS19RoadRun describes, on
@@ -41,6 +45,52 @@ func estimateRLS19RoadRun(ctx context.Context, input runModuleInput, opts runest
 	estimate, err := rls19road.Estimate(ctx, run.receivers, run.roadSources, run.barriers, run.config, opts)
 	if err != nil {
 		return runestimate.Estimate{}, fmt.Errorf("estimate RLS-19 run: %w", err)
+	}
+
+	return estimate, nil
+}
+
+// estimateISO9613Run probes the ISO 9613-2 run prepareISO9613Run describes.
+// The run walks its receivers on one goroutine, so iso9613.Estimate prices it
+// on one worker whatever --workers says.
+func estimateISO9613Run(ctx context.Context, input runModuleInput, opts runestimate.Options) (runestimate.Estimate, error) {
+	run, err := prepareISO9613Run(input)
+	if err != nil {
+		return runestimate.Estimate{}, err
+	}
+
+	estimate, err := iso9613.Estimate(ctx, run.receivers, run.sources, run.config, opts)
+	if err != nil {
+		return runestimate.Estimate{}, fmt.Errorf("estimate ISO 9613-2 run: %w", err)
+	}
+
+	return estimate, nil
+}
+
+// estimateSchall03Run probes the Schall 03 run prepareSchall03Run describes,
+// on the chain its engine resolves to. Both chains walk their receivers on one
+// goroutine, so either estimate prices one worker whatever --workers says.
+func estimateSchall03Run(ctx context.Context, input runModuleInput, opts runestimate.Options) (runestimate.Estimate, error) {
+	options, err := parseSchall03RunOptions(input.params)
+	if err != nil {
+		return runestimate.Estimate{}, beforeRunError{err: err}
+	}
+
+	run, err := prepareSchall03Run(input, options)
+	if err != nil {
+		return runestimate.Estimate{}, err
+	}
+
+	var estimate runestimate.Estimate
+
+	if run.result.Engine == schall03.EngineNormative {
+		estimate, err = schall03.EstimateNormative(ctx, run.normativeReceivers, run.scene, opts)
+	} else {
+		estimate, err = schall03.EstimatePreview(ctx, run.previewReceivers, run.railSources, run.previewConfig, schall03.BuiltinDataPack(), opts)
+	}
+
+	if err != nil {
+		return runestimate.Estimate{}, fmt.Errorf("estimate Schall 03 %s run: %w", run.result.Engine, err)
 	}
 
 	return estimate, nil

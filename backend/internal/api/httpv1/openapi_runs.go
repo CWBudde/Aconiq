@@ -321,17 +321,32 @@ func openapiRunSchemas() map[string]any {
 	}
 }
 
-// openapiRunProgressSchemas describes a running run's progress report.
+// openapiRunProgressSchemas describes a running run's progress report, and
+// the open run the project status carries it on.
 func openapiRunProgressSchemas() map[string]any {
 	return map[string]any{
+		"ActiveRunStatus": map[string]any{
+			"type": "object",
+			"description": "One open run in `ProjectStatusResponse.active_runs`: the status stream carries " +
+				"every one of them, so a client can follow concurrent runs without polling for them.",
+			"additionalProperties": false,
+			"required":             []string{"id", "status", "standard_id"},
+			"properties": map[string]any{
+				"id":          map[string]any{"type": "string"},
+				"status":      map[string]any{"type": "string"},
+				"standard_id": map[string]any{"type": "string"},
+				"progress":    map[string]any{"$ref": "#/components/schemas/RunProgress"},
+			},
+		},
 		"RunProgress": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
 			"required":             []string{"done", "total", "started_at", "updated_at"},
 			"description": "How far a run's compute has got, as the process computing it last reported — at " +
 				"most once a second, and always at the first and the last receiver. Present only while the " +
-				"run is `pending` or `running` and its standard reports progress (today `rls19-road` and " +
-				"`iso9613`). Absent means not known, never nothing done.",
+				"run is `pending` or `running` and its standard reports progress (every standard but " +
+				"`dummy-freefield`; `beb-exposure` counts the facade receivers it computes levels for). " +
+				"Absent means not known, never nothing done.",
 			"properties": map[string]any{
 				"done":  map[string]any{"type": "integer", "description": "Receivers computed so far"},
 				"total": map[string]any{"type": "integer", "description": "Receivers the run computes in total"},

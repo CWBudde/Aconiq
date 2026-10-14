@@ -33,6 +33,11 @@ type projectStatusResponse struct {
 	ScenarioCount   int            `json:"scenario_count"`
 	RunCount        int            `json:"run_count"`
 	LastRun         *lastRunStatus `json:"last_run,omitempty"`
+	// ActiveRuns is every run still pending or running, in manifest order,
+	// each with its progress. last_run names only the newest run, so a
+	// second run computing beside it was invisible to the stream and its
+	// client had to poll for it. Absent while nothing is open.
+	ActiveRuns []activeRunStatus `json:"active_runs,omitempty"`
 	// Model is absent until a model has been saved.
 	Model *projectModelStatus `json:"model,omitempty"`
 }
@@ -60,6 +65,15 @@ type lastRunStatus struct {
 	// identical to the previous one, and a run whose only change is how far
 	// it has got would otherwise send nothing until it ended.
 	Progress *runProgressResponse `json:"progress,omitempty"`
+}
+
+// activeRunStatus is one open run as the status payload carries it: enough
+// for a client to patch the run it already lists, and no more.
+type activeRunStatus struct {
+	ID         string               `json:"id"`
+	Status     string               `json:"status"`
+	StandardID string               `json:"standard_id"`
+	Progress   *runProgressResponse `json:"progress,omitempty"`
 }
 
 func (h Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +130,19 @@ func (h Handler) projectStatus(proj project.Project) projectStatusResponse {
 			FinishedAt: last.FinishedAt,
 			Progress:   h.runProgress(last),
 		}
+	}
+
+	for _, run := range proj.Runs {
+		if run.Status != project.RunStatusRunning && run.Status != project.RunStatusPending {
+			continue
+		}
+
+		status.ActiveRuns = append(status.ActiveRuns, activeRunStatus{
+			ID:         run.ID,
+			Status:     run.Status,
+			StandardID: run.Standard.ID,
+			Progress:   h.runProgress(run),
+		})
 	}
 
 	status.Model = h.modelStatus(proj)

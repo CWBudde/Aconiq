@@ -208,7 +208,7 @@ export interface paths {
         put?: never;
         /**
          * Estimate what a run would cost in time
-         * @description Runs `aconiq run --estimate` with the request a `POST /api/v1/runs` would take: the run's pipeline up to its prepared scene, then a probe of a few seconds that times a stratified sample of at most 16 receivers and, for each, a sample of its own work units (for `rls19-road`, its (source, Teilstück) pairs). No run is created and the manifest is not written. The request is refused where the run would be, in the run's words. A standard that has no probe answers `200` with `available: false` and a `reason`. Closing the connection stops the probe, and so does a newer estimate request: the server takes one at a time.
+         * @description Runs `aconiq run --estimate` with the request a `POST /api/v1/runs` would take: the run's pipeline up to its prepared scene, then a probe of a few seconds that times a stratified sample of at most 16 receivers and, for each, a sample of its own work units (for `rls19-road` its (source, Teilstück) pairs, for `iso9613` its source→receiver paths, for `schall03` its line-source walks or, on the preview chain, its sources). No run is created and the manifest is not written. The request is refused where the run would be, in the run's words. A standard that has no probe answers `200` with `available: false` and a `reason`. Closing the connection stops the probe, and so does a newer estimate request: the server takes one at a time.
          */
         post: operations["estimateRun"];
         delete?: never;
@@ -343,6 +343,13 @@ export interface components {
             };
             hint?: string;
             message: string;
+        };
+        /** @description One open run in `ProjectStatusResponse.active_runs`: the status stream carries every one of them, so a client can follow concurrent runs without polling for them. */
+        ActiveRunStatus: {
+            id: string;
+            progress?: components["schemas"]["RunProgress"];
+            standard_id: string;
+            status: string;
         };
         ArtifactRef: {
             /** Format: date-time */
@@ -537,6 +544,8 @@ export interface components {
             updated_at: string;
         };
         ProjectStatusResponse: {
+            /** @description Every pending or running run, in manifest order; absent while none is open */
+            active_runs?: components["schemas"]["ActiveRunStatus"][];
             crs: string;
             last_run?: components["schemas"]["LastRunStatus"];
             manifest_version: number;
@@ -576,7 +585,7 @@ export interface components {
                 };
                 /** @description Receivers the run computes */
                 receivers: number;
-                /** @description Work units over all receivers — for `rls19-road`, (source, Teilstück) pairs in the run's own segment_length_mode, plus Parkplätze */
+                /** @description Work units over all receivers — for `rls19-road`, (source, Teilstück) pairs in the run's own segment_length_mode, plus Parkplätze; for `iso9613`, source→receiver paths; for `schall03`, one line-source walk per (speed-zone part, operation, period) on the normative chain, one source on the preview chain */
                 units: number;
                 /** @description Workers the estimate assumes */
                 workers: number;
@@ -613,7 +622,7 @@ export interface components {
             lines: string[];
             run_id: string;
         };
-        /** @description How far a run's compute has got, as the process computing it last reported — at most once a second, and always at the first and the last receiver. Present only while the run is `pending` or `running` and its standard reports progress (today `rls19-road` and `iso9613`). Absent means not known, never nothing done. */
+        /** @description How far a run's compute has got, as the process computing it last reported — at most once a second, and always at the first and the last receiver. Present only while the run is `pending` or `running` and its standard reports progress (every standard but `dummy-freefield`; `beb-exposure` counts the facade receivers it computes levels for). Absent means not known, never nothing done. */
         RunProgress: {
             /** @description Receivers computed so far */
             done: number;

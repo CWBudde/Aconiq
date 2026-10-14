@@ -35,6 +35,27 @@ func ComputeReceiverOutputs[S any](
 	sources []S,
 	periodLevels PeriodLevelsFunc[S],
 ) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsProgress(ctx, receivers, sources, periodLevels, nil)
+}
+
+// ComputeReceiverOutputsProgress is ComputeReceiverOutputs that also reports
+// (receivers done, receivers in total) after each receiver it has computed —
+// the shape iso9613.ComputeReceiverOutputsProgress and rls19/road.ProgressFunc
+// document: never before the first receiver has completed, done increasing by
+// one from call to call, and exactly one call with done == total on a walk
+// that succeeds. A walk that fails or is cancelled stops reporting at the last
+// receiver it completed. A nil progress reports nothing.
+//
+// The walk is sequential, so the calls come from the calling goroutine and
+// never overlap. The report is read by nothing in the walk, so it cannot move
+// a level: the outputs are those ComputeReceiverOutputs returns, bit for bit.
+func ComputeReceiverOutputsProgress[S any](
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []S,
+	periodLevels PeriodLevelsFunc[S],
+	progress func(done, total int),
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
@@ -64,6 +85,10 @@ func ComputeReceiverOutputs[S any](
 			Receiver:   receiver,
 			Indicators: levels.ToReceiverIndicators(),
 		})
+
+		if progress != nil {
+			progress(len(outputs), len(receivers))
+		}
 	}
 
 	return outputs, nil

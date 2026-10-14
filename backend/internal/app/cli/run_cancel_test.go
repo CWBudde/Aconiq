@@ -107,7 +107,7 @@ func TestACancellationDuringTheLastReceiverPersistsNothing(t *testing.T) {
 		buildReceivers: func([]struct{}, *geo.BBox, struct{}) ([]geo.PointReceiver, results.GridLayout, error) {
 			return []geo.PointReceiver{{ID: "r1"}}, results.GridLayout{}, nil
 		},
-		compute: func(context.Context, []geo.PointReceiver, []struct{}, struct{}) ([]struct{}, error) {
+		compute: func(context.Context, []geo.PointReceiver, []struct{}, struct{}, func(done, total int)) ([]struct{}, error) {
 			cancel()
 
 			return []struct{}{{}}, nil
