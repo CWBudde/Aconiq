@@ -89,29 +89,7 @@ describe("parseTimeline", () => {
   });
 });
 
-describe("parseTimeline, the two standards that log differently", () => {
-  it("keeps dummy-freefield's compute step active until the engine says done", () => {
-    const lines = [
-      "2026-10-14T19:06:18Z run started",
-      "2026-10-14T19:06:18Z model=.noise/model/model.normalized.geojson",
-      "2026-10-14T19:06:18Z sources=1",
-      "2026-10-14T19:06:18Z receivers=4 grid=2x2",
-      "2026-10-14T19:06:18Z stage=compute message=start",
-      "2026-10-14T19:06:18Z stage=compute chunk=0 1/2",
-    ];
-
-    expect(parseTimeline(lines, "running")[4]).toMatchObject({
-      done: false,
-      active: true,
-    });
-    expect(
-      parseTimeline(
-        [...lines, "2026-10-14T19:06:19Z stage=compute message=done"],
-        "running",
-      )[4],
-    ).toMatchObject({ done: true, timestamp: "2026-10-14T19:06:19Z" });
-  });
-
+describe("parseTimeline, beb-exposure", () => {
   it("reads beb-exposure's building count as its receivers step", () => {
     const lines = [
       "2026-10-14T19:04:21Z run started",

@@ -42,12 +42,11 @@ const LOG_STAGES: Array<{ key: string; pattern: RegExp; label: () => string }> =
     },
     {
       key: "compute",
-      // The step is done when the walk is: the engine's closing event
-      // (dummy-freefield), or the receiver-count line every other standard
-      // writes once it has counted every receiver. The first event and the
-      // first count are written as the walk starts, so they mark it under
-      // way, not done.
-      pattern: /stage=compute message=done|computed (\d+) of \1 receivers/,
+      // The engine's stage events (dummy-freefield, and the one-line log of a
+      // browser-mode run), or the receiver-count line every other standard
+      // writes once it has counted every receiver. The first count is written
+      // as the walk starts, so it marks this step under way, not done.
+      pattern: /stage=compute|computed (\d+) of \1 receivers/,
       label: m.timeline_computing,
     },
     {
