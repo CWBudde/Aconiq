@@ -22,13 +22,17 @@ import type { RunEstimate } from "@/model/run-estimate";
 import type { StandardDescriptor } from "@/standards/descriptor";
 import type { AconiqKernel, EstimateOptions } from "./kernel";
 import { fromSyncExport, withKernelErrors } from "./kernel-error";
+import { mergeChunks, type ChunkOutput } from "./kernel-pool";
 import type {
+  AnyComputeRequest,
   ComputeRequest,
   ContourRequest,
   ContourResult,
   FootprintMaskRequest,
   FootprintMaskResponse,
+  GridComputeRequest,
   PropagationConfig,
+  ReceiverIndicators,
   ReceiverOutput,
   TerrainInfo,
   TransformRequest,
@@ -66,6 +70,7 @@ interface GoRuntimeGlobal {
   };
   aconiq?: {
     rls19Road: (json: string) => Promise<string>;
+    rls19RoadGrid: (json: string) => Promise<string>;
     estimate: (json: string) => Promise<string>;
     transform: (json: string) => Promise<string>;
     maskFootprints: (json: string) => Promise<string>;
@@ -168,8 +173,19 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
       );
       return JSON.parse(json) as ReceiverOutput[];
     },
+    async rls19RoadGrid(
+      req: GridComputeRequest,
+    ): Promise<ReceiverIndicators[]> {
+      const json = await withKernelErrors(
+        exports.rls19RoadGrid(JSON.stringify(req)),
+      );
+      return mergeChunks(
+        JSON.parse(json) as ChunkOutput<ReceiverIndicators>[],
+        req.grid.width * req.grid.height,
+      );
+    },
     async estimate(
-      req: ComputeRequest,
+      req: AnyComputeRequest,
       options?: EstimateOptions,
     ): Promise<RunEstimate> {
       const json = await withKernelErrors(

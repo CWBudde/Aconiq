@@ -50,6 +50,14 @@ interface AconiqExports {
     json: string,
     onProgress?: KernelProgressListener,
   ): Promise<string>;
+  /**
+   * A grid run, whole or one shard of it, resolving to indicator chunks. Same
+   * one-or-two-argument rule as `rls19Road`.
+   */
+  rls19RoadGrid(
+    json: string,
+    onProgress?: KernelProgressListener,
+  ): Promise<string>;
   /** A run's request plus `workers` and `budget_ms`; see `wasmkernel.EstimateRLS19Road`. */
   estimate(json: string): Promise<string>;
   transform(json: string): Promise<string>;
@@ -213,6 +221,10 @@ async function dispatch(call: KernelCall): Promise<string | null> {
       return call.progress
         ? exports.rls19RoadShard(call.json, throttledProgress(call.id))
         : exports.rls19RoadShard(call.json);
+    case "rls19RoadGrid":
+      return call.progress
+        ? exports.rls19RoadGrid(call.json, throttledProgress(call.id))
+        : exports.rls19RoadGrid(call.json);
     case "estimate":
       return exports.estimate(call.json);
     case "transform":

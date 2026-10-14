@@ -192,6 +192,23 @@ export interface KernelProjection {
   applied: boolean;
 }
 
+/**
+ * An automatic receiver grid, named instead of listed. Mirrors
+ * `wasmkernel.ReceiverGrid`, which expands it exactly as
+ * `@/model/receiver-grid` does: row-major from cell (0,0), each coordinate
+ * `origin + index * resolution_m` rounded twice, ids `R0001`… — so the
+ * receivers the kernel computes are the ones the browser names in the run's
+ * table and hash.
+ */
+export interface ReceiverGrid {
+  origin_x: number;
+  origin_y: number;
+  resolution_m: number;
+  width: number;
+  height: number;
+  height_m: number;
+}
+
 export interface ComputeRequest {
   receivers: PointReceiver[];
   sources: RoadSource[];
@@ -203,6 +220,25 @@ export interface ComputeRequest {
    * the kernel rather than answered from a grid queried in the wrong one.
    */
   projection?: KernelProjection;
+}
+
+/**
+ * A run whose receivers are an automatic grid: {@link ComputeRequest} with the
+ * six numbers of a {@link ReceiverGrid} in place of one object per receiver.
+ * It is what `rls19RoadGrid` takes, and `estimate` takes it too.
+ */
+export type GridComputeRequest = Omit<ComputeRequest, "receivers"> & {
+  grid: ReceiverGrid;
+};
+
+/** Either way a run can name its receivers. */
+export type AnyComputeRequest = ComputeRequest | GridComputeRequest;
+
+/** How many receivers a request names, without expanding a grid. */
+export function requestReceiverCount(req: AnyComputeRequest): number {
+  return "grid" in req
+    ? req.grid.width * req.grid.height
+    : req.receivers.length;
 }
 
 /**
@@ -253,10 +289,10 @@ export interface TransformRequest {
  * — exterior ring first, holes after, each ring a list of `[x, y]`. Both in the
  * compute CRS.
  */
-export interface FootprintMaskRequest {
-  points: number[];
-  footprints: [number, number][][][];
-}
+export type FootprintMaskRequest =
+  | { points: number[]; footprints: [number, number][][][] }
+  /** A grid run's points, as the receiver grid the run sends. */
+  | { grid: ReceiverGrid; footprints: [number, number][][][] };
 
 /** The indices into the request's points that are masked, ascending. */
 export interface FootprintMaskResponse {

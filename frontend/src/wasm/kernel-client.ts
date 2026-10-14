@@ -17,19 +17,22 @@ import type { RunEstimate } from "@/model/run-estimate";
 import type { StandardDescriptor } from "@/standards/descriptor";
 import type { AconiqKernel, EstimateOptions } from "./kernel";
 import { reviveKernelError } from "./kernel-error";
-import type { ChunkOutput, Shard } from "./kernel-pool";
+import { mergeChunks, type ChunkOutput, type Shard } from "./kernel-pool";
 import type {
   KernelCall,
   KernelProgressListener,
   WorkerMessage,
 } from "./protocol";
 import type {
+  AnyComputeRequest,
   ComputeRequest,
   ContourRequest,
   ContourResult,
   FootprintMaskRequest,
   FootprintMaskResponse,
+  GridComputeRequest,
   PropagationConfig,
+  ReceiverIndicators,
   ReceiverOutput,
   TerrainInfo,
   TransformRequest,
@@ -359,12 +362,57 @@ export class KernelClient implements AconiqKernel {
   }
 
   /**
+   * A grid run, or one shard of it, answered with indicators only.
+   *
+   * The request is six numbers whatever the grid's size, so every shard of a
+   * pool is sent the whole run's descriptor at no cost — the property
+   * {@link rls19RoadShard} pays a full receiver list per Worker for. Without a
+   * shard this is the whole run, and reports its own zero of n first, for the
+   * reason {@link rls19Road} does.
+   */
+  /** {@link rls19RoadGridChunks} for the whole run, merged into receiver order. */
+  async rls19RoadGrid(
+    req: GridComputeRequest,
+    onProgress?: KernelProgressListener,
+  ): Promise<ReceiverIndicators[]> {
+    return mergeChunks(
+      await this.rls19RoadGridChunks(req, undefined, onProgress),
+      req.grid.width * req.grid.height,
+    );
+  }
+
+  async rls19RoadGridChunks(
+    req: GridComputeRequest,
+    shard: Shard | undefined,
+    onProgress?: KernelProgressListener,
+  ): Promise<ChunkOutput<ReceiverIndicators>[]> {
+    if (shard === undefined) {
+      onProgress?.(0, req.grid.width * req.grid.height);
+    }
+
+    const value = await this.call(
+      (id) => ({
+        id,
+        method: "rls19RoadGrid",
+        json: JSON.stringify(shard === undefined ? req : { ...req, shard }),
+        progress: onProgress !== undefined,
+      }),
+      [],
+      onProgress,
+    );
+
+    return JSON.parse(
+      KernelClient.json(value, "rls19RoadGrid"),
+    ) as ChunkOutput<ReceiverIndicators>[];
+  }
+
+  /**
    * What a run of `req` would cost on `options.workers` shards, from the
    * kernel's own probe. It occupies this worker for the probe's budget —
    * `wasmkernel.EstimateBudget` unless `options.budgetMs` says otherwise.
    */
   async estimate(
-    req: ComputeRequest,
+    req: AnyComputeRequest,
     options: EstimateOptions = {},
   ): Promise<RunEstimate> {
     // The Worker runs one call at a time, and a probe cannot be stopped once

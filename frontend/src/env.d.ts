@@ -52,6 +52,17 @@ interface Window {
       onProgress?: (done: number, total: number) => void,
     ) => Promise<string>;
     /**
+     * A run whose receivers come as a grid descriptor: `rls19Road`'s request
+     * with `grid` in place of `receivers`, and an optional `shard`. Always
+     * resolves to `{chunk, start, outputs}[]` whose outputs are indicators
+     * only — the caller names every receiver from the descriptor, so the
+     * kernel echoes none back. See `wasmkernel.ComputeRLS19RoadGrid`.
+     */
+    rls19RoadGrid: (
+      json: string,
+      onProgress?: (done: number, total: number) => void,
+    ) => Promise<string>;
+    /**
      * What an `rls19Road` run of the same request would cost, from a short
      * probe of the kernel itself. The request carries `workers` (the pool the
      * run would be sharded over) and an optional `budget_ms`; the answer is
