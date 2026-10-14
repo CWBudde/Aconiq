@@ -16,6 +16,7 @@ import type {
   LglnImportResponse,
   ModelResponse,
   ModelSaveRequest,
+  ProjectStatusEvent,
   ProjectStatusResponse,
   RunLog,
   RunSummary,
@@ -50,9 +51,11 @@ export interface BackendCapabilities {
   /**
    * Runs change while the page is open without the UI having done anything:
    * the server executes them and their status moves on its own. When set,
-   * the runs list polls, and `startRun` resolves as soon as the run has
-   * *started* — the run is then followed through the list, whose summaries
-   * carry its `progress`. When not set, a run completes inside `startRun` and
+   * the runs list keeps up with the server — told by the event stream while
+   * it is up (`streamsProjectEvents`), polling otherwise — and `startRun`
+   * resolves as soon as the run has *started*: the run is then followed
+   * through the list, whose summaries carry its `progress`. When not set, a
+   * run completes inside `startRun` and
    * the list is invalidated there, so polling would only re-read what the UI
    * itself wrote.
    */
@@ -117,6 +120,24 @@ export interface BackendCapabilities {
    * The WASM kernel carries no CityGML reader and the tab no tile cache.
    */
   readonly canImportLGLN: boolean;
+  /**
+   * `subscribeProjectEvents` reaches a live stream: the project's status — the
+   * last run's progress with it — is pushed as it changes. When set, the runs
+   * list opens the stream and polls slowly while it is up; when not set, or
+   * whenever the stream is down, the list polls as it always did.
+   *
+   * Only the API has one (`GET /api/v1/events`). In browser mode nothing
+   * changes behind the tab's back, so there is nothing to be told.
+   */
+  readonly streamsProjectEvents: boolean;
+}
+
+/** What a caller of {@link Backend.subscribeProjectEvents} is told. */
+export interface ProjectEventListener {
+  /** A `project_status` event, parsed. Malformed events are dropped, not passed on. */
+  onProjectStatus: (event: ProjectStatusEvent) => void;
+  /** The stream came up (`true`) or went down (`false`). Only changes are reported. */
+  onConnectionChange: (connected: boolean) => void;
 }
 
 /**
@@ -371,6 +392,15 @@ export interface Backend {
    * `aconiq run` would not compute it.
    */
   transformCoordinates(req: TransformRequest): Promise<TransformResponse>;
+  /**
+   * Listen to the project's event stream until the returned function is
+   * called. The stream reconnects on its own while it is open; the listener
+   * hears about every drop and every recovery.
+   *
+   * A no-op unless `capabilities.streamsProjectEvents`: the listener is never
+   * called, so a caller that forgot the capability polls rather than breaks.
+   */
+  subscribeProjectEvents(listener: ProjectEventListener): () => void;
 }
 
 /**

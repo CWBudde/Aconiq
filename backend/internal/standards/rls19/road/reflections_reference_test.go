@@ -82,12 +82,12 @@ func (f *reflectorField) referenceFirstOrder(
 
 		slantDist := math.Sqrt(planDist*planDist + dz*dz)
 		paths = append(paths, reflectedPath{
-			planDistM:    planDist,
-			slantDistM:   slantDist,
-			lossDB:       w.loss,
-			imagePoint:   img,
-			reflectorIDs: [2]string{w.ownerID, ""},
-			bounces:      1,
+			planDistM:        planDist,
+			slantDistM:       slantDist,
+			lossDB:           w.loss,
+			imagePoint:       img,
+			reflectorClasses: [2]int32{w.ownerClass, 0},
+			bounces:          1,
 		})
 	}
 

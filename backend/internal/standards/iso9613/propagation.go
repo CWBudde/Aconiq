@@ -1,6 +1,7 @@
 package iso9613
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -234,10 +235,38 @@ func ComputeDownwindLevel(receiver geo.PointReceiver, sources []PointSource, cfg
 // Sources are visited in slice order and every summand is independent of that
 // order apart from float64 rounding, so the result is deterministic.
 func ComputeDownwindAndLongTermLevels(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (float64, float64) {
+	// A context that is never done cannot fail the walk.
+	dw, lt, _ := computeDownwindAndLongTermLevels(context.Background(), receiver, sources, cfg)
+
+	return dw, lt
+}
+
+// computeDownwindAndLongTermLevels is ComputeDownwindAndLongTermLevels under a
+// context, checked before every source→receiver path.
+//
+// A path is the unit of this walk, and one receiver can be a great many of
+// them: an industrial site carries hundreds of point sources, each screened
+// against every barrier. A check only between receivers left a cancelled run
+// computing the whole receiver, past `aconiq serve`'s grace period for an
+// interrupted run, which then killed the process instead of letting it record
+// its own stop.
+//
+// The check is a non-blocking receive on ctx.Done() and reads nothing the walk
+// computes; a stop abandons the receiver before its sums become a level. A
+// context that can never be cancelled has a nil Done(), so the select is free
+// and the walk is the same floating-point operations in the same order.
+func computeDownwindAndLongTermLevels(ctx context.Context, receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (float64, float64, error) {
+	done := ctx.Done()
 	dwSum := 0.0
 	ltSum := 0.0
 
 	for _, source := range sources {
+		select {
+		case <-done:
+			return 0, 0, fmt.Errorf("%w", ctx.Err())
+		default:
+		}
+
 		ratio := sourcePressureRatio(receiver, source, cfg)
 		dwSum += ratio
 
@@ -246,7 +275,7 @@ func ComputeDownwindAndLongTermLevels(receiver geo.PointReceiver, sources []Poin
 		ltSum += ratio * math.Pow(10, -0.1*cmet)
 	}
 
-	return levelFromPressureRatio(dwSum), levelFromPressureRatio(ltSum)
+	return levelFromPressureRatio(dwSum), levelFromPressureRatio(ltSum), nil
 }
 
 // MeteorologicalCorrection computes C_met from Eq. 21-22.

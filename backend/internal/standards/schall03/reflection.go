@@ -518,12 +518,12 @@ func ComputeReflectedLineSourceLpAeq(
 	waterFractionW float64,
 	walls []ReflectingWall,
 ) float64 {
-	return reflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls, nil)
+	return reflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls, nil, nil)
 }
 
 // reflectedLineSourceLpAeq is ComputeReflectedLineSourceLpAeq with the run's
 // terrain model in hand.  See reflectedPathGroundOffset for which ground a
-// mirrored path is measured against.
+// mirrored path is measured against, and eachSubsegment for done.
 func reflectedLineSourceLpAeq(
 	emission *StreckeEmissionResult,
 	centerline []geo.Point2D,
@@ -532,6 +532,7 @@ func reflectedLineSourceLpAeq(
 	waterFractionW float64,
 	walls []ReflectingWall,
 	dtm terrain.Model,
+	done <-chan struct{},
 ) float64 {
 	if len(walls) == 0 {
 		return math.Inf(-1)
@@ -539,7 +540,7 @@ func reflectedLineSourceLpAeq(
 
 	var total numeric.CompensatedSum
 
-	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
+	eachSubsegment(done, centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
 		paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
 		if len(paths) == 0 {
 			return
@@ -636,13 +637,13 @@ func ComputeReflectedLineSourceLpAeqWithBarriers(
 	barriers []BarrierSegment,
 ) float64 {
 	return reflectedLineSourceLpAeqWithBarriers(
-		emission, centerline, elevationM, receiver, waterFractionW, walls, barriers, nil,
+		emission, centerline, elevationM, receiver, waterFractionW, walls, barriers, nil, nil,
 	)
 }
 
 // reflectedLineSourceLpAeqWithBarriers is
 // ComputeReflectedLineSourceLpAeqWithBarriers with the run's terrain model in
-// hand.
+// hand, stopped by done as eachSubsegment describes.
 func reflectedLineSourceLpAeqWithBarriers(
 	emission *StreckeEmissionResult,
 	centerline []geo.Point2D,
@@ -652,18 +653,19 @@ func reflectedLineSourceLpAeqWithBarriers(
 	walls []ReflectingWall,
 	barriers []BarrierSegment,
 	dtm terrain.Model,
+	done <-chan struct{},
 ) float64 {
 	if len(walls) == 0 {
 		return math.Inf(-1)
 	}
 
 	if len(barriers) == 0 {
-		return reflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls, dtm)
+		return reflectedLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, walls, dtm, done)
 	}
 
 	var total numeric.CompensatedSum
 
-	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
+	eachSubsegment(done, centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
 		paths := EnumerateReflectionPaths(pt, receiver.Point, walls, MaxReflectionOrder)
 		if len(paths) == 0 {
 			return

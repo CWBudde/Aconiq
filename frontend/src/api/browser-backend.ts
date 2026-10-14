@@ -2051,6 +2051,13 @@ export const browserBackend = {
     // A tile is a ~50 MB CityGML download that the server fetches, parses with
     // the Go importer and caches on disk; the kernel carries none of that.
     canImportLGLN: false,
+    // Nothing changes behind this tab's back: every run, model and status
+    // change is one the tab made itself.
+    streamsProjectEvents: false,
+  },
+
+  subscribeProjectEvents() {
+    return () => undefined;
   },
 
   async transformCoordinates(

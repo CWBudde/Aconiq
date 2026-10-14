@@ -206,19 +206,16 @@ func rls19RoadPropagationConfig(
 }
 
 // runSchall03Module drives the normative Schall 03 chain, which resolves which
-// engine it runs and reports its own log lines. The resolved engine is only
-// knowable here, so the manifest is completed rather than guessed at
-// CreateRun time — and before anything is persisted, so a failure to record it
-// leaves no results behind.
+// engine it runs. The resolved engine is only knowable here, so the manifest is
+// completed rather than guessed at CreateRun time — and before anything is
+// persisted, so a failure to record it leaves no results behind.
 func runSchall03Module(ctx context.Context, input runModuleInput) (runModuleResult, error) {
 	options, err := parseSchall03RunOptions(input.params)
 	if err != nil {
 		return runModuleResult{}, beforeRunError{err: err}
 	}
 
-	result, computeErr := computeSchall03Run(ctx, input.model, input.terrain, options, input.standard.SupportedSourceTypes, input.receiverMode)
-	input.log.addLines(result.LogLines)
-
+	result, computeErr := computeSchall03Run(ctx, input, options)
 	if computeErr != nil {
 		input.log.addf("schall03 run failed: %v", computeErr)
 

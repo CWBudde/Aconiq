@@ -402,7 +402,7 @@ func appendSegmentContributions(
 		shielding := computeShielding(
 			seg.MidPoint, sourceHeightM,
 			receiver, effectiveCfg.ReceiverHeightM,
-			effectiveBarriers, nil, scratch,
+			effectiveBarriers, reflectorExclusion{}, scratch,
 		)
 		barrierLoss = shielding.InsertionLoss
 	}
@@ -548,7 +548,7 @@ func appendReflectedContribs(
 		hmRefl := (sourceHeightM + (receiverZ - cfg.ReceiverTerrainZ)) / 2.0
 		attRefl := computeAttenuation(rp.planDistM, rp.slantDistM, hmRefl, cfg)
 
-		attRefl = applyShielding(attRefl, reflectedPathShielding(rp, sourceHeightM, receiver, effectiveBarriers, cfg, scratch))
+		attRefl = applyShielding(attRefl, reflectedPathShielding(rp, sourceHeightM, receiver, effectiveBarriers, reflectors, cfg, scratch))
 
 		// D_RV is a separate additive term of Eq. 2 / Eq. 3, not a candidate in
 		// Eq. 11's max{D_gr; D_z}. It is therefore added after applyShielding
@@ -578,12 +578,13 @@ func reflectedPathShielding(
 	sourceHeightM float64,
 	receiver geo.Point2D,
 	effectiveBarriers []Barrier,
+	reflectors *reflectorField,
 	cfg PropagationConfig,
 	scratch *pathScratch,
 ) float64 {
 	return computeShielding(
 		rp.imagePoint, sourceHeightM,
 		receiver, cfg.ReceiverHeightM,
-		effectiveBarriers, rp.reflectors(), scratch,
+		effectiveBarriers, reflectors.exclusion(rp), scratch,
 	).InsertionLoss
 }

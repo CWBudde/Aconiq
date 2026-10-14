@@ -43,7 +43,7 @@ func samePaths(got, want []reflectedPath) string {
 			math.Float64bits(g.lossDB) != math.Float64bits(w.lossDB) ||
 			math.Float64bits(g.imagePoint.X) != math.Float64bits(w.imagePoint.X) ||
 			math.Float64bits(g.imagePoint.Y) != math.Float64bits(w.imagePoint.Y) ||
-			g.reflectorIDs != w.reflectorIDs || g.bounces != w.bounces {
+			g.reflectorClasses != w.reflectorClasses || g.bounces != w.bounces {
 			return fmt.Sprintf("path %d: got %+v, want %+v", i, g, w)
 		}
 	}

@@ -216,7 +216,15 @@ func normativeSubsegmentContrib(
 // Degenerate legs (zero length, NaN or infinite) are skipped.  The visit order
 // depends on the centerline alone, which is what lets every caller feed its
 // numeric.CompensatedSum in a reproducible sequence.
-func eachSubsegment(centerline []geo.Point2D, visit func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64)) {
+//
+// Once done is closed it visits no further step.  A subsegment is the finest
+// unit the Anlage-2 chain owns, and on a long track with many facades one
+// receiver is thousands of them, so this is where a cancelled run stops.  The
+// sum the caller was feeding is then a partial one and must not become a
+// level; computeNormativeReceiverLevels checks done after every walk and
+// abandons the receiver instead.  A nil done never closes, so a walk that is
+// not cancellable visits the same steps in the same order.
+func eachSubsegment(done <-chan struct{}, centerline []geo.Point2D, visit func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64)) {
 	for i := range len(centerline) - 1 {
 		a := centerline[i]
 		b := centerline[i+1]
@@ -234,6 +242,12 @@ func eachSubsegment(centerline []geo.Point2D, visit func(pt geo.Point2D, stepLen
 		tvLen := math.Sqrt(tvX*tvX + tvY*tvY)
 
 		for j := range nsubs {
+			select {
+			case <-done:
+				return
+			default:
+			}
+
 			frac := (float64(j) + 0.5) / float64(nsubs)
 			pt := geo.Point2D{X: a.X + (b.X-a.X)*frac, Y: a.Y + (b.Y-a.Y)*frac}
 
@@ -273,7 +287,8 @@ func lineSourceLevel(total float64) float64 {
 //
 // waterFractionW is forwarded to normativeSubsegmentContrib for Gl. 13.  dtm is
 // the terrain model the run computes over, or nil; it is sampled once per
-// subsegment for Gl. 15's ground term.
+// subsegment for Gl. 15's ground term.  done stops the walk; see
+// eachSubsegment.
 func normativeLineSourceLpAeq(
 	emission *StreckeEmissionResult,
 	centerline []geo.Point2D,
@@ -281,10 +296,11 @@ func normativeLineSourceLpAeq(
 	receiver ReceiverInput,
 	waterFractionW float64,
 	dtm terrain.Model,
+	done <-chan struct{},
 ) float64 {
 	var total numeric.CompensatedSum
 
-	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
+	eachSubsegment(done, centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
 		dp, sd2 := directRayTerms(receiver, pt, tvX, tvY, tvLen)
 		groundOffsetM := resolvePathGroundOffset(dtm, pt, receiver)
 		total.Add(normativeSubsegmentContrib(emission, elevationM, receiver, dp, stepLen, sd2, waterFractionW, groundOffsetM))
@@ -337,14 +353,15 @@ func normativeLineSourceLpAeqWithBarriers(
 	waterFractionW float64,
 	barriers []BarrierSegment,
 	dtm terrain.Model,
+	done <-chan struct{},
 ) float64 {
 	if len(barriers) == 0 {
-		return normativeLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, dtm)
+		return normativeLineSourceLpAeq(emission, centerline, elevationM, receiver, waterFractionW, dtm, done)
 	}
 
 	var total numeric.CompensatedSum
 
-	eachSubsegment(centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
+	eachSubsegment(done, centerline, func(pt geo.Point2D, stepLen, tvX, tvY, tvLen float64) {
 		dp, sd2 := directRayTerms(receiver, pt, tvX, tvY, tvLen)
 		groundOffsetM := resolvePathGroundOffset(dtm, pt, receiver)
 		total.Add(normativeSubsegmentContribWithBarriers(
@@ -365,10 +382,11 @@ func addDirectWithBarriersAndReflected(
 	walls []ReflectingWall,
 	barriers []BarrierSegment,
 	dtm terrain.Model,
+	done <-chan struct{},
 	sum *numeric.CompensatedSum,
 ) {
 	lp := normativeLineSourceLpAeqWithBarriers(
-		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, barriers, dtm,
+		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, barriers, dtm, done,
 	)
 	if !math.IsInf(lp, -1) {
 		sum.Add(math.Pow(10, 0.1*lp))
@@ -380,7 +398,7 @@ func addDirectWithBarriersAndReflected(
 	}
 
 	reflLp := reflectedLineSourceLpAeqWithBarriers(
-		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls, barriers, dtm,
+		emission, seg.TrackCenterline, seg.ElevationM, receiver, seg.WaterBodyFractionW, walls, barriers, dtm, done,
 	)
 	if !math.IsInf(reflLp, -1) {
 		sum.Add(math.Pow(10, 0.1*reflLp))
@@ -419,34 +437,46 @@ func ComputeNormativeReceiverLevelsForScene(
 	receiver ReceiverInput,
 	scene NormativeScene,
 ) (NormativeReceiverLevels, error) {
-	segments, walls, barriers := scene.Segments, scene.Walls, scene.Barriers
+	return computeNormativeReceiverLevels(context.Background(), receiver, scene)
+}
 
-	if len(segments) == 0 {
-		return NormativeReceiverLevels{}, errors.New("at least one TrackSegment is required")
-	}
+// computeNormativeReceiverLevels is ComputeNormativeReceiverLevelsForScene
+// under a context, checked inside the receiver: after every line-source walk,
+// and at every subsegment of it (eachSubsegment).
+//
+// # Why inside a receiver and not only between receivers
+//
+// One receiver over a large scene — a long line, many train types, many
+// facades to search for reflections — is seconds to minutes of CPU, and a
+// check only between receivers left a cancelled run computing all of it.
+// `aconiq serve` gives an interrupted run a grace period to record its own
+// stop and kills it after that, so the run then read as killed, not stopped.
+//
+// # Why it cannot move a level
+//
+// The check is a non-blocking receive on ctx.Done() and reads nothing the walk
+// computes. It either lets the next subsegment run exactly as before, or
+// abandons the receiver, in which case no level is produced at all: a walk
+// stopped part-way has fed daySum or nightSum a partial sum, and the check
+// after that walk returns before either becomes a level. A context that can
+// never be cancelled has a nil Done(), so the select is free and the walk is
+// the same floating-point operations in the same order.
+func computeNormativeReceiverLevels(
+	ctx context.Context,
+	receiver ReceiverInput,
+	scene NormativeScene,
+) (NormativeReceiverLevels, error) {
+	walls, barriers := scene.Walls, scene.Barriers
+	done := ctx.Done()
 
-	err := receiver.Validate()
+	err := validateNormativeReceiverScene(receiver, scene)
 	if err != nil {
 		return NormativeReceiverLevels{}, err
 	}
 
-	for i, w := range walls {
-		wallErr := w.Validate()
-		if wallErr != nil {
-			return NormativeReceiverLevels{}, fmt.Errorf("wall[%d]: %w", i, wallErr)
-		}
-	}
-
-	for i, b := range barriers {
-		barrierErr := b.Validate()
-		if barrierErr != nil {
-			return NormativeReceiverLevels{}, fmt.Errorf("barrier[%d]: %w", i, barrierErr)
-		}
-	}
-
 	var daySum, nightSum numeric.CompensatedSum
 
-	parts, err := prepareSpeedZoneParts(segments)
+	parts, err := prepareSpeedZoneParts(scene.Segments)
 	if err != nil {
 		return NormativeReceiverLevels{}, err
 	}
@@ -460,14 +490,24 @@ func ComputeNormativeReceiverLevelsForScene(
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q day emission: %w", seg.ID, emitErr)
 			}
 
-			addDirectWithBarriersAndReflected(dayEmission, seg, receiver, walls, barriers, scene.Terrain, &daySum)
+			addDirectWithBarriersAndReflected(dayEmission, seg, receiver, walls, barriers, scene.Terrain, done, &daySum)
+
+			err = stopped(ctx, done)
+			if err != nil {
+				return NormativeReceiverLevels{}, err
+			}
 
 			nightEmission, emitErr := ComputeStreckeEmission(buildVehicleInputs(part, op, op.TrainsPerHourNight))
 			if emitErr != nil {
 				return NormativeReceiverLevels{}, fmt.Errorf("segment %q night emission: %w", seg.ID, emitErr)
 			}
 
-			addDirectWithBarriersAndReflected(nightEmission, seg, receiver, walls, barriers, scene.Terrain, &nightSum)
+			addDirectWithBarriersAndReflected(nightEmission, seg, receiver, walls, barriers, scene.Terrain, done, &nightSum)
+
+			err = stopped(ctx, done)
+			if err != nil {
+				return NormativeReceiverLevels{}, err
+			}
 		}
 	}
 
@@ -489,6 +529,46 @@ func ComputeNormativeReceiverLevelsForScene(
 		LrDay:      beurteilungspegel(lpAeqDay, ks),
 		LrNight:    beurteilungspegel(lpAeqNight, ks),
 	}, nil
+}
+
+// validateNormativeReceiverScene refuses a receiver or a scene the Anlage-2
+// chain cannot compute over, before any of it is walked.
+func validateNormativeReceiverScene(receiver ReceiverInput, scene NormativeScene) error {
+	if len(scene.Segments) == 0 {
+		return errors.New("at least one TrackSegment is required")
+	}
+
+	err := receiver.Validate()
+	if err != nil {
+		return err
+	}
+
+	for i, w := range scene.Walls {
+		wallErr := w.Validate()
+		if wallErr != nil {
+			return fmt.Errorf("wall[%d]: %w", i, wallErr)
+		}
+	}
+
+	for i, b := range scene.Barriers {
+		barrierErr := b.Validate()
+		if barrierErr != nil {
+			return fmt.Errorf("barrier[%d]: %w", i, barrierErr)
+		}
+	}
+
+	return nil
+}
+
+// stopped is the cancellation check of a walk inside one receiver: ctx's error
+// once done is closed, nil otherwise, without blocking. It reads no number.
+func stopped(ctx context.Context, done <-chan struct{}) error {
+	select {
+	case <-done:
+		return fmt.Errorf("%w", ctx.Err())
+	default:
+		return nil
+	}
 }
 
 // ComputeNormativeReceiverLevelsWithWalls computes L_pAeq and L_r including
@@ -542,14 +622,30 @@ func ComputeReceiverOutputsWithDataPack(receivers []geo.PointReceiver, sources [
 }
 
 // ComputeReceiverOutputsWithDataPackContext is ComputeReceiverOutputsWithDataPack
-// under a context: once ctx is done it stops before the next receiver and
-// returns ctx.Err().
+// under a context: once ctx is done it stops before the next source, inside
+// the receiver it is computing, and returns ctx.Err().
 func ComputeReceiverOutputsWithDataPackContext(
 	ctx context.Context,
 	receivers []geo.PointReceiver,
 	sources []RailSource,
 	cfg PropagationConfig,
 	pack DataPack,
+) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsWithDataPackProgress(ctx, receivers, sources, cfg, pack, nil)
+}
+
+// ComputeReceiverOutputsWithDataPackProgress is
+// ComputeReceiverOutputsWithDataPackContext that also reports (receivers done,
+// receivers in total) after each receiver, the shape road.ProgressFunc
+// documents. A nil progress reports nothing. The report is read by nothing in
+// the walk, so it cannot move a level.
+func ComputeReceiverOutputsWithDataPackProgress(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []RailSource,
+	cfg PropagationConfig,
+	pack DataPack,
+	progress func(done, total int),
 ) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
@@ -570,7 +666,7 @@ func ComputeReceiverOutputsWithDataPackContext(
 			return nil, fmt.Errorf("receiver %q coordinates are not finite", receiver.ID)
 		}
 
-		levels, err := ComputeReceiverPeriodLevelsWithDataPack(receiver.Point, sources, cfg, pack)
+		levels, err := computeReceiverPeriodLevels(ctx, receiver.Point, sources, cfg, pack)
 		if err != nil {
 			return nil, err
 		}
@@ -579,6 +675,10 @@ func ComputeReceiverOutputsWithDataPackContext(
 			Receiver:   receiver,
 			Indicators: levels.ToReceiverIndicators(),
 		})
+
+		if progress != nil {
+			progress(len(outputs), len(receivers))
+		}
 	}
 
 	return outputs, nil
@@ -605,11 +705,26 @@ func ComputeNormativeReceiverOutputsForScene(
 
 // ComputeNormativeReceiverOutputsForSceneContext is
 // ComputeNormativeReceiverOutputsForScene under a context: once ctx is done it
-// stops before the next receiver and returns ctx.Err().
+// stops at the next subsegment, inside the receiver it is computing, and
+// returns ctx.Err(). See computeNormativeReceiverLevels.
 func ComputeNormativeReceiverOutputsForSceneContext(
 	ctx context.Context,
 	receivers []ReceiverInput,
 	scene NormativeScene,
+) ([]ReceiverOutput, error) {
+	return ComputeNormativeReceiverOutputsForSceneProgress(ctx, receivers, scene, nil)
+}
+
+// ComputeNormativeReceiverOutputsForSceneProgress is
+// ComputeNormativeReceiverOutputsForSceneContext that also reports (receivers
+// done, receivers in total) after each receiver, the shape road.ProgressFunc
+// documents. A nil progress reports nothing. The report is read by nothing in
+// the walk, so it cannot move a level.
+func ComputeNormativeReceiverOutputsForSceneProgress(
+	ctx context.Context,
+	receivers []ReceiverInput,
+	scene NormativeScene,
+	progress func(done, total int),
 ) ([]ReceiverOutput, error) {
 	segments := scene.Segments
 
@@ -629,7 +744,7 @@ func ComputeNormativeReceiverOutputsForSceneContext(
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}
 
-		levels, err := ComputeNormativeReceiverLevelsForScene(receiver, scene)
+		levels, err := computeNormativeReceiverLevels(ctx, receiver, scene)
 		if err != nil {
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}
@@ -641,6 +756,10 @@ func ComputeNormativeReceiverOutputsForSceneContext(
 				LrNight: finiteOrSilence(levels.LrNight),
 			},
 		})
+
+		if progress != nil {
+			progress(len(outputs), len(receivers))
+		}
 	}
 
 	return outputs, nil

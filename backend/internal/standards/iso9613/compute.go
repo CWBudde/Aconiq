@@ -22,6 +22,12 @@ type ReceiverOutput struct {
 
 // ComputeReceiverIndicators computes both DW and LT indicators for one receiver.
 func ComputeReceiverIndicators(receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (ReceiverIndicators, error) {
+	return computeReceiverIndicators(context.Background(), receiver, sources, cfg)
+}
+
+// computeReceiverIndicators is ComputeReceiverIndicators under a context,
+// checked before every source→receiver path (computeDownwindAndLongTermLevels).
+func computeReceiverIndicators(ctx context.Context, receiver geo.PointReceiver, sources []PointSource, cfg PropagationConfig) (ReceiverIndicators, error) {
 	err := cfg.Validate()
 	if err != nil {
 		return ReceiverIndicators{}, err
@@ -48,7 +54,10 @@ func ComputeReceiverIndicators(receiver geo.PointReceiver, sources []PointSource
 
 	// C_met is applied per source-receiver path inside the summation
 	// (Eq. 6 with clause 8), not once to the summed level.
-	dwLevel, ltLevel := ComputeDownwindAndLongTermLevels(receiver, sources, cfg)
+	dwLevel, ltLevel, err := computeDownwindAndLongTermLevels(ctx, receiver, sources, cfg)
+	if err != nil {
+		return ReceiverIndicators{}, err
+	}
 
 	return ReceiverIndicators{LpAeqDW: dwLevel, LpAeqLT: ltLevel}, nil
 }
@@ -70,7 +79,8 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []PointSource
 }
 
 // ComputeReceiverOutputsContext is ComputeReceiverOutputs under a context: once
-// ctx is done it stops before the next receiver and returns ctx.Err().
+// ctx is done it stops before the next source→receiver path, inside the
+// receiver it is computing, and returns ctx.Err().
 func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointReceiver, sources []PointSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
 	return ComputeReceiverOutputsProgress(ctx, receivers, sources, cfg, nil)
 }
@@ -97,7 +107,7 @@ func ComputeReceiverOutputsProgress(
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}
 
-		indicators, err := ComputeReceiverIndicators(receiver, sources, cfg)
+		indicators, err := computeReceiverIndicators(ctx, receiver, sources, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("receiver %q: %w", receiver.ID, err)
 		}

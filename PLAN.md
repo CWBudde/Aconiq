@@ -2226,22 +2226,33 @@ before the pages they protect are cut apart.
       plan-shadow and across a Bild-14 active/inactive boundary is cheap against
       `Scene.barrierGrid` and `reflectors.grid`, and it is the condition for this mode ever
       becoming the default. Until it exists the mode stays opt-in.
+- [x] **A mirrored path drops its own reflectors by integer class** (#102). Every wall owner
+      gets a class (the index of its first wall) and every barrier the class of the reflector
+      sharing its ID, resolved once in `prepareScene` (`reflectorField.bindBarriers`), so
+      `dropExcludedBarriers` compares two `int32`s per candidate instead of string IDs — ~4x
+      faster in isolation, 35 ns against 149 ns per mirrored path. `TestReflectorClassesDropWhatIDsDrop`
+      holds it to the string compare it replaced. On the Linden calc-area in fixed mode it cut
+      CPU from 66 098 s to 62 193 s (−5.9 %; `dropExcludedBarriers` 4.5 % → 0.8 % of the profile),
+      and `receivers.csv` came out byte-identical to `main`'s in fixed and in `distance_scaled`
+      mode. One constraint stays live: a field's paths can only be shielded against the barrier
+      set it was bound to.
+      **The sign pre-test this file proposed for `geo.SegmentIntersection` was built, shown exact
+      and measured slower**: 6.1 ns a call against 3.3 ns, because the CPU overlaps the two
+      divisions and does not overlap the branches that skip them; deferring the second division
+      alone gains nothing either. It is not in the tree. Do not re-propose it as an arithmetic
+      saving.
 - [ ] **What is left of a building-dense RLS-19 run is the mirrored paths' crossing test.** With
       the reflection search running from the receiver's side and the barrier fan in place, a
       fixed-mode Linden receiver spends ~70 % of its CPU shielding mirrored paths and ~30 % in
-      the remaining search. The fan's candidates are already the crossed buildings, so the exact
-      levers left are cheaper arithmetic, not fewer candidates. First, a sign pre-test that
-      rejects a facade edge before `geo.SegmentIntersection`'s two divisions (~27 % on its own);
-      it needs an error-bound argument that every skipped edge is one the division would have
-      rejected, and the function is shared with Schall 03 and ISO 9613-2, so the argument has to
-      hold for their callers too. Second, integer reflector exclusion in place of
-      `dropExcludedBarriers`' string compares (~6 %): an ID class per barrier and per wall owner,
-      resolved when the scene is prepared. One constraint stays live for both: the receiver-side
-      search is bit-identical to the source-side one on every scene compared, but it can _add_ a
-      second-order path the old search's fixed-margin source-side prune dropped by rounding
-      (source millimetres off a facade's line, second wall far away) — see "The one way it can
-      differ" in `reflections_receiver.go`. A mismatch of that shape against
-      `reflections_reference_test.go` is that, not a regression.
+      the remaining search; `geo.SegmentIntersection` alone is ~24 % of it. The fan's candidates
+      are already the crossed buildings, and a call costs ~3 ns, so neither fewer buildings nor
+      cheaper arithmetic is left: what costs is the number of facade edges tested per candidate. Any prune there
+      must keep `LineStringIntersectsSegment`'s nearest-crossing answer, edge index included. One
+      constraint stays live: the receiver-side search is bit-identical to the source-side one on
+      every scene compared, but it can _add_ a second-order path the old search's fixed-margin
+      source-side prune dropped by rounding (source millimetres off a facade's line, second wall
+      far away) — see "The one way it can differ" in `reflections_receiver.go`. A mismatch of
+      that shape against `reflections_reference_test.go` is that, not a regression.
 - [ ] **The receiver-side reflection table is not bounded.** It holds one entry per wall pair a
       receiver can see, 40 bytes each, per worker for the worker's lifetime (`road.Walker`). The
       pair count grows faster than the facade count — ~1 M (~40 MB) on Linden's 8 083 facades —
@@ -2270,22 +2281,26 @@ before the pages they protect are cut apart.
       ID synthesis must match `padStart` including the six-character `"R10000"` case, and
       `hashPayload` must produce the same bytes — which gets its own test, one request down both
       paths asserting equal `output_hash`. Keep the JSON path as the reference it compares against.
-- [ ] **What the asynchronous run left open: progress for every standard, and cancellation
-      inside a receiver beyond RLS-19.** `POST /runs` answers `202` with a server-minted id, the
-      run lives under a context the request does not own, `rls19-road` and `iso9613` stream
-      `run.log` and write `progress.json`, and RLS-19 checks its context before every
-      Teilstück. Three things are still ahead.
-      **Schall 03 writes no progress**, because `computeSchall03Run` buffers its log lines in
-      `schall03RunResult` and appends them after the compute, so a progress line would land
-      ahead of the lines that preceded it; it has to log through `runLog` first. The scaffold
-      modules (`receiverRunModule`) and `beb-exposure` write none either.
-      **Schall 03 and ISO 9613-2 still check only between receivers.** One Schall 03 receiver
-      over a large scene can outlast `runInterruptGrace`, and then the child is killed and the
-      server writes the `run cancelled` line instead of the child. The RLS-19 pattern — a
-      non-blocking receive on `ctx.Done()` per propagation unit, reading no number — carries
-      over.
-      **The frontend polls rather than listening to `/api/v1/events`**, which carries the last
-      run's progress now, because `EventSource` cannot send the `--api-token` header.
+- [x] **Schall 03 writes progress, Schall 03 and ISO 9613-2 stop inside a receiver, and the
+      frontend listens to `/api/v1/events`** (#102). Three constraints stay live.
+      **Schall 03 logs through `runLog` as it goes**, not into a buffer appended afterwards, so
+      progress lines land after the lines that precede them and a failed run keeps what it had
+      logged.
+      **The checks read no number.** They are non-blocking receives on `ctx.Done()` — per 10 m
+      subsegment in the normative Schall 03 chain, per source in its preview chain, per path in
+      ISO 9613-2 — and a stop abandons the receiver before its sums become a level.
+      **The stream is read with `fetch`, not `EventSource`** (`api/event-stream.ts`), so the API
+      token travels as a header and never in the URL. One stream is shared by every `useRuns`
+      (`api/project-events.ts`), and polling stays the fallback: the runs list drops to the idle
+      rate only while the stream carries every active run.
+- [ ] **Progress for the scaffold modules and `beb-exposure`, and for every running run.** The
+      `receiverRunModule` scaffolds and `beb-exposure` still write no progress: their compute
+      calls live in the `cnossos/*`, `bub/*`, `buf/*` and `beb/exposure` packages, none of which
+      has a progress variant, so it is a change to each of them or a chunked call from the CLI.
+      `/api/v1/events` names only the last run, so a second concurrent run is still polled at
+      2 s, and run logs are polled throughout. The stream also carries the project status
+      `useProjectStatus` could consume instead of polling, but model sync and hydration react to
+      that query, so feeding it mid-run needs its own review.
 - [ ] **Make the run-time estimate (#99) honest beyond RLS-19, and on a dense scene.**
       `iso9613` and `schall03` answer "no estimate available" until they implement
       `runestimate.Kernel`. The parallel efficiency (0.8 point, 0.55 slow end) is a constant,

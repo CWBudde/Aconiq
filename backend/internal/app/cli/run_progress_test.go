@@ -43,6 +43,11 @@ func TestRunWritesItsLogAndProgressWhileItComputes(t *testing.T) {
 	}{
 		{"rls19-road", registryRunFixtures["rls19-road"]},
 		{"iso9613", registryRunFixtures["iso9613"]},
+		// Schall 03 used to buffer its log lines and append them after the
+		// compute, so a progress line would have landed ahead of the lines
+		// that preceded it; it logs through the run's log now, and the
+		// "receivers=" check below is what holds it to that.
+		{"schall03", registryRunFixtures["schall03"]},
 	} {
 		t.Run(tc.standard, func(t *testing.T) {
 			t.Parallel()

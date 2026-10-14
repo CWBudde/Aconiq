@@ -472,7 +472,7 @@ func parkingShielding(
 		barrierLoss = computeShielding(
 			parking.Center, pointSourceHeightM,
 			receiver, cfg.ReceiverHeightM,
-			effectiveBarriers, nil, scratch,
+			effectiveBarriers, reflectorExclusion{}, scratch,
 		).InsertionLoss
 	}
 

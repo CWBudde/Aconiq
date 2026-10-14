@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
@@ -18,12 +17,17 @@ import (
 
 // schall03RunResult carries everything the run pipeline needs from a Schall 03
 // computation, whichever engine produced it.
+//
+// It carries no log lines. It used to, and runSchall03Module appended them
+// after the compute, which was harmless while nothing else wrote to the log
+// during it — and wrong once the progress feed did: a "computed X of Y" line
+// would have landed ahead of the lines that preceded it. The chain logs
+// through the run's log as it goes, like every other module.
 type schall03RunResult struct {
 	Engine      string
 	Outputs     []schall03.ReceiverOutput
 	SourceCount int
 	Layout      results.GridLayout
-	LogLines    []string
 }
 
 // resolveSchall03Engine turns the configured engine setting into the chain that
@@ -74,52 +78,49 @@ func schall03MissingNormativeInputsError(configured string) error {
 }
 
 // computeSchall03Run resolves the engine, extracts its inputs from the model
-// and computes receiver levels.
+// and computes receiver levels, logging to input.log and reporting to
+// input.progress as it goes.
 func computeSchall03Run(
 	ctx context.Context,
-	model modelgeojson.Model,
-	terrainModel terrain.Model,
+	input runModuleInput,
 	options schall03RunOptions,
-	supportedSourceTypes []string,
-	receiverMode string,
 ) (schall03RunResult, error) {
-	engine, err := resolveSchall03Engine(options.Engine, model)
+	engine, err := resolveSchall03Engine(options.Engine, input.model)
 	if err != nil {
 		return schall03RunResult{}, err
 	}
 
 	result := schall03RunResult{Engine: engine}
-	result.logf("schall03_engine=%s", engine)
+	input.log.addf("schall03_engine=%s", engine)
 
 	if engine == schall03.EnginePreview {
-		result.logf(
+		input.log.addf(
 			"WARNING schall03_engine=preview: levels come from %s, whose spectra are invented placeholders. Output is not a Schall 03 result.",
 			schall03.BuiltinDataPackVersion,
 		)
 	}
 
 	if engine == schall03.EngineNormative {
-		return computeSchall03Normative(ctx, result, model, terrainModel, options, supportedSourceTypes, receiverMode)
+		return computeSchall03Normative(ctx, input, result, options)
 	}
 
-	return computeSchall03Preview(ctx, result, model, options, supportedSourceTypes, receiverMode)
+	return computeSchall03Preview(ctx, input, result, options)
 }
 
 func computeSchall03Normative(
 	ctx context.Context,
+	input runModuleInput,
 	result schall03RunResult,
-	model modelgeojson.Model,
-	terrainModel terrain.Model,
 	options schall03RunOptions,
-	supportedSourceTypes []string,
-	receiverMode string,
 ) (schall03RunResult, error) {
-	scene, err := extractSchall03NormativeScene(model, supportedSourceTypes)
+	terrainModel := input.terrain
+
+	scene, err := extractSchall03NormativeScene(input.model, input.standard.SupportedSourceTypes)
 	if err != nil {
 		return schall03RunResult{}, err
 	}
 
-	receivers, layout, calcArea, err := resolveGridReceivers(model, receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildSchall03NormativeReceivers(scene.Segments, calcArea, options)
 	})
 	if err != nil {
@@ -132,9 +133,9 @@ func computeSchall03Normative(
 	// Barrier panels, not obstacles: one building footprint contributes one
 	// panel per outer-ring edge, so this count is no longer the number of
 	// barrier features in the model.
-	result.logf("schall03_segments=%d walls=%d barrier_panels=%d", len(scene.Segments), len(scene.Walls), len(scene.Barriers))
-	result.logReceivers(receiverMode, len(receivers), layout.Width, layout.Height)
-	result.logGridExtent(receiverMode, calcArea, layout)
+	input.log.addf("schall03_segments=%d walls=%d barrier_panels=%d", len(scene.Segments), len(scene.Walls), len(scene.Barriers))
+	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
 	receiverInputs, sampled, err := schall03ReceiverInputs(receivers, terrainModel)
 	if err != nil {
@@ -142,20 +143,24 @@ func computeSchall03Normative(
 	}
 
 	if terrainModel != nil {
-		result.logf("schall03_receiver_terrain_samples=%d/%d", sampled, len(receivers))
+		input.log.addf("schall03_receiver_terrain_samples=%d/%d", sampled, len(receivers))
 	}
 
-	result.warnOnUngroundedElevation(terrainModel, scene.Segments)
+	warnOnUngroundedSchall03Elevation(input.log, terrainModel, scene.Segments)
+
+	// The walk reports each receiver as it completes; runProgress throttles
+	// that to the log and progress.json. Nothing the walk computes reads it.
+	input.progress.start(len(receiverInputs))
 
 	// The DTM goes into the scene, not just into the receivers' datum: the
 	// propagation chain samples it along every subsegment→receiver path for
 	// Gl. 15's h_m.
-	result.Outputs, err = schall03.ComputeNormativeReceiverOutputsForSceneContext(ctx, receiverInputs, schall03.NormativeScene{
+	result.Outputs, err = schall03.ComputeNormativeReceiverOutputsForSceneProgress(ctx, receiverInputs, schall03.NormativeScene{
 		Segments: scene.Segments,
 		Walls:    scene.Walls,
 		Barriers: scene.Barriers,
 		Terrain:  terrainModel,
-	})
+	}, input.progress.report)
 	if err != nil {
 		return schall03RunResult{}, fmt.Errorf("compute Schall 03 normative receiver levels: %w", err)
 	}
@@ -165,18 +170,16 @@ func computeSchall03Normative(
 
 func computeSchall03Preview(
 	ctx context.Context,
+	input runModuleInput,
 	result schall03RunResult,
-	model modelgeojson.Model,
 	options schall03RunOptions,
-	supportedSourceTypes []string,
-	receiverMode string,
 ) (schall03RunResult, error) {
-	railSources, err := extractSchall03Sources(model, options, supportedSourceTypes)
+	railSources, err := extractSchall03Sources(input.model, options, input.standard.SupportedSourceTypes)
 	if err != nil {
 		return schall03RunResult{}, err
 	}
 
-	receivers, layout, calcArea, err := resolveGridReceivers(model, receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildSchall03Receivers(railSources, calcArea, options)
 	})
 	if err != nil {
@@ -186,11 +189,15 @@ func computeSchall03Preview(
 	result.SourceCount = len(railSources)
 	result.Layout = layout
 
-	result.logf("schall03_sources=%d", len(railSources))
-	result.logReceivers(receiverMode, len(receivers), layout.Width, layout.Height)
-	result.logGridExtent(receiverMode, calcArea, layout)
+	input.log.addf("schall03_sources=%d", len(railSources))
+	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
-	result.Outputs, err = schall03.ComputeReceiverOutputsContext(ctx, receivers, railSources, options.PropagationConfig())
+	input.progress.start(len(receivers))
+
+	result.Outputs, err = schall03.ComputeReceiverOutputsWithDataPackProgress(
+		ctx, receivers, railSources, options.PropagationConfig(), schall03.BuiltinDataPack(), input.progress.report,
+	)
 	if err != nil {
 		return schall03RunResult{}, fmt.Errorf("compute Schall 03 preview receiver levels: %w", err)
 	}
@@ -198,7 +205,7 @@ func computeSchall03Preview(
 	return result, nil
 }
 
-// warnOnUngroundedElevation says out loud which of the two readings of
+// warnOnUngroundedSchall03Elevation says out loud which of the two readings of
 // elevation_m the run just used, and what else the run gave up with the DTM.
 //
 // With no DTM every receiver's ground sits at Z = 0, so a track's elevation_m
@@ -218,7 +225,7 @@ func computeSchall03Preview(
 // the hillside; without one, every path runs over one flat plane, which is the
 // special case S/d = (h_g + h_r)/2 and deviation 4 of the conformance
 // declaration. Both facts have the same remedy, so they are said together.
-func (r *schall03RunResult) warnOnUngroundedElevation(terrainModel terrain.Model, segments []schall03.TrackSegment) {
+func warnOnUngroundedSchall03Elevation(log *runLog, terrainModel terrain.Model, segments []schall03.TrackSegment) {
 	if terrainModel != nil {
 		return
 	}
@@ -227,7 +234,7 @@ func (r *schall03RunResult) warnOnUngroundedElevation(terrainModel terrain.Model
 		return
 	}
 
-	r.logf(
+	log.addf(
 		"WARNING no terrain model: elevation_m is read as a height above the ground under each receiver, and " +
 			"h_m (Gl. 15) falls back to the flat-ground case (h_g + h_r)/2 because there is no terrain profile to " +
 			"measure the propagation path against. The first is correct where elevation_m means a bridge or " +
@@ -365,26 +372,4 @@ func buildSchall03NormativeReceivers(segments []schall03.TrackSegment, calcArea 
 	}
 
 	return buildReceiversFromPoints("cli.buildSchall03NormativeReceivers", sourcePoints, calcArea, options.GridResolutionM, options.GridPaddingM, options.ReceiverHeightM)
-}
-
-func (r *schall03RunResult) logf(format string, args ...any) {
-	r.LogLines = append(r.LogLines, nowUTC().Format(time.RFC3339)+" "+fmt.Sprintf(format, args...))
-}
-
-func (r *schall03RunResult) logReceivers(receiverMode string, receiverCount, gridWidth, gridHeight int) {
-	if receiverMode == receiverModeCustom {
-		r.logf("receivers=%d set=%s", receiverCount, explicitReceiverSetID)
-
-		return
-	}
-
-	r.logf("receivers=%d grid=%dx%d", receiverCount, gridWidth, gridHeight)
-}
-
-// logGridExtent mirrors runLog.addGridExtent for the Schall 03 chain, which
-// carries its own log lines.
-func (r *schall03RunResult) logGridExtent(receiverMode string, calcArea *geo.BBox, layout results.GridLayout) {
-	for _, line := range gridExtentLines(receiverMode, calcArea, layout) {
-		r.logf("%s", line)
-	}
 }

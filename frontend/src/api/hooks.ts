@@ -10,6 +10,7 @@ import type {
   ReceiverTable,
   RunSummary,
 } from "./client";
+import { acquireProjectEvents, pushedRunId } from "./project-events";
 import { queryKeys } from "./query-keys";
 import { queryClient } from "./query-client";
 import { withLegacyUnits } from "@/map/result-units";
@@ -38,17 +39,28 @@ export function useStandards() {
 }
 
 /*
- * Runs and their logs are polled, not pushed. The API's SSE stream
- * (`/api/v1/events`) carries project status snapshots — the last run's
- * progress among them — but not run logs, and a browser `EventSource` cannot
- * send the `--api-token` header, so the stream is unreachable whenever a token
- * is set (PLAN.md, Priority 6). Polling by activity keeps the cost near zero
- * while nothing is running, and while something is, every poll of the list
- * brings each running run's `progress` with it: the progress bar needs no
- * request of its own.
+ * A running run's progress is pushed; everything else about runs is polled.
+ *
+ * The API's event stream (`/api/v1/events`) sends the project's status
+ * whenever it changes, and the last run's `progress` is part of it, so while
+ * the stream is up the progress bar moves without a request of its own
+ * (`project-events.ts`). The stream is read with `fetch` rather than an
+ * `EventSource`, which cannot send the `--api-token` header (`event-stream.ts`).
+ *
+ * Polling stays, as the fallback and for what the stream does not carry. While
+ * the stream is down — not yet connected, dropped, refused — the list polls by
+ * activity exactly as it did before there was a stream: near zero while
+ * nothing is running, and every couple of seconds while something is, each
+ * poll bringing every running run's `progress` with it. While it is up, the
+ * list polls at the idle rate unless a run is active that the stream is not
+ * carrying — it only ever names the *last* run. Run logs are not on the stream
+ * at all and are polled while their run is running.
  */
 
-/** Runs-list poll interval while any run is pending or running. */
+/**
+ * Runs-list poll interval while a run is pending or running and the event
+ * stream is not carrying it.
+ */
 export const ACTIVE_RUNS_POLL_MS = 2_000;
 /**
  * Runs-list poll interval while every run is settled. Slow, but not off: a
@@ -63,13 +75,30 @@ function isRunActive(run: RunSummary): boolean {
   return run.status === "pending" || run.status === "running";
 }
 
-/** Needs nothing from the render, so it lives outside the hook. */
+/**
+ * Needs nothing from the render, so it lives outside the hook. Re-read by
+ * TanStack whenever the list's data changes; `project-events.ts` invalidates
+ * the list when the stream drops, so falling back is never one idle period
+ * late.
+ */
 function runsRefetchInterval(query: Query<RunSummary[]>): number {
   const runs = query.state.data ?? [];
-  return runs.some(isRunActive) ? ACTIVE_RUNS_POLL_MS : IDLE_RUNS_POLL_MS;
+  const pushed = pushedRunId();
+  const unpushed = runs.some((run) => isRunActive(run) && run.id !== pushed);
+  return unpushed ? ACTIVE_RUNS_POLL_MS : IDLE_RUNS_POLL_MS;
 }
 
 export function useRuns() {
+  // Only where runs change behind the UI's back: elsewhere nothing would
+  // ever be said on it.
+  useEffect(
+    () =>
+      backend.capabilities.runsChangeExternally
+        ? acquireProjectEvents()
+        : undefined,
+    [],
+  );
+
   const query = useQuery({
     queryKey: queryKeys.runs.list(),
     queryFn: () => backend.getRuns(),
