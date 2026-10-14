@@ -78,8 +78,8 @@ func (l *runLog) addAtf(at time.Time, format string, args ...any) {
 	l.add(at.Format(time.RFC3339) + " " + fmt.Sprintf(format, args...))
 }
 
-// addLines appends lines a module produced with their own timestamps already
-// applied, such as the Schall 03 chain's.
+// addLines appends lines produced elsewhere with their own timestamps already
+// applied, such as what loading the run's inputs had to say.
 func (l *runLog) addLines(lines []string) {
 	l.add(lines...)
 }

@@ -1,6 +1,7 @@
 package schall03
 
 import (
+	"context"
 	"errors"
 	"math"
 
@@ -392,6 +393,18 @@ func ComputeReceiverPeriodLevels(receiver geo.Point2D, sources []RailSource, cfg
 // ComputeReceiverPeriodLevelsWithDataPack computes day/night levels using an
 // explicit preview or external Schall 03 data pack.
 func ComputeReceiverPeriodLevelsWithDataPack(receiver geo.Point2D, sources []RailSource, cfg PropagationConfig, pack DataPack) (PeriodLevels, error) {
+	return computeReceiverPeriodLevels(context.Background(), receiver, sources, cfg, pack)
+}
+
+// computeReceiverPeriodLevels is ComputeReceiverPeriodLevelsWithDataPack under
+// a context, checked before every source: a source is the preview chain's
+// unit of work, and one receiver over many tracks is many of them. The check
+// is a non-blocking receive that reads no number, and a stop abandons the
+// receiver before its spectra are summed, so it cannot move a level; see
+// computeNormativeReceiverLevels for the normative chain's version.
+func computeReceiverPeriodLevels(ctx context.Context, receiver geo.Point2D, sources []RailSource, cfg PropagationConfig, pack DataPack) (PeriodLevels, error) {
+	done := ctx.Done()
+
 	err := cfg.Validate()
 	if err != nil {
 		return PeriodLevels{}, err
@@ -414,6 +427,11 @@ func ComputeReceiverPeriodLevelsWithDataPack(receiver geo.Point2D, sources []Rai
 	nightSpectra := make([]OctaveSpectrum, 0, len(sources))
 
 	for _, source := range sources {
+		err = stopped(ctx, done)
+		if err != nil {
+			return PeriodLevels{}, err
+		}
+
 		emission, err := ComputeEmissionWithDataPack(source, pack)
 		if err != nil {
 			return PeriodLevels{}, err
