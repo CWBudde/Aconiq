@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"io"
 	"log/slog"
-	"os"
 	"time"
 )
 
@@ -17,16 +16,22 @@ type CommandRun struct {
 	logger    *slog.Logger
 }
 
-// New creates a structured logger that can emit text or JSON output.
-func New(level slog.Level, jsonLogs bool) *slog.Logger {
+// New creates a structured logger that writes text or JSON records to w.
+//
+// The CLI passes its stderr. A command's stdout is its result — under --json
+// one JSON document a caller decodes as a whole — and a log record there would
+// make it a stream the caller has to pick the result out of. The `aconiq serve`
+// handlers that spawn `aconiq run` read stdout for the result and stderr for
+// the error the last record carries, and rely on the two not mixing.
+func New(w io.Writer, level slog.Level, jsonLogs bool) *slog.Logger {
 	handlerOptions := &slog.HandlerOptions{Level: level}
 
 	var handler slog.Handler
 
 	if jsonLogs {
-		handler = slog.NewJSONHandler(os.Stdout, handlerOptions)
+		handler = slog.NewJSONHandler(w, handlerOptions)
 	} else {
-		handler = slog.NewTextHandler(os.Stdout, handlerOptions)
+		handler = slog.NewTextHandler(w, handlerOptions)
 	}
 
 	return slog.New(handler)

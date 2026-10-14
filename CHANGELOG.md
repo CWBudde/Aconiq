@@ -152,6 +152,13 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 Entries marked **numeric** change computed levels. Results produced before them are not comparable
 with results produced after them.
 
+- Log records go to stderr, as the `--json` flag's help always said, and no longer to stdout.
+  Under `--json` a command's stdout is now exactly one JSON document — its result — rather than
+  that document interleaved with JSON log lines, so `aconiq --json status | jq` works without
+  filtering; without `--json` the text records leave stdout the same way. Anything that read log
+  records from an `aconiq` stdout must read stderr. `POST /api/v1/runs/estimate` now decodes the
+  child's stdout as one document and refuses anything else, and a refused run or estimate is still
+  answered in the run command's own words, read from the last log record on stderr.
 - Two `aconiq run` processes on one project, or two runs started through `aconiq serve`, no
   longer lose each other's rows. Each loaded `.noise/project.json`, changed it and saved it, so
   the later save dropped the other's run — measured at 19 of 40 runs lost. Run creation and

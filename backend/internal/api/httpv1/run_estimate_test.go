@@ -191,25 +191,41 @@ func TestEstimateCommandArgsAskForJSONAndNoRun(t *testing.T) {
 	}
 }
 
-func TestReadEstimateOutputSkipsTheLogRecords(t *testing.T) {
+// stdout under --json is the command's output and nothing else, so it is
+// decoded as one document.
+func TestReadEstimateOutputDecodesOneDocument(t *testing.T) {
 	t.Parallel()
 
-	stdout := `{"time":"t","level":"INFO","msg":"command started"}
-{
+	stdout := `{
   "command": "run",
   "mode": "estimate",
   "estimate": {"available": false, "reason": "no estimate available"}
 }
-{"time":"t","level":"INFO","msg":"command finished"}
 `
 
-	estimate, message := readEstimateOutput([]byte(stdout))
-	if !strings.Contains(string(estimate), "no estimate available") || message != "" {
-		t.Fatalf("estimate %s, message %q", estimate, message)
+	estimate, err := readEstimateOutput([]byte(stdout))
+	if err != nil || !strings.Contains(string(estimate), "no estimate available") {
+		t.Fatalf("estimate %s, err %v", estimate, err)
 	}
+}
 
-	_, message = readEstimateOutput([]byte(`{"msg":"command finished","error":"cli.run: model file not found"}` + "\n"))
-	if message != "cli.run: model file not found" {
-		t.Fatalf("message %q", message)
+// A log record on stdout — what this decoder used to skip — or any second
+// value is refused rather than skipped: it means stdout is no longer only the
+// result.
+func TestReadEstimateOutputRefusesAnythingButTheEstimate(t *testing.T) {
+	t.Parallel()
+
+	for name, stdout := range map[string]string{
+		"log record first": `{"level":"INFO","msg":"command started"}` + "\n" + `{"mode":"estimate","estimate":{}}`,
+		"log record after": `{"mode":"estimate","estimate":{}}` + "\n" + `{"level":"INFO","msg":"command finished"}`,
+		"text after":       `{"mode":"estimate","estimate":{}}` + "\nEvidence tier: normative\n",
+		"not an estimate":  `{"command":"run","mode":"run"}`,
+		"empty":            ``,
+		"cut off":          `{"mode":"estimate","estimate":{"avail`,
+	} {
+		_, err := readEstimateOutput([]byte(stdout))
+		if err == nil {
+			t.Errorf("%s: accepted %q", name, stdout)
+		}
 	}
 }

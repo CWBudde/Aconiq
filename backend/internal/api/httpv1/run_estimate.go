@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -49,6 +50,10 @@ type estimateExecutor func(ctx context.Context, req createRunRequest) (json.RawM
 // estimateOutputMode is the "mode" the run command's JSON output names an
 // estimate with.
 const estimateOutputMode = "estimate"
+
+// maxEstimateOutputBytes bounds the estimate's stdout. The document is a few
+// kilobytes; one that is not has stopped being an estimate.
+const maxEstimateOutputBytes = 1 << 20
 
 // estimateKillGrace bounds how long a killed estimate's output is drained.
 const estimateKillGrace = time.Second
@@ -137,74 +142,82 @@ func newCLIProcessEstimateExecutor(projectRoot string) estimateExecutor {
 		}
 		cmd.WaitDelay = estimateKillGrace
 
-		var stdout, stderr tailBuffer
-
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-
-		err = cmd.Run()
-		estimate, message := readEstimateOutput(stdout.Bytes())
-
-		if err != nil {
-			if message == "" {
-				message = childErrorMessage(nil, stderr.Bytes())
-			}
-
-			var exitErr *exec.ExitError
-			if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-				return nil, domainerrors.New(domainerrors.KindUserInput, "httpv1.estimateExecutor", message, err)
-			}
-
-			if message == "" {
-				message = err.Error()
-			}
-
-			return nil, fmt.Errorf("estimate run: %s", message)
-		}
-
-		if estimate == nil {
-			return nil, stderrors.New("estimate run: the run command printed no estimate")
-		}
-
-		return estimate, nil
+		return awaitEstimateProcess(cmd)
 	}
 }
 
-// readEstimateOutput reads the child's stdout, which under --json is a
-// stream of JSON values: the structured log records, and the command's own
-// output. It returns the estimate from the output that carries one, and the
-// error the last log record that has one reported.
-func readEstimateOutput(stdout []byte) (json.RawMessage, string) {
-	var (
-		estimate json.RawMessage
-		message  string
-	)
+// awaitEstimateProcess runs a prepared `aconiq run --estimate --json` child to
+// its end and returns the estimate it printed.
+//
+// The two streams are read for different things. stdout is the command's
+// result and nothing else — one JSON document — so it is kept from the front,
+// up to maxEstimateOutputBytes, and decoded whole. stderr is the command's log,
+// whose last record names the error when the child fails, so it is kept from
+// the back.
+func awaitEstimateProcess(cmd *exec.Cmd) (json.RawMessage, error) {
+	stdout := headBuffer{limit: maxEstimateOutputBytes}
 
-	// The command output is indented over many lines; the log records are one
-	// line each. A decoder over the whole stream reads both.
-	decoder := json.NewDecoder(bytes.NewReader(stdout))
+	var stderr tailBuffer
 
-	for {
-		var value struct {
-			Mode     string          `json:"mode"`
-			Estimate json.RawMessage `json:"estimate"`
-			Error    string          `json:"error"`
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		message := childErrorMessage(stderr.Bytes())
+
+		var exitErr *exec.ExitError
+		if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+			return nil, domainerrors.New(domainerrors.KindUserInput, "httpv1.estimateExecutor", message, err)
 		}
 
-		if decoder.Decode(&value) != nil {
-			break
+		if message == "" {
+			message = err.Error()
 		}
 
-		if value.Mode == estimateOutputMode && len(value.Estimate) > 0 {
-			estimate = value.Estimate
-		}
-
-		if value.Error != "" {
-			message = value.Error
-		}
+		return nil, fmt.Errorf("estimate run: %s", message)
 	}
 
-	return estimate, message
+	output, overflowed := stdout.Bytes()
+	if overflowed {
+		return nil, fmt.Errorf("estimate run: the run command printed more than %d bytes", maxEstimateOutputBytes)
+	}
+
+	estimate, err := readEstimateOutput(output)
+	if err != nil {
+		return nil, fmt.Errorf("estimate run: %w", err)
+	}
+
+	return estimate, nil
+}
+
+// readEstimateOutput decodes the child's stdout — under --json exactly one
+// JSON document, the command's output — and returns the estimate it carries.
+// Anything else on stdout, a second value or a stray line, is refused rather
+// than skipped: it would mean the stream is no longer only the result.
+func readEstimateOutput(stdout []byte) (json.RawMessage, error) {
+	var output struct {
+		Mode     string          `json:"mode"`
+		Estimate json.RawMessage `json:"estimate"`
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(stdout))
+
+	err := decoder.Decode(&output)
+	if err != nil {
+		return nil, fmt.Errorf("decode the run command's output: %w", err)
+	}
+
+	_, err = decoder.Token()
+	if !stderrors.Is(err, io.EOF) {
+		return nil, stderrors.New("the run command printed more than one JSON document")
+	}
+
+	if output.Mode != estimateOutputMode || len(output.Estimate) == 0 {
+		return nil, stderrors.New("the run command printed no estimate")
+	}
+
+	return output.Estimate, nil
 }
 
 func (h Handler) handleRunEstimate(w http.ResponseWriter, r *http.Request) {

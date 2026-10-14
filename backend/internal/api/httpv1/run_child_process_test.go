@@ -1,0 +1,138 @@
+package httpv1
+
+import (
+	"encoding/json"
+	stderrors "errors"
+	"os"
+	"os/exec"
+	"testing"
+
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+)
+
+// childModeEnv selects what TestHelperProcessCLIChild does when it is started
+// as a child. Unset, it is skipped like any other test.
+const childModeEnv = "ACONIQ_HTTPV1_CLI_CHILD"
+
+// childRefusal is the error the refusing children log, quotes and all.
+const childRefusal = `cli.loadValidatedModel: model file not found: open "model.geojson": no such file or directory`
+
+// TestHelperProcessCLIChild is not a test: it is the child the tests below
+// start, standing in for `aconiq run` with each of its stream layouts — log
+// records on stderr, the command's output on stdout.
+func TestHelperProcessCLIChild(t *testing.T) {
+	mode := os.Getenv(childModeEnv)
+	if mode == "" {
+		t.Skip("helper process for the run and estimate child-process tests")
+	}
+
+	quoted := quoteJSON(childRefusal)
+
+	switch mode {
+	case "estimate":
+		// What `aconiq --json run --estimate` writes: JSON records on
+		// stderr, before and after the indented output on stdout.
+		writeChild(os.Stderr, `{"time":"t","level":"INFO","msg":"command started","command":"aconiq run"}`+"\n")
+		writeChild(os.Stdout, "{\n  \"command\": \"run\",\n  \"mode\": \"estimate\",\n"+
+			"  \"estimate\": {\n    \"available\": true,\n    \"standard_id\": \"rls19-road\"\n  }\n}\n")
+		writeChild(os.Stderr, `{"time":"t","level":"INFO","msg":"command finished","status":"ok"}`+"\n")
+		os.Exit(0)
+	case "estimate-refused":
+		writeChild(os.Stderr, `{"time":"t","level":"INFO","msg":"command started"}`+"\n")
+		writeChild(os.Stderr, `{"time":"t","level":"ERROR","msg":"command finished","status":"error","error":`+quoted+"}\n")
+		writeChild(os.Stderr, `{"time":"t","level":"ERROR","msg":"command failed","user_error":true,"error":`+quoted+"}\n")
+		os.Exit(2)
+	case "run-refused":
+		// What `aconiq run` writes without --json: text records on stderr,
+		// the evidence-tier banner on stdout.
+		writeChild(os.Stderr, `time=t level=INFO msg="command started" command="aconiq run" args=[]`+"\n")
+		writeChild(os.Stdout, "Evidence tier: normative\n")
+		writeChild(os.Stderr, `time=t level=ERROR msg="command finished" status=error error=`+quoted+"\n")
+		writeChild(os.Stderr, `time=t level=ERROR msg="command failed" user_error=true error=`+quoted+"\n")
+		os.Exit(2)
+	}
+
+	os.Exit(1)
+}
+
+func writeChild(stream *os.File, text string) {
+	_, _ = stream.WriteString(text)
+}
+
+// quoteJSON quotes a string the way both slog handlers quote one that needs
+// it: a JSON string is also a valid Go-quoted text attribute for the
+// characters used here.
+func quoteJSON(value string) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+
+	return string(encoded)
+}
+
+// newCLIChild prepares this test binary as a run child in the given mode, the
+// way the executors prepare `aconiq run`.
+func newCLIChild(t *testing.T, mode string) *exec.Cmd {
+	t.Helper()
+
+	cmd := newRunProcess(t.Context(), os.Args[0], []string{"-test.run=^TestHelperProcessCLIChild$"})
+
+	cmd.Env = append(os.Environ(), childModeEnv+"="+mode)
+
+	return cmd
+}
+
+// assertRefusalInTheCommandsWords checks err is a user error whose message is
+// the child's own, unquoted — what the API answers a refused run with.
+func assertRefusalInTheCommandsWords(t *testing.T, err error) {
+	t.Helper()
+
+	var appErr *domainerrors.AppError
+	if !stderrors.As(err, &appErr) {
+		t.Fatalf("error %v is not an AppError", err)
+	}
+
+	if appErr.Kind != domainerrors.KindUserInput || appErr.Msg != childRefusal {
+		t.Fatalf("kind %q, message %q; want a user error saying %q", appErr.Kind, appErr.Msg, childRefusal)
+	}
+}
+
+// A child that logs to stderr and prints the estimate to stdout is answered
+// with the estimate, decoded from stdout alone.
+func TestEstimateProcessReadsTheEstimateFromStdoutAndLogsFromStderr(t *testing.T) {
+	t.Parallel()
+
+	estimate, err := awaitEstimateProcess(newCLIChild(t, "estimate"))
+	if err != nil {
+		t.Fatalf("estimate: %v", err)
+	}
+
+	var body struct {
+		Available  bool   `json:"available"`
+		StandardID string `json:"standard_id"`
+	}
+
+	err = json.Unmarshal(estimate, &body)
+	if err != nil || !body.Available || body.StandardID != "rls19-road" {
+		t.Fatalf("estimate %s (%v)", estimate, err)
+	}
+}
+
+// A refused estimate is answered in the run command's words, read from the
+// JSON records on its stderr.
+func TestEstimateProcessAnswersARefusalInTheCommandsWords(t *testing.T) {
+	t.Parallel()
+
+	_, err := awaitEstimateProcess(newCLIChild(t, "estimate-refused"))
+	assertRefusalInTheCommandsWords(t, err)
+}
+
+// A refused run is answered in the run command's words, read from the text
+// records on its stderr — the failure reason the run dialog shows.
+func TestRunProcessAnswersARefusalInTheCommandsWords(t *testing.T) {
+	t.Parallel()
+
+	err := awaitRunProcess(newCLIChild(t, "run-refused"))
+	assertRefusalInTheCommandsWords(t, err)
+}

@@ -1,6 +1,7 @@
 package logging_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -13,55 +14,14 @@ import (
 	"github.com/aconiq/backend/internal/app/logging"
 )
 
-// captureStdout runs fn with os.Stdout replaced by a pipe and returns what fn
-// wrote to it.
-//
-// The handlers this package builds bind os.Stdout at construction time, so the
-// swap has to be in place before New is called — which is why fn takes the
-// whole construct-and-log sequence rather than just the logging part.
-//
-// Tests using this cannot run in parallel: os.Stdout is process-wide.
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
+// captureLog runs fn with a buffer for the logger it builds to write to, and
+// returns what was written.
+func captureLog(fn func(w io.Writer)) string {
+	var buf bytes.Buffer
 
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("create pipe: %v", err)
-	}
+	fn(&buf)
 
-	original := os.Stdout
-	os.Stdout = writer
-
-	// Drain concurrently so a log line larger than the pipe buffer cannot
-	// deadlock the test.
-	captured := make(chan string, 1)
-
-	go func() {
-		data, readErr := io.ReadAll(reader)
-		if readErr != nil {
-			captured <- ""
-
-			return
-		}
-
-		captured <- string(data)
-	}()
-
-	func() {
-		defer func() {
-			os.Stdout = original
-
-			_ = writer.Close()
-		}()
-
-		fn()
-	}()
-
-	out := <-captured
-
-	_ = reader.Close()
-
-	return out
+	return buf.String()
 }
 
 // decodeJSONLines parses every non-empty line of out as a JSON log record.
@@ -92,8 +52,8 @@ func decodeJSONLines(t *testing.T, out string) []map[string]any {
 // piping the log into jq must get one JSON object per record, and a caller
 // reading it must get slog's key=value text.
 func TestNewSelectsHandlerByJSONFlag(t *testing.T) {
-	jsonOut := captureStdout(t, func() {
-		logging.New(slog.LevelInfo, true).Info("hello", slog.String("where", "there"))
+	jsonOut := captureLog(func(w io.Writer) {
+		logging.New(w, slog.LevelInfo, true).Info("hello", slog.String("where", "there"))
 	})
 
 	records := decodeJSONLines(t, jsonOut)
@@ -109,8 +69,8 @@ func TestNewSelectsHandlerByJSONFlag(t *testing.T) {
 		t.Fatalf("JSON record level = %v, want INFO", records[0]["level"])
 	}
 
-	textOut := captureStdout(t, func() {
-		logging.New(slog.LevelInfo, false).Info("hello", slog.String("where", "there"))
+	textOut := captureLog(func(w io.Writer) {
+		logging.New(w, slog.LevelInfo, false).Info("hello", slog.String("where", "there"))
 	})
 
 	if strings.HasPrefix(strings.TrimSpace(textOut), "{") {
@@ -136,8 +96,8 @@ func TestNewHonoursTheLevelThreshold(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			out := captureStdout(t, func() {
-				logger := logging.New(testCase.level, true)
+			out := captureLog(func(w io.Writer) {
+				logger := logging.New(w, testCase.level, true)
 				logger.Debug("quiet")
 				logger.Info("loud")
 			})
@@ -175,8 +135,8 @@ var runIDPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 func TestBeginAndEndBracketACommandWithOneRunID(t *testing.T) {
 	var run logging.CommandRun
 
-	out := captureStdout(t, func() {
-		run = logging.Begin(logging.New(slog.LevelInfo, true), "run", []string{"--standard", "rls19-road"})
+	out := captureLog(func(w io.Writer) {
+		run = logging.Begin(logging.New(w, slog.LevelInfo, true), "run", []string{"--standard", "rls19-road"})
 		run.End(nil)
 	})
 
@@ -233,8 +193,8 @@ func TestBeginAndEndBracketACommandWithOneRunID(t *testing.T) {
 // A failing command must be visible to a log consumer filtering on level, and
 // must carry the reason rather than just "error".
 func TestEndReportsFailureAtErrorLevelWithTheCause(t *testing.T) {
-	out := captureStdout(t, func() {
-		run := logging.Begin(logging.New(slog.LevelInfo, true), "export", nil)
+	out := captureLog(func(w io.Writer) {
+		run := logging.Begin(logging.New(w, slog.LevelInfo, true), "export", nil)
 		run.End(os.ErrPermission)
 	})
 
@@ -266,8 +226,8 @@ func TestBeginStampsStartedAtInUTC(t *testing.T) {
 
 	before := time.Now().UTC()
 
-	out := captureStdout(t, func() {
-		run = logging.Begin(logging.New(slog.LevelInfo, true), "status", nil)
+	out := captureLog(func(w io.Writer) {
+		run = logging.Begin(logging.New(w, slog.LevelInfo, true), "status", nil)
 	})
 
 	after := time.Now().UTC()
@@ -305,8 +265,8 @@ func TestBeginStampsStartedAtInUTC(t *testing.T) {
 func TestEndReportsAMeasuredDuration(t *testing.T) {
 	const slept = 5 * time.Millisecond
 
-	out := captureStdout(t, func() {
-		run := logging.Begin(logging.New(slog.LevelInfo, true), "bench", nil)
+	out := captureLog(func(w io.Writer) {
+		run := logging.Begin(logging.New(w, slog.LevelInfo, true), "bench", nil)
 
 		time.Sleep(slept)
 
@@ -335,8 +295,8 @@ func TestBeginMintsADistinctRunIDPerCommand(t *testing.T) {
 
 	seen := make(map[string]struct{}, runs)
 
-	captureStdout(t, func() {
-		logger := logging.New(slog.LevelInfo, true)
+	captureLog(func(w io.Writer) {
+		logger := logging.New(w, slog.LevelInfo, true)
 		for range runs {
 			seen[logging.Begin(logger, "status", nil).RunID] = struct{}{}
 		}

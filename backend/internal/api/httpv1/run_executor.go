@@ -26,31 +26,38 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 			return fmt.Errorf("resolve executable: %w", err)
 		}
 
-		cmd := newRunProcess(ctx, executable, runCommandArgs(projectRoot, runID, req))
+		return awaitRunProcess(newRunProcess(ctx, executable, runCommandArgs(projectRoot, runID, req)))
+	}
+}
 
-		var stdout, stderr tailBuffer
+// awaitRunProcess runs a prepared `aconiq run` child to its end and, when it
+// fails, answers with what it said was wrong.
+//
+// Only stderr is kept. The run command logs there, and a failed run's last
+// record carries its error; stdout is the command's result, which the server
+// reads from the project the child writes rather than from the child.
+func awaitRunProcess(cmd *exec.Cmd) error {
+	var stderr tailBuffer
 
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
+	cmd.Stderr = &stderr
 
-		err = cmd.Run()
-		if err != nil {
-			message := childErrorMessage(stdout.Bytes(), stderr.Bytes())
-
-			var exitErr *exec.ExitError
-			if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-				return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", message, err)
-			}
-
-			if message == "" {
-				message = err.Error()
-			}
-
-			return fmt.Errorf("execute run command: %s", message)
-		}
-
+	err := cmd.Run()
+	if err == nil {
 		return nil
 	}
+
+	message := childErrorMessage(stderr.Bytes())
+
+	var exitErr *exec.ExitError
+	if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+		return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", message, err)
+	}
+
+	if message == "" {
+		message = err.Error()
+	}
+
+	return fmt.Errorf("execute run command: %s", message)
 }
 
 // runInterruptGrace is how long an interrupted `aconiq run` child has to record
