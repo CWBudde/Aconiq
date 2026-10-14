@@ -11,7 +11,7 @@ import type {
   ModelSaveResponse,
 } from "./client";
 import { CLIENT_HEADER_NAME } from "./client";
-import { httpBackend } from "./http-backend";
+import { httpBackend, parseProjectStatusEvent } from "./http-backend";
 import { apiURL } from "./mode";
 
 /**
@@ -87,7 +87,78 @@ describe("httpBackend capabilities", () => {
       canCancelRunningRun: true,
       // The server downloads, parses and caches the LoD2 tiles.
       canImportLGLN: true,
+      // `GET /api/v1/events`, read with fetch so the token header goes too.
+      streamsProjectEvents: true,
     });
+  });
+});
+
+describe("httpBackend.subscribeProjectEvents", () => {
+  it("reads /api/v1/events with the headers every request carries, and passes on project_status only", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            "retry: 3000\n\n" +
+              'event: heartbeat\ndata: {"time":"2026-01-01T00:00:00Z"}\n\n' +
+              "event: project_status\ndata: not json\n\n" +
+              'event: project_status\ndata: {"time":"t","project_available":false,"error":{"code":"not_found","message":"no project"}}\n\n',
+          ),
+        );
+      },
+    });
+    const fetchMock = stubFetch(
+      new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const statuses: unknown[] = [];
+    const connection: boolean[] = [];
+    const close = httpBackend.subscribeProjectEvents({
+      onProjectStatus: (event) => statuses.push(event),
+      onConnectionChange: (connected) => connection.push(connected),
+    });
+    await vi.waitFor(() => {
+      expect(statuses).toHaveLength(1);
+    });
+    close();
+
+    const [url, init] = requestOf(fetchMock);
+    // The token, when there is one, travels in a header like everywhere
+    // else — never in the URL, where logs and history would keep it.
+    expect(url).toBe(apiURL("/api/v1/events"));
+    expect(headersOf(init)[CLIENT_HEADER_NAME]).toBe("aconiq-web");
+    expect(headersOf(init).Accept).toBe("text/event-stream");
+    expect(statuses).toEqual([
+      {
+        time: "t",
+        project_available: false,
+        error: { code: "not_found", message: "no project" },
+      },
+    ]);
+    expect(connection[0]).toBe(true);
+  });
+});
+
+describe("parseProjectStatusEvent", () => {
+  it("accepts both shapes the server sends and drops anything else", () => {
+    expect(
+      parseProjectStatusEvent(
+        '{"time":"t","project_available":true,"project":{"project_id":"p"}}',
+      ),
+    ).toEqual({
+      time: "t",
+      project_available: true,
+      project: { project_id: "p" },
+    });
+    expect(parseProjectStatusEvent("not json")).toBeNull();
+    expect(parseProjectStatusEvent("null")).toBeNull();
+    expect(parseProjectStatusEvent('{"project_available":true}')).toBeNull();
+    expect(parseProjectStatusEvent('{"project_available":false}')).toBeNull();
+    expect(parseProjectStatusEvent('{"time":"t"}')).toBeNull();
   });
 });
 

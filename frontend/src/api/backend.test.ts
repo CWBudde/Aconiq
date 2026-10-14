@@ -33,6 +33,23 @@ describe("backend capabilities", () => {
     expect(httpBackend.capabilities.runsChangeExternally).toBe(true);
   });
 
+  it("only the API has an event stream, and browser mode's subscription is inert", () => {
+    expect(httpBackend.capabilities.streamsProjectEvents).toBe(true);
+    expect(browserBackend.capabilities.streamsProjectEvents).toBe(false);
+
+    // Through the interface, which is how the hooks reach it.
+    const browser: Backend = browserBackend;
+    const close = browser.subscribeProjectEvents({
+      onProjectStatus: () => {
+        throw new Error("browser mode has nothing to say");
+      },
+      onConnectionChange: () => {
+        throw new Error("browser mode has no connection");
+      },
+    });
+    close();
+  });
+
   it("only the API can load LGLN buildings, and browser mode says why", async () => {
     expect(httpBackend.capabilities.canImportLGLN).toBe(true);
     expect(browserBackend.capabilities.canImportLGLN).toBe(false);

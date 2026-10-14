@@ -12,7 +12,7 @@ import type { components } from "./schema";
  * `components["schemas"]["RunSummary"]` — and so that the parts of the contract
  * the document *cannot* state have one place to be stated in.
  *
- * There are four of those, each marked below:
+ * There are five of those, each marked below:
  *
  *   1. the two model endpoints, whose GeoJSON body the spec declares as a bare
  *      `object`;
@@ -22,7 +22,10 @@ import type { components } from "./schema";
  *   3. the request headers, which are transport and not a schema at all;
  *   4. the LGLN building import, whose response is a GeoJSON
  *      FeatureCollection with three members beside `features` — the same
- *      reason as (1).
+ *      reason as (1);
+ *   5. the event stream (`GET /api/v1/events`), which the spec declares as a
+ *      bare `text/event-stream` string: the JSON each event carries is stated
+ *      here.
  *
  * Anything else added here is drift waiting to happen: put it in `openapi.go`
  * and regenerate.
@@ -293,3 +296,30 @@ export interface LglnImportResponse extends GeoJSONFeatureCollection {
   /** Why objects were left out, keyed by reason, with how many. */
   skipped: Record<string, number>;
 }
+
+/* -------------------------------------------------------------------------
+ * (5) The event stream.
+ *
+ * `GET /api/v1/events` is `text/event-stream`, which the document can only
+ * declare as a string. It sends two named events: `heartbeat` every couple of
+ * seconds, carrying the server time and nothing a client needs, and
+ * `project_status` whenever the project's status has changed since the last
+ * one — a running run's progress included. Its `project` member is the
+ * document `GET /api/v1/project/status` answers with: one builder serves both
+ * (`Handler.projectStatus`). Mirrors `buildProjectStatusStreamEvent` in
+ * `backend/internal/api/httpv1/events.go`.
+ * ---------------------------------------------------------------------- */
+
+/** Data of a `project_status` event. */
+export type ProjectStatusEvent =
+  | {
+      time: string;
+      project_available: true;
+      project: ProjectStatusResponse;
+    }
+  | {
+      time: string;
+      project_available: false;
+      /** Why the status could not be read — `not_found` when there is no project. */
+      error: APIError;
+    };

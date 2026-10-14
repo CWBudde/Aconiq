@@ -252,14 +252,15 @@ export function RunDetail({
           {m.section_progress()}
         </SectionHeading>
         {/* While the server computes the run, how far it has got. It comes
-            with the run itself, from the polled list, so a page reloaded in
+            with the run itself, in the runs list — pushed there by the event
+            stream while it is up, polled otherwise — so a page reloaded in
             the middle of a run picks the bar up where it is: there is nothing
             to reattach to but the run's id.
 
             A run with no report shows a plain running label, not the bar's
             "Starting…": the row exists, so the run has started, and a
-            standard that reports no progress (Schall 03, the scaffolds) would
-            otherwise claim to be starting for its whole run. */}
+            standard that reports no progress (the scaffolds, beb-exposure)
+            would otherwise claim to be starting for its whole run. */}
         {active ? (
           progress === null ? (
             <p

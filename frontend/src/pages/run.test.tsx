@@ -108,6 +108,7 @@ vi.mock("@/api/backend", () => ({
         // ...and the API stops a run it is computing from the run's panel.
         canCancelRunningRun: state.runsAgainstSavedModel,
         canImportLGLN: state.runsAgainstSavedModel,
+        streamsProjectEvents: state.runsAgainstSavedModel,
       };
     },
   },
@@ -1121,7 +1122,7 @@ describe("RunPage background run", () => {
 
   it("says the run is running, not starting, while it has no report", () => {
     // The row exists, so the run has started; a standard that reports no
-    // progress (Schall 03, the scaffolds) would otherwise read "Starting…"
+    // progress (the scaffolds, beb-exposure) would otherwise read "Starting…"
     // for its whole run.
     showReloadedPage(runningRun());
 

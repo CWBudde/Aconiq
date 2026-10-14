@@ -10,8 +10,9 @@ import { formatEta } from "@/run/run-progress";
  * Two places draw it. The run dialog, while browser mode's `startRun` is
  * pending — there the reports come from the kernel, several a second. And the
  * run's own panel, while the API computes it in the background — there they
- * come from the run's `progress`, polled with the run list, about once a
- * second at most and with an estimate of the time left.
+ * come from the run's `progress` in the run list, pushed by the event stream
+ * or polled when it is down, about once every two seconds at most and with an
+ * estimate of the time left.
  *
  * What is left on the label is the stretch before the receiver count is even
  * known: spawning the worker or the process, loading and projecting the model,

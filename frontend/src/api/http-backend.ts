@@ -19,11 +19,13 @@ import type {
   LglnImportResponse,
   ModelResponse,
   ModelSaveResponse,
+  ProjectStatusEvent,
   ProjectStatusResponse,
   RunLog,
   RunSummary,
   StandardDescriptor,
 } from "./client";
+import { openEventStream } from "./event-stream";
 import { apiURL } from "./mode";
 import type { GeoJSONFeatureCollection } from "@/model/types";
 import type { TransformResponse } from "@/wasm/types";
@@ -89,6 +91,36 @@ export function buildCreateRunRequest(spec: RunSpec): CreateRunRequest {
   };
 }
 
+/**
+ * The data of a `project_status` event, or `null` for one that is not JSON or
+ * not the shape the server sends. A malformed event is dropped rather than
+ * thrown: the stream is an accelerator for what the runs list would poll
+ * anyway, and one bad frame must not take it down.
+ */
+export function parseProjectStatusEvent(
+  data: string,
+): ProjectStatusEvent | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (record.project_available === true) {
+    return typeof record.project === "object" && record.project !== null
+      ? (value as ProjectStatusEvent)
+      : null;
+  }
+  if (record.project_available === false) {
+    return typeof record.error === "object" && record.error !== null
+      ? (value as ProjectStatusEvent)
+      : null;
+  }
+  return null;
+}
+
 export const httpBackend: Backend = {
   capabilities: {
     kind: "http",
@@ -110,6 +142,8 @@ export const httpBackend: Backend = {
     canCancelRunningRun: true,
     // `POST /api/v1/import/lgln` downloads, parses and caches the tiles.
     canImportLGLN: true,
+    // `GET /api/v1/events`, read with `fetch` so the token header goes with it.
+    streamsProjectEvents: true,
   },
 
   getHealth() {
@@ -297,6 +331,25 @@ export const httpBackend: Backend = {
     // rather than in process. The frontend grows no second transverse-Mercator
     // implementation and cannot resolve a zone the CLI would not.
     return postJSON<TransformResponse>("/api/v1/transform", req);
+  },
+
+  subscribeProjectEvents(listener) {
+    return openEventStream(
+      {
+        url: apiURL("/api/v1/events"),
+        // The headers every request carries — the token among them, which is
+        // the reason this is not an `EventSource` (see `event-stream.ts`).
+        headers: apiHeaders({ Accept: "text/event-stream" }),
+      },
+      {
+        onEvent(event) {
+          if (event.event !== "project_status") return;
+          const status = parseProjectStatusEvent(event.data);
+          if (status !== null) listener.onProjectStatus(status);
+        },
+        onConnectionChange: listener.onConnectionChange,
+      },
+    );
   },
 
   async saveModel(req) {

@@ -2,8 +2,8 @@ import { createElement, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelSaveResult, RunSpec } from "./backend";
-import type { RunLog, RunSummary } from "./client";
+import type { ModelSaveResult, ProjectEventListener, RunSpec } from "./backend";
+import type { LastRunStatus, RunLog, RunSummary } from "./client";
 import { buildCreateRunRequest } from "./http-backend";
 import {
   useCancelRun,
@@ -24,6 +24,7 @@ const saveState = vi.hoisted(() => ({
 
 const backendState = vi.hoisted(() => ({
   runsChangeExternally: true,
+  streamsProjectEvents: false,
   runsAreCancellable: false,
   runs: [] as RunSummary[],
   log: { run_id: "", lines: [] } as RunLog,
@@ -59,6 +60,17 @@ const getRunLog = vi.hoisted(() =>
   ),
 );
 
+/**
+ * The event stream as the hooks see it: the listener the one open
+ * subscription was handed, or `null` while none is open. A test plays the
+ * server by calling it.
+ */
+const eventStream = vi.hoisted(() => ({
+  listener: null as ProjectEventListener | null,
+  opened: 0,
+  closed: 0,
+}));
+
 vi.mock("./backend", () => ({
   backend: {
     capabilities: {
@@ -68,9 +80,20 @@ vi.mock("./backend", () => ({
       get runsChangeExternally() {
         return backendState.runsChangeExternally;
       },
+      get streamsProjectEvents() {
+        return backendState.streamsProjectEvents;
+      },
       get runsAreCancellable() {
         return backendState.runsAreCancellable;
       },
+    },
+    subscribeProjectEvents: (listener: ProjectEventListener) => {
+      eventStream.listener = listener;
+      eventStream.opened++;
+      return () => {
+        eventStream.listener = null;
+        eventStream.closed++;
+      };
     },
     saveModel: () => saveState.respond(),
     getProjectStatus: () => Promise.resolve(null),
@@ -293,6 +316,154 @@ describe("useRuns", () => {
 
     await advance(30_000);
     expect(getRuns).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useRuns with the event stream", () => {
+  const progress = (done: number) => ({
+    done,
+    total: 10,
+    started_at: "2026-01-01T00:00:00Z",
+    updated_at: `2026-01-01T00:00:${String(done).padStart(2, "0")}Z`,
+  });
+
+  /** Plays the server: one `project_status` event naming `lastRun`. */
+  async function push(lastRun: Partial<LastRunStatus> & { id: string }) {
+    await act(async () => {
+      eventStream.listener?.onProjectStatus({
+        time: "2026-01-01T00:00:00Z",
+        project_available: true,
+        project: {
+          project_id: "p",
+          name: "p",
+          project_path: "/p",
+          manifest_version: 1,
+          crs: "EPSG:25832",
+          scenario_count: 1,
+          run_count: 1,
+          last_run: {
+            status: "running",
+            standard_id: "schall03",
+            version: "2012",
+            started_at: "2026-01-01T00:00:00Z",
+            finished_at: "",
+            ...lastRun,
+          },
+        },
+      });
+      await vi.advanceTimersByTimeAsync(1);
+    });
+  }
+
+  async function setConnected(connected: boolean) {
+    await act(async () => {
+      eventStream.listener?.onConnectionChange(connected);
+      await vi.advanceTimersByTimeAsync(1);
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    queryClient.clear();
+    getRuns.mockClear();
+    backendState.runsChangeExternally = true;
+    backendState.streamsProjectEvents = true;
+    backendState.runs = [];
+    eventStream.listener = null;
+    eventStream.opened = 0;
+    eventStream.closed = 0;
+  });
+
+  afterEach(() => {
+    backendState.streamsProjectEvents = false;
+    vi.useRealTimers();
+  });
+
+  it("opens one stream for every list on screen and closes it with the last", async () => {
+    const first = renderHook(() => useRuns(), { wrapper });
+    const second = renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    expect(eventStream.opened).toBe(1);
+
+    first.unmount();
+    expect(eventStream.closed).toBe(0);
+    second.unmount();
+    expect(eventStream.closed).toBe(1);
+  });
+
+  it("opens none where the backend has no stream", async () => {
+    backendState.streamsProjectEvents = false;
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    expect(eventStream.opened).toBe(0);
+  });
+
+  it("moves a running run's progress by push, without a request", async () => {
+    backendState.runs = [
+      { ...runWithStatus("running"), progress: progress(1) },
+    ];
+    const hook = renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+
+    await setConnected(true);
+    await push({ id: "run-running", progress: progress(5) });
+
+    expect(hook.result.current.data?.[0]?.progress?.done).toBe(5);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+  });
+
+  it("polls at the idle rate while the stream carries the running run, and fast again the moment it drops", async () => {
+    backendState.runs = [
+      { ...runWithStatus("running"), progress: progress(1) },
+    ];
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    await setConnected(true);
+    await push({ id: "run-running", progress: progress(2) });
+
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(1);
+    await advance(13_000);
+    expect(getRuns).toHaveBeenCalledTimes(2);
+
+    // Dropped: the list is refetched at once, and polls fast from there.
+    await setConnected(false);
+    expect(getRuns).toHaveBeenCalledTimes(3);
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps polling fast for an active run the stream is not carrying", async () => {
+    backendState.runs = [
+      { ...runWithStatus("running"), id: "run-a", progress: progress(1) },
+      { ...runWithStatus("running"), id: "run-b", progress: progress(1) },
+    ];
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    await setConnected(true);
+    // The stream only ever names the last run.
+    await push({ id: "run-b", progress: progress(3) });
+
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(2);
+  });
+
+  it("refetches the list when the stream names a status the list does not hold", async () => {
+    backendState.runs = [runWithStatus("running")];
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    await setConnected(true);
+
+    // Settled: the summary now has artifacts and a finish time the event
+    // cannot carry, so the list is asked for them.
+    backendState.runs = [runWithStatus("completed")];
+    await push({ id: "run-running", status: "completed" });
+    expect(getRuns).toHaveBeenCalledTimes(2);
+
+    // And a run the list has never seen is fetched too.
+    await push({ id: "run-started-elsewhere" });
+    expect(getRuns).toHaveBeenCalledTimes(3);
   });
 });
 
