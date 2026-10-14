@@ -35,14 +35,18 @@ const LOG_STAGES: Array<{ key: string; pattern: RegExp; label: () => string }> =
     },
     {
       key: "receivers",
-      pattern: /receivers=\d+/,
+      // beb-exposure builds its facade receivers inside its compute and logs
+      // the buildings it builds them from instead.
+      pattern: /receivers=\d+|beb_buildings=\d+/,
       label: m.timeline_building_receivers,
     },
     {
       key: "compute",
-      // The engine's stage events, or the receiver-count progress lines the
-      // standards that walk receivers themselves (RLS-19, ISO 9613) write.
-      pattern: /stage=compute|computed \d+ of \d+ receivers/,
+      // The engine's stage events (dummy-freefield, and the one-line log of a
+      // browser-mode run), or the receiver-count line every other standard
+      // writes once it has counted every receiver. The first count is written
+      // as the walk starts, so it marks this step under way, not done.
+      pattern: /stage=compute|computed (\d+) of \1 receivers/,
       label: m.timeline_computing,
     },
     {

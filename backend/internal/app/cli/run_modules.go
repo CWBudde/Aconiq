@@ -176,9 +176,10 @@ type runModuleInput struct {
 	log          *runLog
 
 	// progress is the run's progress feed. A module whose compute can count
-	// receivers as it goes calls progress.start and hands progress.report to
-	// it; one that cannot leaves it alone, and its run writes no
-	// progress.json. Nil is valid and reports nothing.
+	// receivers as it goes hands progress.report to it, and may call
+	// progress.start first — a first report starts the feed by itself; one
+	// that cannot leaves it alone, and its run writes no progress.json. Nil is
+	// valid and reports nothing.
 	progress *runProgress
 
 	// projection is the CRS the model was moved into before anything read a

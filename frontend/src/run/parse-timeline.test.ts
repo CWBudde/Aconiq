@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { failureReason } from "./parse-timeline";
+import { failureReason, parseTimeline } from "./parse-timeline";
 
 describe("failureReason", () => {
   it("names the last cause before the closing line", () => {
@@ -36,5 +36,71 @@ describe("failureReason", () => {
   it("is null when the log names nothing", () => {
     expect(failureReason([])).toBeNull();
     expect(failureReason(["2026-10-13T22:15:08Z run failed"])).toBeNull();
+  });
+});
+
+describe("parseTimeline", () => {
+  const before = [
+    "2026-10-14T19:06:18Z run started",
+    "2026-10-14T19:06:18Z model=.noise/model/model.normalized.geojson",
+    "2026-10-14T19:06:19Z road_sources=2",
+    "2026-10-14T19:06:19Z receivers=230961 grid=501x461",
+  ];
+
+  const step = (lines: string[], index: number) =>
+    parseTimeline(lines, "running")[index];
+
+  // The first progress line is written as the walk starts, so it marks the
+  // compute step under way, not behind the run.
+  it("keeps the compute step active until the last receiver is counted", () => {
+    const computing = [
+      ...before,
+      "2026-10-14T19:06:19Z computed 0 of 230961 receivers",
+      "2026-10-14T19:06:20Z computed 53130 of 230961 receivers",
+    ];
+
+    expect(step(computing, 4)).toMatchObject({ done: false, active: true });
+    expect(step(computing, 5)).toMatchObject({ done: false, active: false });
+  });
+
+  it("marks the compute step done at the line that counts every receiver", () => {
+    const computed = [
+      ...before,
+      "2026-10-14T19:06:19Z computed 0 of 230961 receivers",
+      "2026-10-14T19:06:29Z computed 230961 of 230961 receivers",
+    ];
+
+    expect(step(computed, 4)).toMatchObject({
+      done: true,
+      timestamp: "2026-10-14T19:06:29Z",
+    });
+    expect(step(computed, 5)).toMatchObject({ done: false, active: true });
+  });
+
+  // "computed 2 of 12" ends in the same digits as a finished count would.
+  it("does not read a partial count as a finished one", () => {
+    const partial = [
+      ...before,
+      "2026-10-14T19:06:20Z computed 2 of 12 receivers",
+      "2026-10-14T19:06:20Z computed 12 of 120 receivers",
+    ];
+
+    expect(step(partial, 4)).toMatchObject({ done: false, active: true });
+  });
+});
+
+describe("parseTimeline, beb-exposure", () => {
+  it("reads beb-exposure's building count as its receivers step", () => {
+    const lines = [
+      "2026-10-14T19:04:21Z run started",
+      "2026-10-14T19:04:21Z model=.noise/model/model.normalized.geojson",
+      "2026-10-14T19:04:21Z beb_upstream_sources=1",
+      "2026-10-14T19:04:21Z beb_buildings=2",
+      "2026-10-14T19:04:21Z computed 0 of 2 receivers",
+    ];
+
+    const steps = parseTimeline(lines, "running");
+    expect(steps[3]).toMatchObject({ done: true });
+    expect(steps[4]).toMatchObject({ done: false, active: true });
   });
 });

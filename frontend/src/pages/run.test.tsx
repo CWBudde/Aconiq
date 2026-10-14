@@ -1121,9 +1121,9 @@ describe("RunPage background run", () => {
   });
 
   it("says the run is running, not starting, while it has no report", () => {
-    // The row exists, so the run has started; a standard that reports no
-    // progress (the scaffolds, beb-exposure) would otherwise read "Starting…"
-    // for its whole run.
+    // The row exists, so the run has started; a run that has not reported
+    // yet, or a standard that never does (dummy-freefield), would otherwise
+    // read "Starting…".
     showReloadedPage(runningRun());
 
     expect(screen.getByTestId("run-progress-running").textContent).toContain(
