@@ -412,7 +412,9 @@ func TestTerrainEntryPointsDelegateToTheKernel(t *testing.T) {
 		`aconiq.Set("clearTerrain"`,
 		"wasmkernel.LoadTerrain(",
 		"wasmkernel.ClearTerrain()",
-		"wasmkernel.ApplyTerrain(",
+		// Applies the kernel's terrain to every compute request; see
+		// PrepareComputeRequest, which a host test can reach.
+		"wasmkernel.PrepareComputeRequest(",
 	} {
 		if !strings.Contains(main, want) {
 			t.Errorf("cmd/wasm/main.go does not contain %q", want)

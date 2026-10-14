@@ -16,8 +16,15 @@ import (
 // one entry per polygon, its first ring the exterior and the rest holes, each
 // ring a list of [x, y] pairs. A MultiPolygon is passed as its parts. Both are
 // in the same metric CRS; the kernel has no way to check that, and does not.
+//
+// A grid run may name its points as the receiver grid instead (see
+// ReceiverGrid), and then the points are the grid's receivers in their order:
+// the same descriptor `rls19RoadGrid` takes, expanded by the same code, so the
+// mask and the run cannot place a cell differently. A request carries one or
+// the other.
 type FootprintMaskRequest struct {
 	Points     []float64        `json:"points"`
+	Grid       *ReceiverGrid    `json:"grid,omitempty"`
 	Footprints [][][][2]float64 `json:"footprints"`
 }
 
@@ -39,13 +46,9 @@ func MaskFootprints(input []byte) ([]byte, error) {
 		return nil, fmt.Errorf("invalid input JSON: %w", err)
 	}
 
-	if len(req.Points)%2 != 0 {
-		return nil, errors.New("maskFootprints: points must be interleaved x, y pairs")
-	}
-
-	points := make([]geo.Point2D, len(req.Points)/2)
-	for i := range points {
-		points[i] = geo.Point2D{X: req.Points[2*i], Y: req.Points[2*i+1]}
+	points, err := maskPoints(req)
+	if err != nil {
+		return nil, err
 	}
 
 	footprints := make([][][]geo.Point2D, len(req.Footprints))
@@ -75,4 +78,38 @@ func MaskFootprints(input []byte) ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+// maskPoints reads the points a mask request names, either interleaved or as
+// a receiver grid.
+func maskPoints(req FootprintMaskRequest) ([]geo.Point2D, error) {
+	if req.Grid != nil {
+		if len(req.Points) > 0 {
+			return nil, errors.New("maskFootprints: a request names its points either as a grid or as a list, not both")
+		}
+
+		if err := req.Grid.Validate(); err != nil {
+			return nil, fmt.Errorf("maskFootprints: %w", err)
+		}
+
+		receivers := req.Grid.Receivers()
+		points := make([]geo.Point2D, len(receivers))
+
+		for i, receiver := range receivers {
+			points[i] = receiver.Point
+		}
+
+		return points, nil
+	}
+
+	if len(req.Points)%2 != 0 {
+		return nil, errors.New("maskFootprints: points must be interleaved x, y pairs")
+	}
+
+	points := make([]geo.Point2D, len(req.Points)/2)
+	for i := range points {
+		points[i] = geo.Point2D{X: req.Points[2*i], Y: req.Points[2*i+1]}
+	}
+
+	return points, nil
 }
