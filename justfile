@@ -77,8 +77,10 @@ test-race:
 # Run all tests on an arm64 machine, leaving out only the comparisons against
 # goldens that hold amd64's bits. Go contracts `x*y + z` and `x*y - z` into one
 # fused instruction on arm64, and the stdlib's math assembly differs there, so
-# the run digests, the synthetic city's levels and the CI-safe acceptance suites
-# do not reproduce the goldens CI cut on amd64. The tests that make those
+# the run digests and the synthetic city's levels, which hold bits, do not
+# reproduce the goldens CI cut on amd64. (The CI-safe acceptance suites compare
+# within a tolerance and run in full: no geometric decision in them turns on a
+# rounding any more.) The tests that make those
 # comparisons call `golden.SkipAMD64Bits` and keep every other assertion; the
 # switch below is ignored on amd64. Every other test states a fact that holds on
 # any architecture — `TestGridReceiversAreUnfused` among them, which only bites
