@@ -466,6 +466,36 @@ describe("useRuns with the event stream", () => {
     expect(getRuns).toHaveBeenCalledTimes(4);
   });
 
+  it("slows the poll once the stream carries a running run that reports no progress", async () => {
+    backendState.runs = [runWithStatus("running")];
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    await setConnected(true);
+    // Nothing in the summary moves, so only the run being carried changed.
+    await push({ id: "run-running" });
+
+    const fetched = getRuns.mock.calls.length;
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(fetched);
+    await advance(13_000);
+    expect(getRuns).toHaveBeenCalledTimes(fetched + 1);
+  });
+
+  it("keeps polling fast for a run the stream says has settled until the list says so too", async () => {
+    backendState.runs = [runWithStatus("running")];
+    renderHook(() => useRuns(), { wrapper });
+    await advance(0);
+    await setConnected(true);
+    await push({ id: "run-running", progress: progress(2) });
+
+    // The refetch the settled event asks for still answers `running` — a
+    // stale or failed one would leave the same summary in the cache.
+    await push({ id: "run-running", status: "completed" });
+    const fetched = getRuns.mock.calls.length;
+    await advance(2_000);
+    expect(getRuns).toHaveBeenCalledTimes(fetched + 1);
+  });
+
   it("keeps polling fast for an active run the stream is not carrying", async () => {
     backendState.runs = [
       { ...runWithStatus("running"), id: "run-a", progress: progress(1) },

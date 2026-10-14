@@ -132,12 +132,22 @@ export function applyProjectStatusEvent(event: ProjectStatusEvent): void {
   if (!event.project_available) return;
 
   const lastRun = event.project.last_run;
-  lastRunId = lastRun?.id ?? null;
-  if (lastRun === undefined) return;
+  const carriedBefore = pushedRunId();
+  // Only an active run counts as carried. A settled one is fetched, and until
+  // that fetch lands — it may fail — the list still holds it as running and
+  // must keep polling fast for it.
+  lastRunId =
+    lastRun !== undefined && isActiveStatus(lastRun.status) ? lastRun.id : null;
+  // The runs list reads its poll interval off the carried run, but only when
+  // its own data changes; a refetch is what makes it read again.
+  const carriedChanged = pushedRunId() !== carriedBefore;
 
   const runs = queryClient.getQueryData<RunSummary[]>(queryKeys.runs.list());
   // Nobody holds the list, so there is nothing to keep current.
-  if (runs === undefined) return;
+  if (lastRun === undefined || runs === undefined) {
+    if (carriedChanged) invalidateRuns();
+    return;
+  }
 
   const known = runs.find((run) => run.id === lastRun.id);
   if (known?.status !== lastRun.status) {
@@ -145,7 +155,10 @@ export function applyProjectStatusEvent(event: ProjectStatusEvent): void {
     return;
   }
 
-  if (sameProgress(known.progress, lastRun.progress)) return;
+  if (sameProgress(known.progress, lastRun.progress)) {
+    if (carriedChanged) invalidateRuns();
+    return;
+  }
 
   queryClient.setQueryData<RunSummary[]>(
     queryKeys.runs.list(),
@@ -153,6 +166,10 @@ export function applyProjectStatusEvent(event: ProjectStatusEvent): void {
       run.id === lastRun.id ? withProgress(run, lastRun.progress) : run,
     ),
   );
+}
+
+function isActiveStatus(status: string): boolean {
+  return status === "pending" || status === "running";
 }
 
 function sameProgress(
