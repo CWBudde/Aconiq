@@ -186,7 +186,10 @@ export interface paths {
         /** List runs (most recent first) */
         get: operations["listRuns"];
         put?: never;
-        /** Create and execute a run */
+        /**
+         * Start a run
+         * @description Starts `aconiq run` under a run id the server mints, and answers `202` as soon as the run's row is in the manifest — normally within milliseconds, long before it has computed anything. The run is the server's, not the request's: closing the connection does not stop it. Poll `GET /api/v1/runs/{id}` (named in `Location`) for its status and progress, and stop it with `POST /api/v1/runs/{id}/cancel`. A run the command refuses before it creates a row — an unknown standard, a bad parameter — is still answered synchronously, with `400`.
+         */
         post: operations["createRun"];
         delete?: never;
         options?: never;
@@ -201,7 +204,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** One run, with its progress while it computes */
+        get: operations["getRun"];
         put?: never;
         post?: never;
         /**
@@ -209,6 +213,26 @@ export interface paths {
          * @description Removes the run from the manifest, drops every artifact ref belonging to it, and deletes `.noise/runs/{id}/`. Export bundles under `.noise/exports/` are deliberately kept on disk — a bundle may already have been delivered — and the ones whose refs were dropped are listed in `retained_paths`. A run that is still `pending` or `running` is refused: its directory is being written.
          */
         delete: operations["deleteRun"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a running run
+         * @description Interrupts the `aconiq run` process computing the run. It stops at its next check — before every Teilstück for `rls19-road`, between receivers for the other standards — and records the run as `failed`, with `run cancelled` in its log; a process still busy ten seconds later is killed and the server records the same. The answer comes before either, so the run usually still reads `running` in it — poll `GET /api/v1/runs/{id}` for the end. Only a run this server started can be stopped here.
+         */
+        post: operations["cancelRun"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -417,6 +441,7 @@ export interface components {
             finished_at: string;
             id: string;
             profile?: string;
+            progress?: components["schemas"]["RunProgress"];
             standard_id: string;
             /** Format: date-time */
             started_at: string;
@@ -497,6 +522,25 @@ export interface components {
             lines: string[];
             run_id: string;
         };
+        /** @description How far a run's compute has got, as the process computing it last reported — at most once a second, and always at the first and the last receiver. Present only while the run is `pending` or `running` and its standard reports progress (today `rls19-road` and `iso9613`). Absent means not known, never nothing done. */
+        RunProgress: {
+            /** @description Receivers computed so far */
+            done: number;
+            /** @description Seconds left at the rate so far: elapsed / done * (total - done). Absent until a receiver has completed. A straight-line estimate, so it is only as good as receivers are alike in cost. */
+            eta_seconds?: number;
+            /**
+             * Format: date-time
+             * @description When the receiver walk began, after the model was loaded and the scene prepared
+             */
+            started_at: string;
+            /** @description Receivers the run computes in total */
+            total: number;
+            /**
+             * Format: date-time
+             * @description When this report was written
+             */
+            updated_at: string;
+        };
         RunSummary: {
             artifacts: components["schemas"]["ArtifactRef"][];
             /**
@@ -509,6 +553,7 @@ export interface components {
             id: string;
             log_path: string;
             profile?: string;
+            progress?: components["schemas"]["RunProgress"];
             receiver_mode?: string;
             receiver_set_id?: string;
             scenario_id: string;
@@ -1403,9 +1448,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Created run summary */
-            201: {
+            /** @description The run has started; its summary, normally with status `running` */
+            202: {
                 headers: {
+                    /** @description The run resource to poll */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1475,7 +1522,84 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Run execution failed */
+            /** @description The run could not be started (`run_failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The server is shutting down (`server_stopping`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run's summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSummary"];
+                };
+            };
+            /** @description Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing request arrived without the X-Aconiq-Client header (`client_header_required`), or the project manifest named a path outside the project root (`forbidden_path`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not initialized, or no run with this ID (`not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -1574,6 +1698,95 @@ export interface operations {
                 };
             };
             /** @description Failed to update the manifest or remove the run directory */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Any non-empty value. A CORS simple request cannot set a custom header, so requiring one forces a preflight, which the origin allowlist then answers or does not. The value is never read. */
+                "X-Aconiq-Client": string;
+            };
+            path: {
+                /** @description Run ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run has been told to stop; its summary as it stands */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSummary"];
+                };
+            };
+            /** @description Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing request arrived without the X-Aconiq-Client header (`client_header_required`), or the project manifest named a path outside the project root (`forbidden_path`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not initialized, or no run with this ID (`not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The run has already finished (`run_not_running`), or it is running in a process this server did not start (`run_not_owned`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body exceeds this endpoint's limit (`request_too_large`) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The project manifest could not be read; nothing was signalled */
             500: {
                 headers: {
                     [name: string]: unknown;

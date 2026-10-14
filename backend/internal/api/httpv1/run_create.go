@@ -1,6 +1,7 @@
 package httpv1
 
 import (
+	"context"
 	stderrors "errors"
 	"fmt"
 	"net/http"
@@ -8,8 +9,11 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/io/projectfs"
 )
 
 type createRunRequest struct {
@@ -46,36 +50,140 @@ func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	before, err := h.store.Load()
+	// A project that is not there is answered here, in its own envelope — 404
+	// not_found with the init hint, as every other route answers it — rather
+	// than by starting a child whose exit code 2 would come back as a 400
+	// with the child's stderr for a message.
+	_, err = h.store.Load()
 	if err != nil {
 		writeDomainError(w, err)
 		return
 	}
 
-	err = h.runExecutor(r.Context(), req)
-	if err != nil {
-		h.closeRunInterruptedBy(before)
-		writeRunCreateError(w, err)
+	// The server names the run, so that from here on it can find it, cancel it
+	// and close it by id rather than by working out which row is whose.
+	runID := projectfs.NewRunID()
 
-		return
-	}
-
-	after, err := h.store.Load()
-	if err != nil {
-		writeDomainError(w, err)
-		return
-	}
-
-	if len(after.Runs) <= len(before.Runs) {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "run_failed",
-			Message: "run execution completed without creating a run record",
+	run, started := h.runs.start(r.Context(), runID, func(ctx context.Context) error {
+		return h.runExecutor(ctx, runID, req)
+	}, h.settleRun)
+	if !started {
+		writeAPIError(w, http.StatusServiceUnavailable, apiError{
+			Code:    errorCodeServerStopping,
+			Message: "the server is shutting down and starts no new runs",
 		})
 
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, summarizeRun(after, after.Runs[len(after.Runs)-1]))
+	h.answerStartedRun(w, r, runID, run)
+}
+
+// answerStartedRun waits until the run's row is in the manifest and answers
+// 202 with it — or, if the child stops before it ever creates one, answers
+// with the reason it gave.
+//
+// # Why wait for the row at all
+//
+// A 202 names a run, and a client's next request is about that run: a GET
+// straight after must find it. The row is written by the child, in
+// projectfs.CreateRun, and the child's refusals all come before it — an
+// unknown standard, a bad parameter, a missing scenario — so waiting for the
+// row is also what keeps those refusals synchronous, as the 400s they were.
+//
+// # Why this does not write the row itself
+//
+// It would be the simpler way to have a row before answering, but the child
+// would then have to adopt a row it did not create, with the provenance and
+// run directory CreateRun writes beside it, and every refusal it makes up
+// front would leave a row behind for the server to clean up. So the server
+// only reads here, and the child stays the one writer of its own row; the
+// manifest lock (projectfs.Store.LockManifest) keeps that write from racing
+// any other.
+//
+// The run belongs to the server and not to this request: a client that goes
+// away while this waits leaves the run computing, which is the point.
+func (h Handler) answerStartedRun(w http.ResponseWriter, r *http.Request, runID string, run *supervisedRun) {
+	timeout := time.NewTimer(h.runStartTimeout)
+	defer timeout.Stop()
+
+	poll := time.NewTicker(runStartPollInterval)
+	defer poll.Stop()
+
+	for {
+		// A manifest that cannot be read is "not yet" here, and only here: the
+		// child is writing it, this is polling, and there is a deadline below.
+		proj, row, found, _ := h.findRun(runID)
+		if found {
+			w.Header().Set("Location", "/api/v1/runs/"+runID)
+			writeJSON(w, http.StatusAccepted, h.summarizeRunWithProgress(proj, row))
+
+			return
+		}
+
+		select {
+		case <-run.done:
+			// One last look: a run quick enough to create its row and finish
+			// between two polls is still a run, and is answered as one.
+			proj, row, found, loadErr := h.findRun(runID)
+			if found {
+				w.Header().Set("Location", "/api/v1/runs/"+runID)
+				writeJSON(w, http.StatusAccepted, h.summarizeRunWithProgress(proj, row))
+
+				return
+			}
+
+			if run.err != nil {
+				writeRunCreateError(w, run.err)
+
+				return
+			}
+
+			if loadErr != nil {
+				writeDomainError(w, loadErr)
+
+				return
+			}
+
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    errorCodeRunFailed,
+				Message: "run execution completed without creating a run record",
+			})
+
+			return
+		case <-timeout.C:
+			h.runs.cancel(runID, errRunNotStarted)
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    errorCodeRunFailed,
+				Message: fmt.Sprintf("run %q did not start within %s and was stopped", runID, h.runStartTimeout),
+			})
+
+			return
+		case <-r.Context().Done():
+			return
+		case <-poll.C:
+		}
+	}
+}
+
+// findRun loads the manifest and looks the run up in it. "Not in the
+// manifest" (false, nil) and "the manifest could not be read" (false, err)
+// are different answers: the first is a 404, the second a storage failure,
+// and conflating them told a client its run did not exist while it went on
+// computing.
+func (h Handler) findRun(runID string) (project.Project, project.Run, bool, error) {
+	proj, err := h.store.Load()
+	if err != nil {
+		return project.Project{}, project.Run{}, false, fmt.Errorf("load project manifest: %w", err)
+	}
+
+	for _, run := range proj.Runs {
+		if run.ID == runID {
+			return proj, run, true, nil
+		}
+	}
+
+	return project.Project{}, project.Run{}, false, nil
 }
 
 // experimentalOptInGate refuses a run against a scaffold-tier standard that the
@@ -128,7 +236,7 @@ func writeRunCreateError(w http.ResponseWriter, err error) {
 	}
 
 	writeAPIError(w, http.StatusInternalServerError, apiError{
-		Code:    "run_failed",
+		Code:    errorCodeRunFailed,
 		Message: err.Error(),
 	})
 }

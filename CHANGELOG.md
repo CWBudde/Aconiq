@@ -86,6 +86,23 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 
 ### Changed
 
+- **`POST /api/v1/runs` answers `202 Accepted` as soon as the run has started, and the run no
+  longer lives inside the request.** The server mints the run id, starts `aconiq run` under a
+  context the request does not own, and answers once the run's row is in the manifest, with a
+  `Location` header naming it. A browser reload no longer kills a run. `GET /api/v1/runs/{id}`
+  answers one run, and while it computes its summary carries `progress` (`done`, `total`,
+  `eta_seconds`) — as do the run list and the `last_run` of `GET /api/v1/project/status` and
+  the SSE `project_status` event. `POST /api/v1/runs/{id}/cancel` interrupts a run this server
+  started, and stopping the server interrupts its runs. A child that dies without closing its
+  row has that row, and only that row, closed by the server. `run.log` is written as the run
+  goes, and `rls19-road` and `iso9613` write a throttled `computed X of Y receivers` line and a
+  `.noise/runs/<id>/progress.json` beside it. The UI shows the bar, the time left and a Cancel
+  button on the run's panel, and picks a running run back up after a reload. Refusals the run
+  command makes before it creates a run are still answered synchronously with `400`. RLS-19 now
+  checks for a stop before every Teilstück rather than only between receivers, so Ctrl-C,
+  SIGTERM and the API's cancel end a run on the Linden extract in about a second instead of
+  after the receiver in flight — minutes of CPU, and over an hour on a loaded machine. No
+  computed level moves.
 - **Auto-grid rasters no longer publish a level inside a building.** A grid receiver standing
   strictly inside a building footprint is still computed and still listed in the receiver table,
   but its raster cell is now the `-9999` nodata value, for every standard and in both the CLI and
@@ -125,6 +142,16 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 
 Entries marked **numeric** change computed levels. Results produced before them are not comparable
 with results produced after them.
+
+- Two `aconiq run` processes on one project, or two runs started through `aconiq serve`, no
+  longer lose each other's rows. Each loaded `.noise/project.json`, changed it and saved it, so
+  the later save dropped the other's run — measured at 19 of 40 runs lost. Run creation and
+  completion, run deletion, the server's closing of an interrupted run, the terrain and model
+  routes, the model save behind `aconiq import` and `POST /api/v1/model`, and the artifact refs
+  `validate`, `export` and `compare` record now take an advisory lock on
+  `.noise/project.json.lock` (flock on Unix, `LockFileEx` on Windows) and re-read the manifest
+  under it. An `aconiq import` that fetched for minutes no longer saves the copy it loaded at its
+  start, which put a run completed meanwhile back to `running` without its results.
 
 - Parallel compute no longer starves its own worker pool on a small receiver grid.
   `partition.Size` floored the chunk size at `MinChunk` (64) unconditionally, so it also decided

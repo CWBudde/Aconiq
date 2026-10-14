@@ -127,6 +127,7 @@ func openapiSchemas() map[string]any {
 		openapiRunSchemas(),
 		openapiLGLNSchemas(),
 		openapiRunDeleteSchemas(),
+		openapiRunProgressSchemas(),
 		openapiStandardSchemas(),
 		openapiModelSchemas(),
 		openapiTransformSchemas(),

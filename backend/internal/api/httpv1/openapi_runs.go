@@ -30,36 +30,7 @@ func openapiRunPathItems() map[string]any {
 					"500": openapiErrorResponse("Internal server error"),
 				},
 			},
-			"post": map[string]any{
-				"summary":     "Create and execute a run",
-				"operationId": "createRun",
-				"requestBody": map[string]any{
-					"required": true,
-					"content": map[string]any{
-						"application/json": map[string]any{
-							"schema": map[string]any{
-								"$ref": "#/components/schemas/CreateRunRequest",
-							},
-						},
-					},
-				},
-				"responses": map[string]any{
-					"201": map[string]any{
-						"description": "Created run summary",
-						"content": map[string]any{
-							"application/json": map[string]any{
-								"schema": map[string]any{
-									"$ref": "#/components/schemas/RunSummary",
-								},
-							},
-						},
-					},
-					"400": openapiErrorResponse("Invalid run request"),
-					"404": openapiErrorResponse("Project not initialized"),
-					"405": methodNotAllowedResponse(),
-					"500": openapiErrorResponse("Run execution failed"),
-				},
-			},
+			"post": openapiCreateRunOperation(),
 		},
 		"/api/v1/runs/{id}/log": map[string]any{
 			"get": map[string]any{
@@ -101,11 +72,122 @@ func openapiRunPathItems() map[string]any {
 	return items
 }
 
+// openapiCreateRunOperation describes POST /api/v1/runs.
+func openapiCreateRunOperation() map[string]any {
+	return map[string]any{
+		"summary":     "Start a run",
+		"operationId": "createRun",
+		"description": "Starts `aconiq run` under a run id the server mints, and answers `202` as soon " +
+			"as the run's row is in the manifest — normally within milliseconds, long before it has " +
+			"computed anything. The run is the server's, not the request's: closing the connection " +
+			"does not stop it. Poll `GET /api/v1/runs/{id}` (named in `Location`) for its status and " +
+			"progress, and stop it with `POST /api/v1/runs/{id}/cancel`. A run the command refuses " +
+			"before it creates a row — an unknown standard, a bad parameter — is still answered " +
+			"synchronously, with `400`.",
+		"requestBody": map[string]any{
+			"required": true,
+			"content": map[string]any{
+				"application/json": map[string]any{
+					"schema": map[string]any{
+						"$ref": "#/components/schemas/CreateRunRequest",
+					},
+				},
+			},
+		},
+		"responses": map[string]any{
+			"202": map[string]any{
+				"description": "The run has started; its summary, normally with status `running`",
+				"headers": map[string]any{
+					"Location": map[string]any{
+						"description": "The run resource to poll",
+						"schema":      map[string]any{"type": "string"},
+					},
+				},
+				"content": map[string]any{
+					"application/json": map[string]any{
+						"schema": map[string]any{
+							"$ref": "#/components/schemas/RunSummary",
+						},
+					},
+				},
+			},
+			"400": openapiErrorResponse("Invalid run request"),
+			"404": openapiErrorResponse("Project not initialized"),
+			"405": methodNotAllowedResponse(),
+			"500": openapiErrorResponse("The run could not be started (`" + errorCodeRunFailed + "`)"),
+			"503": openapiErrorResponse("The server is shutting down (`" + errorCodeServerStopping + "`)"),
+		},
+	}
+}
+
+// openapiCancelRunOperation describes POST /api/v1/runs/{id}/cancel.
+func openapiCancelRunOperation(runIDParameter []map[string]any, runSummaryContent map[string]any) map[string]any {
+	return map[string]any{
+		"summary":     "Stop a running run",
+		"operationId": "cancelRun",
+		"description": "Interrupts the `aconiq run` process computing the run. It stops at its next " +
+			"check — before every Teilstück for `rls19-road`, between receivers for the other " +
+			"standards — and records the run as `failed`, with `run cancelled` in its log; a process " +
+			"still busy ten seconds later is killed and the server records the same. The answer comes " +
+			"before either, so the run usually still reads `running` in it — poll " +
+			"`GET /api/v1/runs/{id}` for the end. Only a run this server started can be stopped here.",
+		"parameters": runIDParameter,
+		"responses": map[string]any{
+			"202": map[string]any{
+				"description": "The run has been told to stop; its summary as it stands",
+				"content":     runSummaryContent,
+			},
+			"404": openapiErrorResponse("Project not initialized, or no run with this ID (`not_found`)"),
+			"405": methodNotAllowedResponse(),
+			"409": openapiErrorResponse(
+				"The run has already finished (`" + errorCodeRunNotRunning + "`), or it is running in a " +
+					"process this server did not start (`" + errorCodeRunNotOwned + "`)",
+			),
+			"500": openapiErrorResponse("The project manifest could not be read; nothing was signalled"),
+		},
+	}
+}
+
 // openapiRunResourcePathItems describes the single-run resource. Go 1.22 routing
 // gives the more specific /api/v1/runs/{id}/log precedence over this pattern.
 func openapiRunResourcePathItems() map[string]any {
+	runIDParameter := []map[string]any{
+		{
+			"name":        "id",
+			"in":          "path",
+			"required":    true,
+			"description": "Run ID",
+			"schema":      map[string]any{"type": "string"},
+		},
+	}
+
+	runSummaryContent := map[string]any{
+		"application/json": map[string]any{
+			"schema": map[string]any{
+				"$ref": "#/components/schemas/RunSummary",
+			},
+		},
+	}
+
 	return map[string]any{
+		"/api/v1/runs/{id}/cancel": map[string]any{
+			"post": openapiCancelRunOperation(runIDParameter, runSummaryContent),
+		},
 		"/api/v1/runs/{id}": map[string]any{
+			"get": map[string]any{
+				"summary":     "One run, with its progress while it computes",
+				"operationId": "getRun",
+				"parameters":  runIDParameter,
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "The run's summary",
+						"content":     runSummaryContent,
+					},
+					"404": openapiErrorResponse("Project not initialized, or no run with this ID (`not_found`)"),
+					"405": methodNotAllowedResponse(),
+					"500": openapiErrorResponse("Internal server error"),
+				},
+			},
 			"delete": map[string]any{
 				"summary":     "Delete a run",
 				"operationId": "deleteRun",
@@ -176,6 +258,7 @@ func openapiRunSchemas() map[string]any {
 					"type":  "array",
 					"items": map[string]any{"$ref": "#/components/schemas/ArtifactRef"},
 				},
+				"progress": map[string]any{"$ref": "#/components/schemas/RunProgress"},
 			},
 		},
 		"RunLog": map[string]any{
@@ -232,6 +315,36 @@ func openapiRunSchemas() map[string]any {
 						"Anything else is refused with error code `overpass_endpoint_not_allowed`, whose " +
 						"details.allowed_hosts lists what is accepted. Omit it to use the default server.",
 					"examples": allowedOverpassEndpointURLs(),
+				},
+			},
+		},
+	}
+}
+
+// openapiRunProgressSchemas describes a running run's progress report.
+func openapiRunProgressSchemas() map[string]any {
+	return map[string]any{
+		"RunProgress": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"done", "total", "started_at", "updated_at"},
+			"description": "How far a run's compute has got, as the process computing it last reported — at " +
+				"most once a second, and always at the first and the last receiver. Present only while the " +
+				"run is `pending` or `running` and its standard reports progress (today `rls19-road` and " +
+				"`iso9613`). Absent means not known, never nothing done.",
+			"properties": map[string]any{
+				"done":  map[string]any{"type": "integer", "description": "Receivers computed so far"},
+				"total": map[string]any{"type": "integer", "description": "Receivers the run computes in total"},
+				"started_at": map[string]any{
+					"type": "string", "format": "date-time",
+					"description": "When the receiver walk began, after the model was loaded and the scene prepared",
+				},
+				"updated_at": map[string]any{"type": "string", "format": "date-time", "description": "When this report was written"},
+				"eta_seconds": map[string]any{
+					"type": "number",
+					"description": "Seconds left at the rate so far: elapsed / done * (total - done). Absent " +
+						"until a receiver has completed. A straight-line estimate, so it is only as good as " +
+						"receivers are alike in cost.",
 				},
 			},
 		},

@@ -81,9 +81,10 @@ describe("httpBackend capabilities", () => {
       // `POST /api/v1/transform` projects server-side, so the map can draw a
       // model stored in a projected CRS without the 4 MB kernel.
       canReprojectForDisplay: true,
-      // There is no cancel endpoint, so the dialog must not offer a button
-      // that could only close itself while the server carried on.
+      // `startRun` resolves on the 202, so the dialog has nothing in flight
+      // to stop; the run it started is stopped from its panel instead.
       runsAreCancellable: false,
+      canCancelRunningRun: true,
       // The server downloads, parses and caches the LoD2 tiles.
       canImportLGLN: true,
     });
@@ -216,6 +217,82 @@ describe("httpBackend.transformCoordinates", () => {
     // `aconiq run` prints for the same site.
     expect(apiError?.message).toContain("is geographic");
     expect(apiError?.hint).toContain("zones 31 to 34");
+  });
+});
+
+describe("httpBackend.startRun", () => {
+  it("resolves on the 202 with the run still running, progress and all", async () => {
+    // The server answers as soon as the run's row exists; the computation is
+    // its own business from there, and a reload no longer reaches it.
+    const accepted = {
+      id: "run-abc",
+      scenario_id: "default",
+      standard_id: "rls19-road",
+      version: "2019",
+      status: "running",
+      started_at: "2026-10-13T12:00:00Z",
+      finished_at: "2026-10-13T12:00:00Z",
+      log_path: ".noise/runs/run-abc/run.log",
+      artifacts: [],
+      progress: {
+        done: 0,
+        total: 130,
+        started_at: "2026-10-13T12:00:01Z",
+        updated_at: "2026-10-13T12:00:01Z",
+      },
+    };
+    const mock = stubFetch(jsonResponse(accepted, 202));
+
+    const run = await httpBackend.startRun({
+      standardId: "rls19-road",
+      version: "2019",
+      profile: "default",
+      params: {},
+      receiverMode: "auto-grid",
+    });
+
+    expect(run.status).toBe("running");
+    expect(run.progress?.total).toBe(130);
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/runs"));
+    expect(init.method).toBe("POST");
+  });
+});
+
+describe("httpBackend.cancelRun", () => {
+  it("posts to the run's cancel route with the client header and no body", async () => {
+    const mock = stubFetch(
+      jsonResponse({ id: "run/1", status: "running", artifacts: [] }, 202),
+    );
+
+    const run = await httpBackend.cancelRun("run/1");
+
+    expect(run.status).toBe("running");
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/runs/run%2F1/cancel"));
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeUndefined();
+    expect(headersOf(init)[CLIENT_HEADER_NAME]).toBeTruthy();
+  });
+
+  it("keeps the envelope of a refusal", async () => {
+    stubFetch(
+      jsonResponse(
+        envelope(
+          "run_not_owned",
+          'run "run-1" was not started by this server',
+          "Stop it where it was started.",
+        ),
+        409,
+      ),
+    );
+
+    const error = await httpBackend.cancelRun("run-1").catch((e: unknown) => e);
+
+    expect(asAPIRequestError(error)?.code).toBe("run_not_owned");
+    expect(asAPIRequestError(error)?.hint).toBe(
+      "Stop it where it was started.",
+    );
   });
 });
 

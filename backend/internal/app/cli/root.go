@@ -60,7 +60,8 @@ func Execute(args []string) int {
 }
 
 // interruptContext is cancelled by the first SIGINT or SIGTERM. That signal is
-// a request to stop: a run checks the context between receivers and records
+// a request to stop: a run checks the context between receivers (RLS-19 before
+// every Teilstück) and records
 // itself as failed rather than being killed mid-write. Once it has arrived the
 // handler is dropped again, so a second Ctrl-C reaches the default handler and
 // ends the process outright — the way out of anything that never checks.

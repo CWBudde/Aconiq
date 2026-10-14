@@ -39,10 +39,13 @@ export function useStandards() {
 
 /*
  * Runs and their logs are polled, not pushed. The API's SSE stream
- * (`/api/v1/events`) carries project status snapshots, not run logs, and a
- * browser `EventSource` cannot send the `--api-token` header, so the stream is
- * unreachable whenever a token is set (PLAN.md, Priority 6). Polling by
- * activity keeps the cost near zero while nothing is running.
+ * (`/api/v1/events`) carries project status snapshots — the last run's
+ * progress among them — but not run logs, and a browser `EventSource` cannot
+ * send the `--api-token` header, so the stream is unreachable whenever a token
+ * is set (PLAN.md, Priority 6). Polling by activity keeps the cost near zero
+ * while nothing is running, and while something is, every poll of the list
+ * brings each running run's `progress` with it: the progress bar needs no
+ * request of its own.
  */
 
 /** Runs-list poll interval while any run is pending or running. */
@@ -251,6 +254,29 @@ export interface RunProgress {
   done: number;
   /** Receivers this run will compute in total. */
   total: number;
+  /**
+   * Seconds left at the rate so far, where the backend estimates one — the
+   * API does, from its progress file; the browser kernel's reports carry
+   * none.
+   */
+  etaSeconds?: number;
+}
+
+/**
+ * Ask a running run to stop (`capabilities.canCancelRunningRun`).
+ *
+ * The run does not stop on the spot — it stops at its next check — so
+ * success means "the server has passed the request on", not "the run has
+ * ended". The list is invalidated so the next poll fetches the run as it
+ * stands, and polling carries it to `failed` from there.
+ */
+export function useCancelRun() {
+  return useMutation({
+    mutationFn: (runId: string) => backend.cancelRun(runId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.runs.all });
+    },
+  });
 }
 
 export function useCreateRun() {

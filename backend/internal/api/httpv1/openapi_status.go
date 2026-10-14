@@ -114,6 +114,7 @@ func openapiProjectSchemas() map[string]any {
 				"profile":     map[string]any{"type": "string"},
 				"started_at":  map[string]any{"type": "string", "format": "date-time"},
 				"finished_at": map[string]any{"type": "string", "format": "date-time"},
+				"progress":    map[string]any{"$ref": "#/components/schemas/RunProgress"},
 			},
 		},
 		"ProjectStatusResponse": map[string]any{

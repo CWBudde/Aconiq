@@ -72,6 +72,20 @@ func ComputeReceiverOutputs(receivers []geo.PointReceiver, sources []PointSource
 // ComputeReceiverOutputsContext is ComputeReceiverOutputs under a context: once
 // ctx is done it stops before the next receiver and returns ctx.Err().
 func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointReceiver, sources []PointSource, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return ComputeReceiverOutputsProgress(ctx, receivers, sources, cfg, nil)
+}
+
+// ComputeReceiverOutputsProgress is ComputeReceiverOutputsContext that also
+// reports (receivers done, receivers in total) after each receiver, the shape
+// road.ProgressFunc documents. A nil progress reports nothing. The report is
+// read by nothing in the walk, so it cannot move a level.
+func ComputeReceiverOutputsProgress(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []PointSource,
+	cfg PropagationConfig,
+	progress func(done, total int),
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
@@ -92,6 +106,10 @@ func ComputeReceiverOutputsContext(ctx context.Context, receivers []geo.PointRec
 			Receiver:   receiver,
 			Indicators: indicators,
 		})
+
+		if progress != nil {
+			progress(len(outputs), len(receivers))
+		}
 	}
 
 	return outputs, nil

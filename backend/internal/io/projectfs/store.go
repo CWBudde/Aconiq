@@ -36,6 +36,12 @@ type Store struct {
 
 // CreateRunSpec describes metadata for appending a run record and provenance file.
 type CreateRunSpec struct {
+	// RunID is the identifier to record the run under. Empty mints a fresh
+	// one, which is what every caller but one wants; that one is `aconiq serve`,
+	// which has to know the id of the run it starts before the child process
+	// that creates it has said anything. A non-empty id must match the run-id
+	// pattern and must not already be in the manifest.
+	RunID         string
 	ScenarioID    string
 	Standard      project.StandardRef
 	ReceiverMode  string
@@ -213,7 +219,17 @@ func (s Store) Save(proj project.Project) error {
 }
 
 // CreateRun appends a run entry, creates a log file, and writes a provenance manifest.
+//
+// The whole of it holds LockManifest: the load, the id check and the save are
+// one read-modify-write, and a concurrent one in another process must not
+// save in between.
 func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceManifest, error) {
+	unlock, err := s.LockManifest()
+	if err != nil {
+		return project.Run{}, project.ProvenanceManifest{}, err
+	}
+	defer unlock()
+
 	proj, err := s.Load()
 	if err != nil {
 		return project.Run{}, project.ProvenanceManifest{}, err
@@ -246,7 +262,46 @@ func (s Store) CreateRun(spec CreateRunSpec) (project.Run, project.ProvenanceMan
 		std.Profile = defaultStandardProfile
 	}
 
+	err = claimRunID(proj, &spec)
+	if err != nil {
+		return project.Run{}, project.ProvenanceManifest{}, err
+	}
+
 	return s.persistRun(proj, spec, scenarioID, std)
+}
+
+// NewRunID mints a run identifier of the form CreateRun would mint itself, for
+// a caller that has to name the run before it exists.
+func NewRunID() string {
+	return buildID("run")
+}
+
+// claimRunID settles the id a new run is recorded under: the caller's, once it
+// is known to be a well-formed id that names no run already in the manifest,
+// or a fresh one.
+//
+// The caller's id arrives on a command line, so it is validated before it is
+// joined to a path, exactly as a delete request's is. A duplicate is refused
+// rather than overwritten: two rows under one id would make every run-scoped
+// endpoint answer about whichever it found first.
+func claimRunID(proj project.Project, spec *CreateRunSpec) error {
+	if spec.RunID == "" {
+		spec.RunID = buildID("run")
+
+		return nil
+	}
+
+	err := validateRunID("projectfs.CreateRun", spec.RunID)
+	if err != nil {
+		return err
+	}
+
+	if _, exists := RunIDs(proj)[spec.RunID]; exists {
+		return domainerrors.New(domainerrors.KindUserInput, "projectfs.CreateRun",
+			fmt.Sprintf("run %q already exists", spec.RunID), nil)
+	}
+
+	return nil
 }
 
 // MergeRunProvenanceMetadata merges extra metadata into an existing run's
@@ -288,7 +343,7 @@ func (s Store) MergeRunProvenanceMetadata(runID string, extra map[string]string)
 
 func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID string, std project.StandardRef) (project.Run, project.ProvenanceManifest, error) {
 	now := time.Now().UTC()
-	runID := buildID("run")
+	runID := spec.RunID
 	runDir := filepath.Join(s.runsDir(), runID)
 
 	err := os.MkdirAll(runDir, 0o750)

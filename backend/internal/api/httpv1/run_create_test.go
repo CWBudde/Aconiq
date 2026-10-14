@@ -27,10 +27,11 @@ func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
 		t.Fatalf("init project: %v", err)
 	}
 
-	handler := newHandlerWithOptions(store, handlerOptions{
+	handler, runs := newRunTestHandler(t, store, handlerOptions{
 		clock: time.Now,
-		runExecutor: func(ctx context.Context, req createRunRequest) error {
+		runExecutor: func(_ context.Context, runID string, req createRunRequest) error {
 			_, _, err := store.CreateRun(projectfs.CreateRunSpec{
+				RunID:         runID,
 				ScenarioID:    "default",
 				ReceiverMode:  req.ReceiverMode,
 				ReceiverSetID: "explicit-manual",
@@ -54,13 +55,18 @@ func TestCreateRunEndpointCreatesRunSummary(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
+	runs.wg.Wait()
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	var response runSummaryResponse
 	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if rec.Header().Get("Location") != "/api/v1/runs/"+response.ID {
+		t.Fatalf("Location = %q, want the run resource", rec.Header().Get("Location"))
+	}
 
 	if response.StandardID != "rls19-road" {
 		t.Fatalf("unexpected standard id: %q", response.StandardID)
@@ -104,7 +110,7 @@ func TestCreateRunEndpointRejectsArgumentInjection(t *testing.T) {
 			executed := false
 			handler := newHandlerWithOptions(store, handlerOptions{
 				clock: time.Now,
-				runExecutor: func(_ context.Context, _ createRunRequest) error {
+				runExecutor: func(_ context.Context, _ string, _ createRunRequest) error {
 					executed = true
 
 					return nil
@@ -145,7 +151,7 @@ func TestCreateRunEndpointAcceptsRelativeInputPaths(t *testing.T) {
 
 	handler := newHandlerWithOptions(store, handlerOptions{
 		clock: time.Now,
-		runExecutor: func(_ context.Context, req createRunRequest) error {
+		runExecutor: func(_ context.Context, _ string, req createRunRequest) error {
 			got = req
 
 			return nil
@@ -181,7 +187,7 @@ func TestCreateRunEndpointRejectsScaffoldStandardWithoutExperimental(t *testing.
 	handler := newHandlerWithOptions(store, handlerOptions{
 		clock:    time.Now,
 		registry: &registry,
-		runExecutor: func(_ context.Context, _ createRunRequest) error {
+		runExecutor: func(_ context.Context, _ string, _ createRunRequest) error {
 			executed = true
 
 			return nil
@@ -232,13 +238,14 @@ func TestCreateRunEndpointRunsScaffoldStandardWithExperimental(t *testing.T) {
 
 	var got createRunRequest
 
-	handler := newHandlerWithOptions(store, handlerOptions{
+	handler, runs := newRunTestHandler(t, store, handlerOptions{
 		clock:    time.Now,
 		registry: &registry,
-		runExecutor: func(_ context.Context, req createRunRequest) error {
+		runExecutor: func(_ context.Context, runID string, req createRunRequest) error {
 			got = req
 
 			_, _, err := store.CreateRun(projectfs.CreateRunSpec{
+				RunID:      runID,
 				ScenarioID: "default",
 				Standard: project.StandardRef{
 					ID:      "cnossos-road",
@@ -257,9 +264,10 @@ func TestCreateRunEndpointRunsScaffoldStandardWithExperimental(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
+	runs.wg.Wait()
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	if !got.Experimental {
@@ -278,7 +286,7 @@ func TestCreateRunEndpointDoesNotGateNormativeStandards(t *testing.T) {
 	handler := newHandlerWithOptions(store, handlerOptions{
 		clock:    time.Now,
 		registry: &registry,
-		runExecutor: func(_ context.Context, _ createRunRequest) error {
+		runExecutor: func(_ context.Context, _ string, _ createRunRequest) error {
 			executed = true
 
 			return nil

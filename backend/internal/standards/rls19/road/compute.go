@@ -330,13 +330,7 @@ func (s *Scene) ComputeReceivers(receivers []geo.PointReceiver, cfg PropagationC
 // ComputeReceiversContext is ComputeReceivers under a context: once ctx is
 // done it stops before the next receiver and returns ctx.Err().
 func (s *Scene) ComputeReceiversContext(ctx context.Context, receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
-	if len(receivers) == 0 {
-		return nil, errors.New("at least one receiver is required")
-	}
-
-	return computeReceivers(ctx, receivers, cfg, func(PropagationConfig) (*Scene, error) {
-		return s, nil
-	}, nil)
+	return s.computeReceiversCounted(ctx, receivers, cfg, nil)
 }
 
 // Walker is one goroutine's walk over a prepared Scene. It keeps the walk's
@@ -366,18 +360,47 @@ func (s *Scene) NewWalker() *Walker {
 // ComputeReceiversContext is Scene.ComputeReceiversContext on the walker's
 // scratch.
 func (w *Walker) ComputeReceiversContext(ctx context.Context, receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return w.computeReceiversCounted(ctx, receivers, cfg, nil)
+}
+
+// ComputeReceivers is ComputeReceiversContext without a context.
+func (w *Walker) ComputeReceivers(receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
+	return w.ComputeReceiversContext(context.Background(), receivers, cfg)
+}
+
+// computeReceiversCounted is Walker.ComputeReceiversContext with a counter
+// that is told about each receiver as it completes. A nil counter counts
+// nothing.
+func (w *Walker) computeReceiversCounted(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	cfg PropagationConfig,
+	counter *progressCounter,
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
 	return computeReceivers(ctx, receivers, cfg, func(PropagationConfig) (*Scene, error) {
 		return w.scene, nil
-	}, w.scratch)
+	}, w.scratch, counter)
 }
 
-// ComputeReceivers is ComputeReceiversContext without a context.
-func (w *Walker) ComputeReceivers(receivers []geo.PointReceiver, cfg PropagationConfig) ([]ReceiverOutput, error) {
-	return w.ComputeReceiversContext(context.Background(), receivers, cfg)
+// computeReceiversCounted is Scene.ComputeReceiversContext with a counter that
+// is told about each receiver as it completes. A nil counter counts nothing.
+func (s *Scene) computeReceiversCounted(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	cfg PropagationConfig,
+	counter *progressCounter,
+) ([]ReceiverOutput, error) {
+	if len(receivers) == 0 {
+		return nil, errors.New("at least one receiver is required")
+	}
+
+	return computeReceivers(ctx, receivers, cfg, func(PropagationConfig) (*Scene, error) {
+		return s, nil
+	}, nil, counter)
 }
 
 // receiverLevels is the propagation walk for one receiver, on scratch of its
@@ -408,11 +431,51 @@ func (s *Scene) receiverLevelsOn(
 	cfg PropagationConfig,
 	scratch *pathScratch,
 ) (PeriodLevels, error) {
+	return s.receiverLevelsOnContext(context.Background(), receiver, cfg, scratch)
+}
+
+// receiverLevelsOnContext is receiverLevelsOn that stops once ctx is done,
+// checking before every Teilstück, and returns ctx.Err().
+//
+// # Why inside a receiver and not only between receivers
+//
+// One receiver can be a very long time. On the Linden-Mitte OSM extract — 875
+// buildings, 44 km of road at 1 m Teilstücke — a single receiver is minutes of
+// CPU, almost all of it in the reflection search, and tens of minutes on a
+// loaded machine. A check between receivers left SIGTERM, Ctrl-C and the API's
+// cancel waiting for all of that: `aconiq serve` killed the child after its
+// grace period instead of letting it record its own stop, and a terminal run
+// went on computing for over an hour after it had been told to stop.
+//
+// A Teilstück is the finest unit this loop owns, and the check costs one
+// non-blocking receive on ctx.Done() — no lock on the fast path, and for a
+// context that can never be cancelled, Done() is nil and the select is free.
+// What is between two checks is one appendSegmentContributions call, so the
+// latency is one Teilstück's direct, diffracted and reflected paths.
+//
+// # Why it cannot move a level
+//
+// The check reads nothing the walk computes and writes nothing it reads: it
+// either lets the next Teilstück run exactly as before, or abandons the
+// receiver altogether, in which case no level is produced at all. A walk that
+// is not cancelled performs the same floating-point operations in the same
+// order, so its result is the same bits.
+func (s *Scene) receiverLevelsOnContext(
+	ctx context.Context,
+	receiver geo.Point2D,
+	cfg PropagationConfig,
+	scratch *pathScratch,
+) (PeriodLevels, error) {
+	done := ctx.Done()
+
 	// Absolute receiver Z = terrain elevation + height above ground.
 	receiverZ := cfg.ReceiverTerrainZ + cfg.ReceiverHeightM
 
 	var sums periodSums
 
+	var err error
+
+walk:
 	for i := range s.sources {
 		// By pointer, and via levelFor, because in distance-scaled mode which
 		// Teilstücke this receiver reads is a function of where it stands.
@@ -421,6 +484,14 @@ func (s *Scene) receiverLevelsOn(
 		segments, baseDayDB, baseNightDB := s.sources[i].levelFor(receiver)
 
 		for j, seg := range segments {
+			select {
+			case <-done:
+				err = fmt.Errorf("%w", ctx.Err())
+
+				break walk
+			default:
+			}
+
 			appendSegmentContributions(
 				&sums,
 				baseDayDB[j], baseNightDB[j],
@@ -437,8 +508,13 @@ func (s *Scene) receiverLevelsOn(
 		}
 	}
 
+	// A stop abandons the receiver: the partial sums are not a level.
+	if err != nil {
+		return PeriodLevels{}, err
+	}
+
 	if len(cfg.ParkingSources) > 0 {
-		err := appendParkingContributions(
+		err = appendParkingContributions(
 			&sums, cfg.ParkingSources,
 			receiver, receiverZ, s.barriers, &s.reflectors, cfg, scratch,
 		)
@@ -486,13 +562,27 @@ func ComputeReceiverOutputsContext(
 	barriers []Barrier,
 	cfg PropagationConfig,
 ) ([]ReceiverOutput, error) {
+	return computeReceiverOutputsCounted(ctx, receivers, sources, barriers, cfg, nil)
+}
+
+// computeReceiverOutputsCounted is ComputeReceiverOutputsContext with a counter
+// that is told about each receiver as it completes. A nil counter counts
+// nothing.
+func computeReceiverOutputsCounted(
+	ctx context.Context,
+	receivers []geo.PointReceiver,
+	sources []RoadSource,
+	barriers []Barrier,
+	cfg PropagationConfig,
+	counter *progressCounter,
+) ([]ReceiverOutput, error) {
 	if len(receivers) == 0 {
 		return nil, errors.New("at least one receiver is required")
 	}
 
 	return computeReceivers(ctx, receivers, cfg, func(first PropagationConfig) (*Scene, error) {
 		return prepareScene(sources, barriers, first)
-	}, nil)
+	}, nil, counter)
 }
 
 // computeReceivers walks the receivers in the order given.
@@ -504,7 +594,10 @@ func ComputeReceiverOutputsContext(
 // two errors around for a model that is wrong in both ways at once.
 //
 // ctx is checked before each receiver, ahead of that receiver's own checks, and
-// reads nothing the walk computes, so it cannot move a level.
+// again before every Teilstück inside it (receiverLevelsOnContext); it reads
+// nothing the walk computes, so it cannot move a level. counter is told
+// once a receiver's output has been appended, and nothing here reads it back
+// either.
 //
 // scratch is the walk's scratch when the caller holds one for the scene
 // prepare returns (see Walker), and nil to have one made for this call.
@@ -514,6 +607,7 @@ func computeReceivers(
 	cfg PropagationConfig,
 	prepare func(PropagationConfig) (*Scene, error),
 	scratch *pathScratch,
+	counter *progressCounter,
 ) ([]ReceiverOutput, error) {
 	var scene *Scene
 
@@ -555,8 +649,14 @@ func computeReceivers(
 			}
 		}
 
-		periodLevels, err := scene.receiverLevelsOn(receiver.Point, receiverCfg, scratch)
+		periodLevels, err := scene.receiverLevelsOnContext(ctx, receiver.Point, receiverCfg, scratch)
 		if err != nil {
+			// A stop inside the receiver reads the way a stop before it does,
+			// naming the receiver it interrupted.
+			if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+				return nil, fmt.Errorf("compute receiver %q: %w", receiver.ID, err)
+			}
+
 			return nil, err
 		}
 
@@ -564,6 +664,8 @@ func computeReceivers(
 			Receiver:   receiver,
 			Indicators: periodLevels.ToReceiverIndicators(),
 		})
+
+		counter.add(1)
 	}
 
 	return outputs, nil

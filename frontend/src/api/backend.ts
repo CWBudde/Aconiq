@@ -49,7 +49,9 @@ export interface BackendCapabilities {
   /**
    * Runs change while the page is open without the UI having done anything:
    * the server executes them and their status moves on its own. When set,
-   * the runs list polls; when not set, a run completes inside `startRun` and
+   * the runs list polls, and `startRun` resolves as soon as the run has
+   * *started* — the run is then followed through the list, whose summaries
+   * carry its `progress`. When not set, a run completes inside `startRun` and
    * the list is invalidated there, so polling would only re-read what the UI
    * itself wrote.
    */
@@ -82,17 +84,28 @@ export interface BackendCapabilities {
    */
   readonly canReprojectForDisplay: boolean;
   /**
-   * A run in flight can be stopped, and stopping it really stops the compute.
-   * When set, the run dialog turns its Cancel button into a run-cancel while a
-   * run is pending; when not set, that button keeps closing the dialog.
+   * A run in flight *inside `startRun`* can be stopped, and stopping it really
+   * stops the compute. When set, the run dialog turns its Cancel button into a
+   * run-cancel while a run is pending; when not set, that button keeps
+   * closing the dialog.
    *
    * Browser mode can, because the kernel lives in a worker this tab owns and
-   * terminating it ends the computation. The API cannot: it has no cancel
-   * endpoint, and a button that only closed the dialog while the server kept
-   * computing would be a lie — the run would still finish and still appear in
-   * the list, having ignored the one instruction the user gave it.
+   * terminating it ends the computation. The API's `startRun` is pending only
+   * until the server has accepted the run, a fraction of a second; the run it
+   * starts is stopped from the run's own panel instead — see
+   * `canCancelRunningRun`.
    */
   readonly runsAreCancellable: boolean;
+  /**
+   * A run that is already running — started by this tab, another tab, or
+   * before a reload — can be told to stop through `cancelRun`. When set, a
+   * running run's panel offers a Cancel button.
+   *
+   * Only the API can: it supervises the process computing the run and
+   * interrupts it on request. In browser mode a run never outlives `startRun`,
+   * so there is no running run for the panel to offer it on.
+   */
+  readonly canCancelRunningRun: boolean;
   /**
    * The official LGLN LoD2 buildings can be loaded for a box. When set, the
    * import page's LGLN tab is live; when not set, the tab is shown disabled
@@ -115,8 +128,10 @@ export interface BackendCapabilities {
 export interface RunHooks {
   /**
    * Called with the receivers computed so far, out of how many there are.
-   * Never called by `httpBackend` — the API reports no progress — so a UI that
-   * wants a bar has to survive never hearing from this at all.
+   * Never called by `httpBackend`: its `startRun` resolves before anything is
+   * computed, and the progress after that is on the run itself
+   * (`RunSummary.progress`). So a UI that wants a bar in the dialog has to
+   * survive never hearing from this at all.
    */
   onProgress?: (done: number, total: number) => void;
   /**
@@ -292,13 +307,24 @@ export interface Backend {
    */
   importFromLGLN(req: LglnImportRequest): Promise<LglnImportResponse>;
   /**
-   * Start a run and resolve with it once it has finished.
+   * Start a run and resolve with it — once it has finished where the run
+   * lives in this tab (browser mode), and once it has *started* where a
+   * server computes it (`capabilities.runsChangeExternally`). In the second
+   * case the summary normally reads `running`, and the run is followed
+   * through `getRuns` from there.
    *
    * `hooks` is optional in both directions: a caller need not pass one, and an
    * implementation need not honour what it holds. What it must not do is
    * pretend — see `capabilities.runsAreCancellable`.
    */
   startRun(spec: RunSpec, hooks?: RunHooks): Promise<RunSummary>;
+  /**
+   * Ask a running run to stop, and resolve with it as it stands — usually
+   * still `running`: it stops at its next check and then reads `failed`
+   * with "run cancelled" in its log. Rejects unless
+   * `capabilities.canCancelRunningRun`.
+   */
+  cancelRun(runId: string): Promise<RunSummary>;
   /** Rejects unless `capabilities.canExport`. */
   createExport(runId: string): Promise<RunSummary>;
   /**

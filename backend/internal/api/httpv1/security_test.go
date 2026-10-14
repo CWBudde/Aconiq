@@ -147,7 +147,7 @@ func TestRunCreateRejectsSafelistedContentType(t *testing.T) {
 	executed := false
 	handler := newHandlerWithOptions(mustStore(t, "Content Type"), handlerOptions{
 		clock: time.Now,
-		runExecutor: func(_ context.Context, _ createRunRequest) error {
+		runExecutor: func(_ context.Context, _ string, _ createRunRequest) error {
 			executed = true
 
 			return nil
@@ -175,7 +175,7 @@ func TestRunCreateAcceptsJSONContentTypeWithCharset(t *testing.T) {
 	reached := false
 	handler := newHandlerWithOptions(mustStore(t, "Content Type"), handlerOptions{
 		clock: time.Now,
-		runExecutor: func(_ context.Context, _ createRunRequest) error {
+		runExecutor: func(_ context.Context, _ string, _ createRunRequest) error {
 			reached = true
 
 			return nil
@@ -198,7 +198,7 @@ func TestStateChangingRequestRequiresClientHeader(t *testing.T) {
 	executed := false
 	handler := newHandlerWithOptions(mustStore(t, "Client Header"), handlerOptions{
 		clock: time.Now,
-		runExecutor: func(_ context.Context, _ createRunRequest) error {
+		runExecutor: func(_ context.Context, _ string, _ createRunRequest) error {
 			executed = true
 
 			return nil
@@ -286,7 +286,7 @@ func TestRunCreateRejectsOversizedBody(t *testing.T) {
 	executed := false
 	handler := newHandlerWithOptions(mustStore(t, "Body Cap"), handlerOptions{
 		clock: time.Now,
-		runExecutor: func(_ context.Context, _ createRunRequest) error {
+		runExecutor: func(_ context.Context, _ string, _ createRunRequest) error {
 			executed = true
 
 			return nil

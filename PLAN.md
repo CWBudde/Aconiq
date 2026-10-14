@@ -1158,14 +1158,6 @@ editing several of its files rather than one package of its own.
       `Run(ctx, store, req) (RunResult, error)`. Today `api/httpv1` reaches it by fork/exec'ing its
       own binary (`handler.go:408-478`, parsing exit code 2 back into a typed error) — fork/exec
       used as dependency inversion. Delete `newCLIProcessRunExecutor` once this lands.
-- [ ] **Two `aconiq run` processes on one project lose a run.** Measured 2026-10-05: two
-      concurrent runs, 20 rounds, failed 19 of 40 on `main` and 13 of 40 with #92 — the rate is
-      timing, not either change. Each process loads `.noise/project.json`, appends its run and
-      saves, so the later save drops the other's entry, and the loser fails in `cli.finalizeRun`
-      with "run … not found in project manifest". `atomicfile` makes each save whole; it cannot
-      make two read-modify-writes see each other. The fix is a cross-process lock (no locking
-      dependency in `go.mod` yet) or the in-process pipeline below; `POST /runs` beside a terminal
-      `aconiq run` hits the same race. The shared chunk cache is not affected.
 - [x] **The in-process manifest read-modify-write is serialised.** (2026-09-19, #74)
       Two constraints are live. **The `Handler` mutex must stay a pointer**: `mux.HandleFunc` takes
       a method value, which copies the `Handler` once per route, so a `sync.Mutex` value becomes
@@ -2278,21 +2270,22 @@ before the pages they protect are cut apart.
       ID synthesis must match `padStart` including the six-character `"R10000"` case, and
       `hashPayload` must produce the same bytes — which gets its own test, one request down both
       paths asserting equal `output_hash`. Keep the JSON path as the reference it compares against.
-- [ ] **Make a run asynchronous, so it does not live inside an HTTP request.** The run-create
-      endpoint calls the executor synchronously and spawns `aconiq run` under
-      `exec.CommandContext(r.Context(), …)`. Three consequences, all of them observed on a real
-      run: a browser reload cancels the request and kills the computation; the server's
-      `WriteTimeout` was a ceiling on how long a run could legally take (it was 30 s, against
-      runs of minutes — now removed, which is a workaround and not the fix); and a subprocess
-      that dies leaves the manifest saying `running` forever, because the terminal status is
-      written by the subprocess and by nothing else.
-      The last of those is now reconciled — `Store.FailInterruptedRuns` runs at `serve` startup
-      and on the failed-executor path — but reconciliation is cleanup after a design that should
-      not lose the work in the first place. Return `202` with the run id, compute in a goroutine
-      the request does not own, and let the UI poll `GET /api/v1/runs/{id}`. That also gives the
-      progress feed the API mode has never had: today `run.log` holds one line until the run
-      ends, because every `input.log.addf` is buffered and flushed at the end, so a long API-mode
-      run is indistinguishable from a hung one. `parse-timeline.ts` says as much in its header.
+- [ ] **What the asynchronous run left open: progress for every standard, and cancellation
+      inside a receiver beyond RLS-19.** `POST /runs` answers `202` with a server-minted id, the
+      run lives under a context the request does not own, `rls19-road` and `iso9613` stream
+      `run.log` and write `progress.json`, and RLS-19 checks its context before every
+      Teilstück. Three things are still ahead.
+      **Schall 03 writes no progress**, because `computeSchall03Run` buffers its log lines in
+      `schall03RunResult` and appends them after the compute, so a progress line would land
+      ahead of the lines that preceded it; it has to log through `runLog` first. The scaffold
+      modules (`receiverRunModule`) and `beb-exposure` write none either.
+      **Schall 03 and ISO 9613-2 still check only between receivers.** One Schall 03 receiver
+      over a large scene can outlast `runInterruptGrace`, and then the child is killed and the
+      server writes the `run cancelled` line instead of the child. The RLS-19 pattern — a
+      non-blocking receive on `ctx.Done()` per propagation unit, reading no number — carries
+      over.
+      **The frontend polls rather than listening to `/api/v1/events`**, which carries the last
+      run's progress now, because `EventSource` cannot send the `--api-token` header.
 - [ ] **Tell the user what a run will cost in _time_, and let them refuse it.** The receiver
       count preview landed; the time estimate named as its follow-up is the part that matters,
       because the cost is not proportional to anything the dialog currently shows. Measured on a

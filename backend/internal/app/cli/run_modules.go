@@ -2,10 +2,16 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/aconiq/backend/internal/acoustics"
+	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/engine"
 	"github.com/aconiq/backend/internal/geo"
@@ -19,29 +25,94 @@ import (
 // it was appended, which is why the pipeline never builds one by hand: the
 // order of these lines is the record of what the run did, and a failure path
 // has to leave the same trail as a success.
+//
+// # Written as it grows
+//
+// Once streamTo has named the file, every line also reaches run.log the moment
+// it is added. Before that, a run's log held one line until the run ended,
+// because finalizeRun was the only writer — so a long run read from the API
+// was indistinguishable from a hung one. The in-memory copy stays the record:
+// finalizeRun still replaces the file with it, atomically, so what a run
+// leaves behind is the same lines in the same order whether or not any of
+// them were streamed.
+//
+// Streaming is best effort. A line that cannot be appended stops the
+// streaming and nothing else: the run's outcome must not depend on whether
+// the progress feed could be written, and the final replace puts the whole
+// log on disk regardless.
+//
+// The lock is there because progress lines arrive from the compute pool's
+// goroutines while the pipeline's own goroutine is blocked in that compute.
 type runLog struct {
+	mu    sync.Mutex
 	lines []string
+	path  string
 }
 
 func newRunLog(lines ...string) *runLog {
 	return &runLog{lines: lines}
 }
 
+// streamTo makes path the live copy of this log: it is replaced with every
+// line held so far, and appended to with each line added from now on.
+func (l *runLog) streamTo(path string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	err := atomicfile.WriteFile(path, []byte(strings.Join(l.lines, "\n")+"\n"))
+	if err != nil {
+		return
+	}
+
+	l.path = path
+}
+
 func (l *runLog) addf(format string, args ...any) {
-	l.lines = append(l.lines, nowUTC().Format(time.RFC3339)+" "+fmt.Sprintf(format, args...))
+	l.add(nowUTC().Format(time.RFC3339) + " " + fmt.Sprintf(format, args...))
 }
 
 // addAtf appends a line stamped with a time the caller owns, for events that
 // carry their own — the engine's progress stream, above all, whose ordering
 // against the wall clock is the point of the timestamp.
 func (l *runLog) addAtf(at time.Time, format string, args ...any) {
-	l.lines = append(l.lines, at.Format(time.RFC3339)+" "+fmt.Sprintf(format, args...))
+	l.add(at.Format(time.RFC3339) + " " + fmt.Sprintf(format, args...))
 }
 
 // addLines appends lines a module produced with their own timestamps already
 // applied, such as the Schall 03 chain's.
 func (l *runLog) addLines(lines []string) {
+	l.add(lines...)
+}
+
+func (l *runLog) add(lines ...string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	l.lines = append(l.lines, lines...)
+
+	if l.path == "" || len(lines) == 0 {
+		return
+	}
+
+	err := appendLines(l.path, lines)
+	if err != nil {
+		l.path = ""
+	}
+}
+
+// appendLines writes lines to the end of path in one write. The file is
+// opened per call rather than held: finalizeRun replaces run.log by rename,
+// and a descriptor held across that would go on appending to the orphaned
+// inode instead of the file a reader opens.
+func appendLines(path string, lines []string) error {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("open run log: %w", err)
+	}
+
+	_, err = file.WriteString(strings.Join(lines, "\n") + "\n")
+
+	return errors.Join(err, file.Close())
 }
 
 // addReceiverCount records how the receiver set was arrived at, which differs
@@ -82,7 +153,10 @@ func gridExtentLines(receiverMode string, calcArea *geo.BBox, layout results.Gri
 }
 
 func (l *runLog) all() []string {
-	return l.lines
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return slices.Clone(l.lines)
 }
 
 // runModuleInput is everything a standard's run needs from the pipeline. It is
@@ -100,6 +174,12 @@ type runModuleInput struct {
 	runID        string
 	cacheDir     string
 	log          *runLog
+
+	// progress is the run's progress feed. A module whose compute can count
+	// receivers as it goes calls progress.start and hands progress.report to
+	// it; one that cannot leaves it alone, and its run writes no
+	// progress.json. Nil is valid and reports nothing.
+	progress *runProgress
 
 	// projection is the CRS the model was moved into before anything read a
 	// coordinate off it, and the CRS every result is therefore expressed in.
@@ -129,10 +209,10 @@ type runModule func(context.Context, runModuleInput) (runModuleResult, error)
 
 // beforeRunError marks a failure that happened before the module touched
 // anything: option parsing, and the receiver mode a standard refuses. The
-// pipeline returns these as they are rather than marking the run failed, which
-// is what it did before this dispatch existed — the run is left in `running`.
-// That is questionable and is not this refactor's question; PLAN.md Priority 3
-// owns the exit-code and run-state taxonomy.
+// pipeline records the run failed with a "run refused: …" line and returns the
+// error unwrapped, so its kind still decides the exit code. It used to leave
+// the row reading `running`, which `aconiq serve` then closed with no reason a
+// reader could find.
 type beforeRunError struct {
 	err error
 }

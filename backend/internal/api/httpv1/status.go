@@ -54,6 +54,12 @@ type lastRunStatus struct {
 	Profile    string    `json:"profile,omitempty"`
 	StartedAt  time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at"`
+	// Progress is the last run's progress while it computes — the same
+	// member GET /runs/{id} carries. It is here so the SSE project_status
+	// stream moves with a running run: that stream suppresses a snapshot
+	// identical to the previous one, and a run whose only change is how far
+	// it has got would otherwise send nothing until it ended.
+	Progress *runProgressResponse `json:"progress,omitempty"`
 }
 
 func (h Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +114,7 @@ func (h Handler) projectStatus(proj project.Project) projectStatusResponse {
 			Profile:    last.Standard.Profile,
 			StartedAt:  last.StartedAt,
 			FinishedAt: last.FinishedAt,
+			Progress:   h.runProgress(last),
 		}
 	}
 

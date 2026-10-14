@@ -28,20 +28,131 @@ type deleteRunResponse struct {
 // handleRun serves the single-run resource. Go 1.22 routing gives the more
 // specific /api/v1/runs/{id}/log precedence over this pattern, so registering it
 // does not shadow the log endpoint.
-//
-// It turns GET /api/v1/runs/abc from a 404 into a 405, which is the more
-// correct answer: the resource is routed, the method is not offered.
 func (h Handler) handleRun(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
+	switch r.Method {
+	case http.MethodGet:
+		h.handleRunGet(w, r)
+	case http.MethodDelete:
+		h.handleRunDelete(w, r)
+	default:
 		writeAPIError(w, http.StatusMethodNotAllowed, apiError{
 			Code:    errorCodeMethodNotAllowed,
 			Message: fmt.Sprintf("method %s is not allowed for %s", r.Method, r.URL.Path),
+		})
+	}
+}
+
+// handleRunGet answers one run, with its progress while it computes. It is
+// what a client polls after POST /runs answered 202.
+func (h Handler) handleRunGet(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("id")
+
+	proj, err := h.store.Load()
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	for _, run := range proj.Runs {
+		if run.ID == runID {
+			writeJSON(w, http.StatusOK, h.summarizeRunWithProgress(proj, run))
+
+			return
+		}
+	}
+
+	writeAPIError(w, http.StatusNotFound, apiError{
+		Code:    errorCodeNotFound,
+		Message: fmt.Sprintf("run %q not found", runID),
+	})
+}
+
+// handleRunCancel asks a run this server started to stop.
+//
+// The answer is 202, not 200: the child is interrupted and stops at its next
+// context check — before every Teilstück for RLS-19, about a second on the
+// Linden extract, but between receivers for the standards that check only
+// there — so the run is still `running` when this returns. It ends `failed`,
+// with "run cancelled" in its log — either the child's own line, or the
+// server's, if the child had to be killed after runInterruptGrace.
+//
+// A run this server did not start is refused rather than signalled: its
+// process is not this server's child, and a pid read off disk is not a handle
+// anyone should send signals to.
+func (h Handler) handleRunCancel(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	runID := r.PathValue("id")
+
+	// An unreadable manifest is reported as what it is, a storage failure,
+	// and nothing is signalled: the caller learns the cancel did not happen
+	// rather than being told the run does not exist while it computes on.
+	proj, run, found, err := h.findRun(runID)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	if !found {
+		writeAPIError(w, http.StatusNotFound, apiError{
+			Code:    errorCodeNotFound,
+			Message: fmt.Sprintf("run %q not found", runID),
 		})
 
 		return
 	}
 
-	h.handleRunDelete(w, r)
+	if run.Status != project.RunStatusRunning && run.Status != project.RunStatusPending {
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    errorCodeRunNotRunning,
+			Message: fmt.Sprintf("run %q is %s and has nothing left to stop", runID, run.Status),
+		})
+
+		return
+	}
+
+	if !h.runs.cancel(runID, errRunCancelRequested) {
+		writeAPIError(w, http.StatusConflict, h.uncancellableRun(runID))
+
+		return
+	}
+
+	// Read again: a child that was between receivers may already have closed
+	// its row, and the caller is better served by that than by the row as it
+	// was before the signal. The signal has gone either way, so a read that
+	// fails here falls back to the row read above rather than to an error.
+	if latest, latestRun, ok, _ := h.findRun(runID); ok {
+		proj, run = latest, latestRun
+	}
+
+	writeJSON(w, http.StatusAccepted, h.summarizeRunWithProgress(proj, run))
+}
+
+// uncancellableRun says why a run that read as open cannot be cancelled by
+// this server.
+//
+// The manifest is read again first. Between the read that found the run open
+// and the cancel, a run of this server's may have finished and settled — its
+// id leaves the supervisor once its row is closed — and answering that with
+// run_not_owned would send the user to a terminal that never ran it. A run
+// that has ended in the meantime is run_not_running, as it would have been a
+// moment earlier; only one still open is someone else's.
+func (h Handler) uncancellableRun(runID string) apiError {
+	_, run, found, err := h.findRun(runID)
+	if err == nil && found && run.Status != project.RunStatusRunning && run.Status != project.RunStatusPending {
+		return apiError{
+			Code:    errorCodeRunNotRunning,
+			Message: fmt.Sprintf("run %q is %s and has nothing left to stop", runID, run.Status),
+		}
+	}
+
+	return apiError{
+		Code:    errorCodeRunNotOwned,
+		Message: fmt.Sprintf("run %q was not started by this server", runID),
+		Hint:    "Stop it where it was started: Ctrl-C in the terminal running `aconiq run`.",
+	}
 }
 
 func (h Handler) handleRunDelete(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +233,55 @@ type runSummaryResponse struct {
 	FinishedAt    time.Time             `json:"finished_at"`
 	LogPath       string                `json:"log_path"`
 	Artifacts     []artifactRefResponse `json:"artifacts"`
+	// Progress is present while the run is pending or running and its module
+	// has reported at least once. Absent means "not known", never "nothing
+	// done".
+	Progress *runProgressResponse `json:"progress,omitempty"`
+}
+
+// runProgressResponse is how far a running run's compute has got, as the
+// process computing it last wrote to progress.json.
+type runProgressResponse struct {
+	Done      int       `json:"done"`
+	Total     int       `json:"total"`
+	StartedAt time.Time `json:"started_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	// ETASeconds extrapolates the rate so far; absent until a receiver has
+	// completed.
+	ETASeconds *float64 `json:"eta_seconds,omitempty"`
+}
+
+// summarizeRunWithProgress is summarizeRun plus the run's progress report,
+// for a run that is still open. A finished run carries none: its progress is
+// its status, and reading a file per finished run on every poll of the list
+// would cost more than it could say.
+func (h Handler) summarizeRunWithProgress(proj project.Project, run project.Run) runSummaryResponse {
+	summary := summarizeRun(proj, run)
+	summary.Progress = h.runProgress(run)
+
+	return summary
+}
+
+// runProgress reads an open run's progress report, or nil. A report that
+// cannot be read is absent rather than an error: it is a report about the
+// run, and the run's own answer must not fail for want of it.
+func (h Handler) runProgress(run project.Run) *runProgressResponse {
+	if run.Status != project.RunStatusRunning && run.Status != project.RunStatusPending {
+		return nil
+	}
+
+	progress, ok, err := h.store.ReadRunProgress(run.ID)
+	if err != nil || !ok {
+		return nil
+	}
+
+	return &runProgressResponse{
+		Done:       progress.Done,
+		Total:      progress.Total,
+		StartedAt:  progress.StartedAt,
+		UpdatedAt:  progress.UpdatedAt,
+		ETASeconds: progress.ETASeconds,
+	}
 }
 
 type runLogResponse struct {
@@ -152,7 +312,7 @@ func (h Handler) handleRunsList(w http.ResponseWriter, _ *http.Request) {
 
 	summaries := make([]runSummaryResponse, 0, len(proj.Runs))
 	for _, v := range slices.Backward(proj.Runs) {
-		summaries = append(summaries, summarizeRun(proj, v))
+		summaries = append(summaries, h.summarizeRunWithProgress(proj, v))
 	}
 
 	writeJSON(w, http.StatusOK, summaries)

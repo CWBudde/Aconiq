@@ -19,6 +19,7 @@ func newRunCommand() *cobra.Command {
 		workers         int
 		cpuProfile      string
 		memProfile      string
+		runID           string
 	)
 
 	cmd := &cobra.Command{
@@ -41,6 +42,7 @@ func newRunCommand() *cobra.Command {
 				inputPaths:      inputPaths,
 				experimental:    experimental,
 				workers:         workers,
+				runID:           runID,
 			})
 
 			return finishRunProfiles(cmd, profiles, runErr)
@@ -60,6 +62,11 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().IntVar(&workers, "workers", 0, "Compute worker count (0 = one per available CPU)")
 	cmd.Flags().StringVar(&cpuProfile, "cpuprofile", "", "Write a pprof CPU profile of the command to this file (written on failure and cancellation too)")
 	cmd.Flags().StringVar(&memProfile, "memprofile", "", "Write a pprof heap profile, taken after a GC at the end of the command, to this file")
+
+	// Hidden: it is how `aconiq serve` names the run it starts, not something
+	// a person at a terminal has a reason to choose.
+	cmd.Flags().StringVar(&runID, "run-id", "", "Record the run under this id instead of minting one")
+	cmd.Flags().Lookup("run-id").Hidden = true
 
 	return cmd
 }

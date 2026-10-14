@@ -29,7 +29,12 @@ type Handler struct {
 	sseInterval time.Duration
 	registry    *framework.Registry
 	runExecutor runExecutor
-	lgln        *lglnimport.Client
+	// runs is every run this server has started and not yet settled. A
+	// pointer for the reason manifest is one.
+	runs *runSupervisor
+	// runStartTimeout bounds how long POST /runs waits for a run's row.
+	runStartTimeout time.Duration
+	lgln            *lglnimport.Client
 	// logger carries the few things this package has to say that no response
 	// can carry: a cleanup that failed after the request had already been
 	// answered, and a run it declined to attribute. Never nil — the
@@ -37,7 +42,10 @@ type Handler struct {
 	logger *slog.Logger
 }
 
-type runExecutor func(context.Context, createRunRequest) error
+// runExecutor computes one run, recorded under runID, and returns once the
+// process computing it has exited. It runs under a context the server owns:
+// when that context ends the run is interrupted, not abandoned.
+type runExecutor func(ctx context.Context, runID string, req createRunRequest) error
 
 func NewHandler(store projectfs.Store, clock func() time.Time) http.Handler {
 	return newHandlerWithOptions(store, handlerOptions{
@@ -54,6 +62,15 @@ func NewHandlerWithRegistry(store projectfs.Store, clock func() time.Time, regis
 		sseInterval: 2 * time.Second,
 		registry:    &registry,
 	})
+}
+
+// ServeHandler is the handler `aconiq serve` mounts, together with the runs it
+// starts. Those runs outlive any request, so the server has to stop them
+// itself on its way out: StopRuns.
+type ServeHandler struct {
+	http.Handler
+
+	runs *runSupervisor
 }
 
 // ServeOptions configures the handler `aconiq serve` mounts.
@@ -74,16 +91,31 @@ type ServeOptions struct {
 }
 
 // NewServeHandler builds a handler suitable for `aconiq serve` with CORS enabled.
-func NewServeHandler(store projectfs.Store, clock func() time.Time, registry framework.Registry, opts ServeOptions) http.Handler {
-	return newHandlerWithOptions(store, handlerOptions{
-		clock:        clock,
-		sseInterval:  2 * time.Second,
-		registry:     &registry,
-		corsOrigins:  opts.CORSOrigins,
-		allowedHosts: hostsFromListenAddr(opts.ListenAddr),
-		apiToken:     opts.APIToken,
-		logger:       opts.Logger,
-	})
+func NewServeHandler(store projectfs.Store, clock func() time.Time, registry framework.Registry, opts ServeOptions) *ServeHandler {
+	runs := newRunSupervisor()
+
+	return &ServeHandler{
+		Handler: newHandlerWithOptions(store, handlerOptions{
+			clock:        clock,
+			sseInterval:  2 * time.Second,
+			registry:     &registry,
+			corsOrigins:  opts.CORSOrigins,
+			allowedHosts: hostsFromListenAddr(opts.ListenAddr),
+			apiToken:     opts.APIToken,
+			logger:       opts.Logger,
+			runs:         runs,
+		}),
+		runs: runs,
+	}
+}
+
+// StopRuns interrupts every run this handler started and waits, until ctx
+// ends, for each to settle — record itself, or be killed after its grace and
+// closed by the server. New runs are refused from the moment it is called.
+// Call it after http.Server.Shutdown, so no request is left waiting on a run
+// that will never be started.
+func (s *ServeHandler) StopRuns(ctx context.Context) error {
+	return s.runs.shutdown(ctx)
 }
 
 type handlerOptions struct {
@@ -95,6 +127,8 @@ type handlerOptions struct {
 	allowedHosts []string // extra Host header values beyond loopback
 	apiToken     string   // optional bearer token; empty disables the check
 	runExecutor  runExecutor
+	runs         *runSupervisor     // nil gets a supervisor of its own
+	runStartWait time.Duration      // zero falls back to runStartTimeout
 	lgln         *lglnimport.Client // nil falls back to lglnimport.NewClient()
 	logger       *slog.Logger       // nil falls back to slog.Default()
 }
@@ -105,16 +139,20 @@ type handlerOptions struct {
 // Three routes Load the manifest, mutate the value and Save it back with
 // nothing in between - POST /model, POST /import/terrain and
 // DELETE /runs/{id} - so without this the second Save discards the first
-// one's change. POST /runs is not among them: it Loads, execs `aconiq run`
-// and Loads again, never saving in process.
+// one's change. The fourth writer is settleRun, which closes a run whose
+// child died without closing it. POST /runs itself never saves in process:
+// it starts `aconiq run` and reads the manifest until the child's row is in
+// it.
 //
 // The field is a pointer, and has to be. mux.HandleFunc takes a method value,
 // which copies the Handler once per route, so a sync.Mutex value here would
 // become fourteen independent mutexes that lock nothing against each other.
 //
-// This covers the in-process half only. The `aconiq run` child writes the same
-// file from another process, which no mutex can reach; what protects the
-// manifest's integrity there is projectfs.writeFileAtomic's unique temp name.
+// This is the in-process half. The `aconiq run` children write the same file
+// from other processes, which no mutex reaches: that half is
+// projectfs.Store.LockManifest, a file lock. The routes that load and save
+// the manifest themselves take it inside this mutex; DeleteRun and
+// FailOpenRun take it on their own, so it is never held around them.
 func (h Handler) lockManifest() func() {
 	h.manifest.Lock()
 
@@ -138,17 +176,27 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	}
 
 	handler := Handler{
-		store:       store,
-		now:         now,
-		sseInterval: sseInterval,
-		registry:    opts.registry,
-		runExecutor: opts.runExecutor,
-		manifest:    &sync.Mutex{},
-		lgln:        opts.lgln,
-		logger:      logger,
+		store:           store,
+		now:             now,
+		sseInterval:     sseInterval,
+		registry:        opts.registry,
+		runExecutor:     opts.runExecutor,
+		runs:            opts.runs,
+		runStartTimeout: opts.runStartWait,
+		manifest:        &sync.Mutex{},
+		lgln:            opts.lgln,
+		logger:          logger,
 	}
 	if handler.lgln == nil {
 		handler.lgln = lglnimport.NewClient()
+	}
+
+	if handler.runs == nil {
+		handler.runs = newRunSupervisor()
+	}
+
+	if handler.runStartTimeout <= 0 {
+		handler.runStartTimeout = runStartTimeout
 	}
 
 	if handler.runExecutor == nil {
@@ -162,6 +210,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	mux.HandleFunc("/api/v1/runs", handler.handleRuns)
 	mux.HandleFunc("/api/v1/runs/{id}", handler.handleRun)
 	mux.HandleFunc("/api/v1/runs/{id}/log", handler.handleRunLog)
+	mux.HandleFunc("/api/v1/runs/{id}/cancel", handler.handleRunCancel)
 	mux.HandleFunc("/api/v1/runs/{id}/contours", handler.handleRunContours)
 	mux.HandleFunc("/api/v1/artifacts/{id}/content", handler.handleArtifactContent)
 	mux.HandleFunc("/api/v1/events", handler.handleEvents)
@@ -197,7 +246,7 @@ func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 			"method": r.Method,
 			"path":   r.URL.Path,
 		},
-		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}, /api/v1/runs/{id}/log, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/lgln, /api/v1/import/terrain, or /api/v1/model.",
+		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}, /api/v1/runs/{id}/log, /api/v1/runs/{id}/cancel, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/lgln, /api/v1/import/terrain, or /api/v1/model.",
 	})
 }
 

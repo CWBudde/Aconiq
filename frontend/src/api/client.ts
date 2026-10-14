@@ -88,6 +88,15 @@ export type ProjectModelStatus = Schemas["ProjectModelStatus"];
 
 export type ArtifactRef = Schemas["ArtifactRef"];
 export type RunSummary = Schemas["RunSummary"];
+
+/**
+ * How far a running run has got, as the server last read it off the process
+ * computing it (`RunSummary.progress`, `LastRunStatus.progress`). Absent until
+ * the first report, and once the run has ended; absent means "not known",
+ * never "nothing done". `eta_seconds` is a straight-line estimate from the
+ * rate so far.
+ */
+export type RunProgressReport = Schemas["RunProgress"];
 export type CreateRunRequest = Schemas["CreateRunRequest"];
 export type RunLog = Schemas["RunLog"];
 

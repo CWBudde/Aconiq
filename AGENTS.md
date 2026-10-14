@@ -208,8 +208,10 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 GET  /api/v1/health
 GET  /api/v1/project/status
 GET  /api/v1/standards
-GET  /api/v1/runs                      list runs
-POST /api/v1/runs                      start a run
+GET  /api/v1/runs                      list runs (an open run carries `progress`)
+POST /api/v1/runs                      start a run: 202 once its row exists; it computes in the background
+GET  /api/v1/runs/{id}                 one run, with `progress` while it computes
+POST /api/v1/runs/{id}/cancel          interrupt a run this server started (202; 409 if ended or not ours)
 DELETE /api/v1/runs/{id}               delete a run
 GET  /api/v1/runs/{id}/log
 GET  /api/v1/runs/{id}/contours        contour lines from the run's result raster (`?interval=` dB step, `?crs=`)
