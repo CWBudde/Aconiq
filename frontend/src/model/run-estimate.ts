@@ -67,6 +67,8 @@ export interface RunEstimate {
     elapsed_s: number;
     prepare_s: number;
     budget_exhausted: boolean;
+    /** What the units were timed on; see `runestimate.ClockThreadCPU`. */
+    clock: "thread_cpu" | "wall";
   };
   alternatives?: EstimateAlternative[];
 }

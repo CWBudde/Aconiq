@@ -36,6 +36,7 @@ function longEstimate(withScaled = true): RunEstimate {
       elapsed_s: 3,
       prepare_s: 0.5,
       budget_exhausted: true,
+      clock: "thread_cpu",
     },
     ...(withScaled
       ? {

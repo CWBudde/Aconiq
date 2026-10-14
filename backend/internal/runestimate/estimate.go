@@ -115,7 +115,17 @@ type ProbeReport struct {
 	// BudgetExhausted reports that the budget ran out before every probe
 	// receiver had sampled all it wanted to.
 	BudgetExhausted bool `json:"budget_exhausted"`
+
+	// Clock is what the units were timed on: ClockThreadCPU where the
+	// platform has a per-thread CPU clock, ClockWall otherwise.
+	Clock string `json:"clock"`
 }
+
+// The clocks a probe can time its units on.
+const (
+	ClockThreadCPU = "thread_cpu"
+	ClockWall      = "wall"
+)
 
 // Alternative is what the same run would cost with some parameters changed,
 // costed from the same measurement.

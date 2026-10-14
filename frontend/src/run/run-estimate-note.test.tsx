@@ -36,6 +36,7 @@ function estimate(wallS: number): RunEstimate {
       elapsed_s: 3,
       prepare_s: 0.4,
       budget_exhausted: true,
+      clock: "thread_cpu",
     },
     alternatives: [
       {

@@ -631,6 +631,7 @@ describe("RunPage run-time estimate", () => {
       elapsed_s: 3.1,
       prepare_s: 0.4,
       budget_exhausted: true,
+      clock: "thread_cpu",
     },
     alternatives: [
       {

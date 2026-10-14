@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -160,11 +161,11 @@ type fakeKernel struct {
 	receiver int
 	sink     float64
 
-	// beginSleep is what a receiver's first Begin costs; walkers and begins
-	// count calls.
-	beginSleep time.Duration
-	walkers    int
-	begins     map[int]int
+	// beginBusy is the CPU a receiver's first Begin burns (busy, not asleep:
+	// the probe times on the thread's CPU clock); walkers and begins count calls.
+	beginBusy time.Duration
+	walkers   int
+	begins    map[int]int
 }
 
 func (k *fakeKernel) Units(i int) int { return k.units(i) }
@@ -186,8 +187,26 @@ func (k *fakeKernel) Begin(receiver int) {
 	// Like the RLS-19 mirror table, a receiver's one-off work is cached on
 	// the walker: only its first Begin pays.
 	if k.begins[receiver] == 1 {
-		time.Sleep(k.beginSleep)
+		k.sink += burn(k.beginBusy)
 	}
+}
+
+// burn spends d of the probe's own clock, so that it reads as d on it
+// however loaded the machine running the test is. The test goroutine holds
+// its thread throughout, as Run does.
+func burn(d time.Duration) float64 {
+	runtime.LockOSThread()
+
+	defer runtime.UnlockOSThread()
+
+	clock, _ := newUnitClock()
+	x := 0.0
+
+	for start := clock(); clock()-start < d; {
+		x++
+	}
+
+	return x
 }
 
 func (k *fakeKernel) Unit(unit int) {
@@ -278,7 +297,7 @@ func TestRunWalksThePlan(t *testing.T) {
 func TestRunReportsTheWarmUpBeginAsTheFirstSetup(t *testing.T) {
 	t.Parallel()
 
-	kernel := &fakeKernel{units: func(int) int { return 4 }, beginSleep: 5 * time.Millisecond}
+	kernel := &fakeKernel{units: func(int) int { return 4 }, beginBusy: 5 * time.Millisecond}
 
 	estimate, err := Run(t.Context(), kernel, gridPoints(2, 1, 1), Options{Budget: time.Minute, Workers: 1})
 	if err != nil {
@@ -301,7 +320,7 @@ func TestRunReportsTheWarmUpBeginAsTheFirstSetup(t *testing.T) {
 func TestRunSkipsAnAlternativeOnceTheBudgetIsGone(t *testing.T) {
 	t.Parallel()
 
-	kernel := &fakeKernel{units: func(int) int { return 1 << 20 }, spin: 2000, beginSleep: 30 * time.Millisecond}
+	kernel := &fakeKernel{units: func(int) int { return 1 << 20 }, spin: 2000, beginBusy: 30 * time.Millisecond}
 	built := false
 
 	startedAt := time.Now()

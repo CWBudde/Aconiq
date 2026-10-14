@@ -170,6 +170,14 @@ func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options)
 	deadline := startedAt.Add(budget)
 	probeOrder := ProbeReceivers(points, opts.MaxProbeReceivers)
 
+	// Held for the whole probe, so the thread CPU clock reads this
+	// goroutine's work and nothing another goroutine did on the same thread.
+	runtime.LockOSThread()
+
+	defer runtime.UnlockOSThread()
+
+	clock, onCPU := newUnitClock()
+
 	units, total, _, err := countUnits(ctx, kernel, len(points), time.Time{})
 	if err != nil {
 		return Estimate{}, err
@@ -179,7 +187,7 @@ func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options)
 	// is begun once: on the RLS-19 kernel a Begin builds the receiver's mirror
 	// table, and that is most of what a probe receiver costs on a dense scene.
 	walker := kernel.NewWalker()
-	firstSetup := warmUp(walker, probeOrder[0], units[probeOrder[0]], startedAt.Add(time.Duration(float64(budget)*warmUpShare)))
+	firstSetup := warmUp(walker, clock, probeOrder[0], units[probeOrder[0]], startedAt.Add(time.Duration(float64(budget)*warmUpShare)))
 
 	ownDeadline := deadline
 	if len(opts.Alternatives) > 0 {
@@ -191,6 +199,7 @@ func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options)
 		perReceiver: opts.MaxUnitsPerReceiver,
 		mustMeasure: true,
 		firstSetup:  firstSetup,
+		clock:       clock,
 	})
 	if err != nil {
 		return Estimate{}, err
@@ -202,7 +211,7 @@ func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options)
 	timed, exhausted := own.timed, own.exhausted
 
 	for k, alt := range opts.Alternatives {
-		measured, err := probeAlternative(ctx, alt, points, probeOrder, deadline, len(opts.Alternatives)-k, opts.MaxUnitsPerReceiver)
+		measured, err := probeAlternative(ctx, alt, points, probeOrder, deadline, len(opts.Alternatives)-k, opts.MaxUnitsPerReceiver, clock)
 		if err != nil {
 			return Estimate{}, err
 		}
@@ -227,6 +236,7 @@ func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options)
 		ElapsedSeconds:    time.Since(startedAt).Seconds(),
 		PrepareSeconds:    opts.Prepare.Seconds(),
 		BudgetExhausted:   exhausted,
+		Clock:             clockName(onCPU),
 	}
 
 	return estimate, nil
@@ -245,6 +255,7 @@ func probeAlternative(
 	deadline time.Time,
 	remainingAlternatives int,
 	perReceiver int,
+	clock unitClock,
 ) (measurement, error) {
 	now := time.Now()
 	if !now.Before(deadline) {
@@ -268,6 +279,7 @@ func probeAlternative(
 		perReceiver: perReceiver,
 		mustMeasure: false,
 		firstSetup:  -1,
+		clock:       clock,
 	})
 	m.total = total
 
@@ -318,18 +330,18 @@ func countUnits(ctx context.Context, kernel Kernel, receivers int, deadline time
 // first receiver's share of that would be extrapolated over a sixteenth of
 // the grid. So the collection is forced and the core is warmed first, on the
 // same walker the probe then times.
-func warmUp(walker Walker, receiver, units int, deadline time.Time) float64 {
+func warmUp(walker Walker, clock unitClock, receiver, units int, deadline time.Time) float64 {
 	runtime.GC()
 
 	if units == 0 {
 		return -1
 	}
 
-	startedAt := time.Now()
+	startedAt := clock()
 
 	walker.Begin(receiver)
 
-	setup := time.Since(startedAt).Seconds()
+	setup := (clock() - startedAt).Seconds()
 	order := newSampleOrder(units)
 
 	for i := 0; i < units && time.Now().Before(deadline); i++ {
@@ -389,6 +401,9 @@ type probeLimits struct {
 	// firstSetup is the first probe receiver's Begin as warmUp measured it,
 	// or negative when nothing was warmed.
 	firstSetup float64
+
+	// clock times the units; see clock.go.
+	clock unitClock
 }
 
 // probeKernel times the probe receivers' units until the deadline.
@@ -423,7 +438,7 @@ func probeKernel(
 
 		sliceEnd := now.Add(limits.deadline.Sub(now) / time.Duration(len(probeOrder)-k))
 
-		probe, cutShort := measureReceiver(walker, r, units[r], probeOffset(k, units[r]), sliceEnd, limits.perReceiver)
+		probe, cutShort := measureReceiver(walker, limits.clock, r, units[r], probeOffset(k, units[r]), sliceEnd, limits.perReceiver)
 		probe.point = points[r]
 
 		if k == 0 && limits.firstSetup >= 0 {
@@ -455,7 +470,7 @@ func probeOffset(k, units int) int {
 // sample order from offset, until its slice of the budget runs out, it has
 // sampled perReceiverCap of them, or it has run them all. cutShort reports
 // the first of those.
-func measureReceiver(walker Walker, receiver, units, offset int, sliceEnd time.Time, perReceiverCap int) (receiverProbe, bool) {
+func measureReceiver(walker Walker, clock unitClock, receiver, units, offset int, sliceEnd time.Time, perReceiverCap int) (receiverProbe, bool) {
 	probe := receiverProbe{receiver: receiver, units: units}
 	if units == 0 {
 		return probe, false
@@ -466,11 +481,11 @@ func measureReceiver(walker Walker, receiver, units, offset int, sliceEnd time.T
 		want = min(want, perReceiverCap)
 	}
 
-	startedAt := time.Now()
+	startedAt := clock()
 
 	walker.Begin(receiver)
 
-	probe.setup = time.Since(startedAt).Seconds()
+	probe.setup = (clock() - startedAt).Seconds()
 
 	order := newSampleOrder(units)
 	batchSize, sampled := 1, 0
@@ -481,13 +496,13 @@ func measureReceiver(walker Walker, receiver, units, offset int, sliceEnd time.T
 		}
 
 		size := min(batchSize, want-sampled)
-		batchStart := time.Now()
+		batchStart := clock()
 
 		for range size {
 			walker.Unit((order.take() + offset) % units)
 		}
 
-		elapsed := time.Since(batchStart)
+		elapsed := clock() - batchStart
 		probe.batches = append(probe.batches, batch{units: size, seconds: elapsed.Seconds()})
 		sampled += size
 
@@ -497,4 +512,13 @@ func measureReceiver(walker Walker, receiver, units, offset int, sliceEnd time.T
 	}
 
 	return probe, false
+}
+
+// clockName is how ProbeReport names the clock the units were timed on.
+func clockName(onCPU bool) string {
+	if onCPU {
+		return ClockThreadCPU
+	}
+
+	return ClockWall
 }

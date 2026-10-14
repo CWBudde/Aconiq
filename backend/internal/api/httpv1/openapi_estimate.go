@@ -111,7 +111,7 @@ func openapiRunEstimateSchemas() map[string]any {
 					"additionalProperties": false,
 					"required": []string{
 						"probe_receivers", "measured_receivers", "units_timed",
-						"budget_s", "elapsed_s", "prepare_s", "budget_exhausted",
+						"budget_s", "elapsed_s", "prepare_s", "budget_exhausted", "clock",
 					},
 					"properties": map[string]any{
 						"probe_receivers":    integer("Receivers chosen for the probe"),
@@ -121,6 +121,13 @@ func openapiRunEstimateSchemas() map[string]any {
 						"elapsed_s":          number("What the probe took"),
 						"prepare_s":          number("Scene preparation, measured"),
 						"budget_exhausted":   map[string]any{"type": "boolean"},
+						"clock": map[string]any{
+							"type": "string",
+							"enum": []string{"thread_cpu", "wall"},
+							"description": "What the units were timed on: the probing thread's CPU time where the " +
+								"platform has a per-thread CPU clock, so that other load on the machine during " +
+								"the probe is not extrapolated over the run; the wall clock otherwise (browser mode)",
+						},
 					},
 				},
 				"alternatives": map[string]any{

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -340,11 +341,19 @@ func TestEstimateRefusesWhatTheRunRefuses(t *testing.T) {
 	}
 }
 
-// TestEstimateIsWithinAFactorOfTheRun times the real walk over the scene and
-// holds the estimate to it. The bound is a factor of three either way rather
-// than the band, because a test machine running the rest of the suite in
-// parallel is exactly the noise the band's systematic margin does not claim
-// to cover — what this pins is that the extrapolation is of the right order.
+// TestEstimateIsWithinAFactorOfTheRun runs the real walk over the scene and
+// holds the estimate to it, within a factor of three either way.
+//
+// Both sides are read on the clock the probe times units on: the calling
+// thread's CPU time where the platform has one (runestimate.ThreadCPUTime),
+// the wall clock otherwise. On the wall clock this test once read an 8x
+// overestimate on a 4-vCPU CI runner under `go test -coverprofile ./...`:
+// other packages' test binaries crowded the 90 ms probe window and had
+// thinned out by the time the six-second run went, so the two sides measured
+// different machines. On the thread CPU clock both measure the work itself,
+// and what the comparison pins is the extrapolation — the unit counts, the
+// sampling and the per-receiver one-off cost — which is the part a
+// regression would break.
 func TestEstimateIsWithinAFactorOfTheRun(t *testing.T) {
 	if testing.Short() {
 		t.Skip("times a run")
@@ -363,21 +372,39 @@ func TestEstimateIsWithinAFactorOfTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	startedAt := time.Now()
+	// The sequential walk runs on this goroutine, so with the thread held its
+	// CPU time is the run's.
+	runtime.LockOSThread()
+
+	defer runtime.UnlockOSThread()
+
+	read := func() time.Duration {
+		if cpu, ok := runestimate.ThreadCPUTime(); ok {
+			return cpu
+		}
+
+		return time.Duration(time.Now().UnixNano())
+	}
+
+	startedAt := read()
 
 	_, err = ComputeReceiverOutputs(receivers, sources, barriers, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	measured := time.Since(startedAt).Seconds()
-	estimated := estimate.WallSeconds.Estimate
+	measured := (read() - startedAt).Seconds()
+
+	// One worker, so the estimate's compute is its CPU figure; the run also
+	// prepared its scene, which the estimate measured separately.
+	estimated := estimate.CPUSeconds.Estimate + estimate.Probe.PrepareSeconds
 
 	if estimated < measured/3 || estimated > measured*3 {
-		t.Fatalf("estimated %.3fs (band %.3f–%.3f), the run took %.3fs", estimated,
-			estimate.WallSeconds.Low, estimate.WallSeconds.High, measured)
+		t.Fatalf("estimated %.3fs (cpu band %.3f–%.3f, clock %s), the run took %.3fs",
+			estimated, estimate.CPUSeconds.Low, estimate.CPUSeconds.High, estimate.Probe.Clock, measured)
 	}
 
-	t.Logf("estimated %.3fs (band %.3f–%.3f, %d units timed), measured %.3fs",
-		estimated, estimate.WallSeconds.Low, estimate.WallSeconds.High, estimate.Probe.UnitsTimed, measured)
+	t.Logf("estimated %.3fs (cpu band %.3f–%.3f, %d units timed, clock %s), measured %.3fs",
+		estimated, estimate.CPUSeconds.Low, estimate.CPUSeconds.High, estimate.Probe.UnitsTimed,
+		estimate.Probe.Clock, measured)
 }

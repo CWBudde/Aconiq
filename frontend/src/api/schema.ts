@@ -585,6 +585,11 @@ export interface components {
                 budget_exhausted: boolean;
                 /** @description The probe's wall-clock budget */
                 budget_s: number;
+                /**
+                 * @description What the units were timed on: the probing thread's CPU time where the platform has a per-thread CPU clock, so that other load on the machine during the probe is not extrapolated over the run; the wall clock otherwise (browser mode)
+                 * @enum {string}
+                 */
+                clock: "thread_cpu" | "wall";
                 /** @description What the probe took */
                 elapsed_s: number;
                 /** @description Probe receivers the budget reached */
