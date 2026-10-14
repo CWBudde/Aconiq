@@ -13,7 +13,7 @@ import (
 )
 
 // expensiveReceiverScene is one receiver whose walk is long enough to cancel
-// in the middle of: a 1.5 km road at 1 m Teilstücke along a row of buildings,
+// in the middle of: a 1.5 km road at 0.2 m Teilstücke along a row of buildings,
 // so every Teilstück runs the reflection search. It is the shape of the Linden
 // extract, where one receiver is minutes of CPU, scaled down to a fraction of
 // a second.
@@ -31,7 +31,7 @@ func expensiveReceiverScene() ([]geo.PointReceiver, []road.RoadSource, road.Prop
 	}}
 
 	cfg := road.DefaultPropagationConfig()
-	cfg.SegmentLengthM = 1
+	cfg.SegmentLengthM = 0.2
 
 	for i := range 40 {
 		x := float64(i) * 37
