@@ -391,6 +391,38 @@ describe("useRuns with the event stream", () => {
     expect(eventStream.closed).toBe(1);
   });
 
+  it("gives the connection back while the tab is hidden, and takes it again when shown", async () => {
+    const visibility = vi.spyOn(document, "visibilityState", "get");
+    try {
+      const hook = renderHook(() => useRuns(), { wrapper });
+      await advance(0);
+      expect(eventStream.opened).toBe(1);
+
+      visibility.mockReturnValue("hidden");
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(eventStream.closed).toBe(1);
+
+      visibility.mockReturnValue("visible");
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(eventStream.opened).toBe(2);
+
+      hook.unmount();
+      expect(eventStream.closed).toBe(2);
+
+      // Released for good: a later change of visibility opens nothing.
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(eventStream.opened).toBe(2);
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
   it("opens none where the backend has no stream", async () => {
     backendState.streamsProjectEvents = false;
     renderHook(() => useRuns(), { wrapper });

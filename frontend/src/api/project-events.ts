@@ -20,6 +20,13 @@ import { queryKeys } from "./query-keys";
  * that moved, which brings artifacts and a finish time — invalidates the list,
  * and the next fetch says it.
  *
+ * The connection is held only while the tab is visible. A browser allows six
+ * HTTP/1.1 connections per host across all of its tabs, `aconiq serve` speaks
+ * nothing newer, and a stream never ends: six tabs on a run page would hold
+ * every slot, and every other request to the API — from any of them — would
+ * queue behind streams that never finish. A hidden tab gives its connection
+ * back and the poll covers it; showing the tab opens the stream again.
+ *
  * Only the runs list is written. The status document the event carries is
  * also what `useProjectStatus` caches, but the model sync and hydration read
  * that one and decide things off it; feeding it every two seconds of a run is
@@ -42,23 +49,53 @@ export function pushedRunId(): string | null {
 }
 
 /**
- * Keep the stream open while the returned function has not been called. The
- * first caller opens it and the last one to release closes it, so two lists
- * on screen share one connection.
+ * Keep the stream open while the returned function has not been called and
+ * the tab is visible. The first caller opens it and the last one to release
+ * closes it, so two lists on screen share one connection.
  */
 export function acquireProjectEvents(): () => void {
   if (!backend.capabilities.streamsProjectEvents) return () => undefined;
 
   subscribers++;
-  if (subscribers === 1) open();
+  if (subscribers === 1) {
+    document.addEventListener("visibilitychange", syncConnection);
+  }
+  syncConnection();
 
   let released = false;
   return () => {
     if (released) return;
     released = true;
     subscribers--;
-    if (subscribers === 0) close();
+    if (subscribers === 0) {
+      document.removeEventListener("visibilitychange", syncConnection);
+    }
+    syncConnection();
   };
+}
+
+/** Open or close the stream to match the subscribers and the tab's visibility. */
+function syncConnection() {
+  const wanted = subscribers > 0 && document.visibilityState !== "hidden";
+  if (wanted && unsubscribe === null) open();
+  else if (!wanted && unsubscribe !== null) {
+    close();
+    // As for a dropped stream: the list may be on the idle poll because the
+    // stream was carrying its running run.
+    if (subscribers > 0) invalidateRuns();
+  }
+}
+
+/**
+ * Refetch the runs list, without cancelling a fetch already under way: events
+ * can arrive every couple of seconds, and cancelling each time would keep a
+ * slow list from ever answering.
+ */
+function invalidateRuns() {
+  void queryClient.invalidateQueries(
+    { queryKey: queryKeys.runs.list() },
+    { cancelRefetch: false },
+  );
 }
 
 function open() {
@@ -76,7 +113,7 @@ function open() {
         // The list may be on the idle poll because the stream was carrying
         // its running run. Refetching now is what puts it back on the fast
         // one at once — its interval is only re-read when its data changes.
-        void queryClient.invalidateQueries({ queryKey: queryKeys.runs.list() });
+        invalidateRuns();
       }
     },
   });
@@ -104,7 +141,7 @@ export function applyProjectStatusEvent(event: ProjectStatusEvent): void {
 
   const known = runs.find((run) => run.id === lastRun.id);
   if (known?.status !== lastRun.status) {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.runs.list() });
+    invalidateRuns();
     return;
   }
 
