@@ -9,13 +9,11 @@
  * that would not move. This is the number itself — exact, free, and derived
  * from the same `model/grid-estimate` the run builds its receivers from.
  *
- * TODO: the count is only half of "what will this run cost". Wall time is the
- * half a reader actually wants, and it does not follow from the count — a
- * scene with buildings costs tens of milliseconds a receiver, a bare one well
- * under a millisecond. The follow-up is a timing probe: run a fixed
- * 16-receiver sample of this grid through the WASM kernel, measure it, and
- * scale to the full count. It needs the kernel, so it would speak in browser
- * mode and stay silent in API mode rather than guess.
+ * The count is only half of "what will this run cost". Wall time is the half a
+ * reader actually wants, and it does not follow from the count — a scene with
+ * buildings costs seconds a receiver, a bare one well under a millisecond.
+ * That half is `RunEstimateNote`, which asks the backend to time a probe of
+ * the run itself; this note stays the free, exact, keystroke-fast count.
  */
 
 import { AlertCircle } from "lucide-react";

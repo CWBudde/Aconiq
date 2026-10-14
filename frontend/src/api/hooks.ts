@@ -422,3 +422,8 @@ export function useIsSavingModel(): boolean {
 export function getArtifactContentURL(artifactId: string): string {
   return backend.getArtifactURL(artifactId);
 }
+
+// The run dialog's time estimate. Its own module for its debounce and
+// revision bookkeeping; exported from here with the other queries, so a test
+// that replaces this module replaces it too.
+export { useRunEstimate, type RunEstimateState } from "./use-run-estimate";

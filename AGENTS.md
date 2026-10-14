@@ -112,10 +112,15 @@ PLAN.md           Roadmap and the single status source
 | `aconiq/` | The CLI                                                                             |
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
-`window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `transform`, `maskFootprints`, `standards`,
-`contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Five of
-those carry contracts worth knowing before writing browser-mode code:
+`window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `estimate`, `transform`, `maskFootprints`,
+`standards`, `contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health` and
+`projectStatus`. Six of those carry contracts worth knowing before writing browser-mode code:
 
+- **`estimate`** takes an `rls19Road` request plus `workers` (the pool the run would be sharded
+  over) and `budget_ms`, and answers what that run would cost in time — the JSON
+  `aconiq run --estimate --json` prints and `POST /api/v1/runs/estimate` answers, because all three
+  are `road.Estimate` timing a stratified sample of the run's own (source, Teilstück) pairs. It
+  computes no level, and it occupies the Worker for its budget (1.5 s by default).
 - **`transform`** is the frontend's only map projection. It takes a batch of flat, interleaved
   coordinates and a `target_crs` of `"auto"`, and makes the CRS decision `aconiq run` makes — so
   browser mode and the CLI resolve the same UTM zone, and refuse the same site in the same words.
@@ -178,6 +183,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `report/export/`            | Export formats: GeoTIFF, COG, GeoPackage, contour GeoJSON/GPKG, and the format matrix                              |
 | `report/reporting/`         | Offline report generation: `report-context.json`, `report.md`, `report.html`, `report.typ`, optional PDF           |
 | `results/`                  | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |
+| `runestimate/`              | Run-time estimate: stratified kernel probe, extrapolation, chunk-schedule replay; standards opt in via `Kernel`    |
 | `standards/`                | The registry that assembles the standards modules the CLI can run                                                  |
 | `standards/descriptorjson/` | The one JSON encoding of a standards descriptor, shared by the HTTP API and the WASM kernel                        |
 | `standards/framework/`      | Standard descriptors, parameter schemas, version/profile resolution, registry type                                 |
@@ -210,6 +216,7 @@ GET  /api/v1/project/status
 GET  /api/v1/standards
 GET  /api/v1/runs                      list runs (an open run carries `progress`)
 POST /api/v1/runs                      start a run: 202 once its row exists; it computes in the background
+POST /api/v1/runs/estimate             what that run would cost in time (`aconiq run --estimate`); creates no run
 GET  /api/v1/runs/{id}                 one run, with `progress` while it computes
 POST /api/v1/runs/{id}/cancel          interrupt a run this server started (202; 409 if ended or not ours)
 DELETE /api/v1/runs/{id}               delete a run

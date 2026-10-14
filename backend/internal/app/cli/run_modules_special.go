@@ -77,45 +77,77 @@ func extractRLS19Scene(input runModuleInput, roadSources []rls19road.RoadSource)
 	}, nil
 }
 
-func runRLS19RoadModule(ctx context.Context, input runModuleInput) (runModuleResult, error) {
+// rls19RoadRun is an RLS-19 run with everything settled but the compute:
+// what `aconiq run` computes and what `aconiq run --estimate` probes.
+type rls19RoadRun struct {
+	roadSources         []rls19road.RoadSource
+	sourceOverrideCount int
+	barriers            []rls19road.Barrier
+	parkingSources      []rls19road.ParkingSource
+	receivers           []geo.PointReceiver
+	layout              results.GridLayout
+	config              rls19road.PropagationConfig
+}
+
+// prepareRLS19RoadRun reads the model into an RLS-19 run: options, sources,
+// barriers, buildings, Parkplätze, the receiver set and the propagation
+// config. A run and an estimate both start here, so an estimate prices the
+// receivers and the scene the run would compute.
+func prepareRLS19RoadRun(input runModuleInput) (rls19RoadRun, error) {
 	options, err := parseRLS19RoadRunOptions(input.params)
 	if err != nil {
-		return runModuleResult{}, beforeRunError{err: err}
+		return rls19RoadRun{}, beforeRunError{err: err}
 	}
 
 	roadSources, sourceOverrideCount, err := extractRLS19RoadSources(input.model, options, input.standard.SupportedSourceTypes)
 	if err != nil {
 		input.log.addf("failed to extract RLS-19 road sources: %v", err)
 
-		return runModuleResult{}, err
+		return rls19RoadRun{}, err
 	}
 
 	scene, err := extractRLS19Scene(input, roadSources)
 	if err != nil {
-		return runModuleResult{}, err
+		return rls19RoadRun{}, err
 	}
 
-	barriers, buildings := scene.barriers, scene.buildings
-	parkingSources, parkingExtent := scene.parkingSources, scene.parkingExtent
-
 	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
-		return buildRLS19RoadReceivers(roadSources, parkingExtent, calcArea, options)
+		return buildRLS19RoadReceivers(roadSources, scene.parkingExtent, calcArea, options)
 	})
 	if err != nil {
 		input.log.addf("failed to build receivers: %v", err)
 
-		return runModuleResult{}, err
+		return rls19RoadRun{}, err
 	}
 
 	input.log.addf("rls19_road_sources=%d", len(roadSources))
 	input.log.addf("rls19_sources_with_feature_overrides=%d", sourceOverrideCount)
-	input.log.addf("rls19_barriers=%d", len(barriers))
-	input.log.addf("rls19_buildings=%d", len(buildings))
-	input.log.addf("rls19_parking_sources=%d", len(parkingSources))
+	input.log.addf("rls19_barriers=%d", len(scene.barriers))
+	input.log.addf("rls19_buildings=%d", len(scene.buildings))
+	input.log.addf("rls19_parking_sources=%d", len(scene.parkingSources))
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
-	propagationConfig := rls19RoadPropagationConfig(options, scene, input, receivers)
+	return rls19RoadRun{
+		roadSources:         roadSources,
+		sourceOverrideCount: sourceOverrideCount,
+		barriers:            scene.barriers,
+		parkingSources:      scene.parkingSources,
+		receivers:           receivers,
+		layout:              layout,
+		config:              rls19RoadPropagationConfig(options, scene, input, receivers),
+	}, nil
+}
+
+func runRLS19RoadModule(ctx context.Context, input runModuleInput) (runModuleResult, error) {
+	run, err := prepareRLS19RoadRun(input)
+	if err != nil {
+		return runModuleResult{}, err
+	}
+
+	receivers, roadSources, barriers := run.receivers, run.roadSources, run.barriers
+	layout, sourceOverrideCount, parkingSources := run.layout, run.sourceOverrideCount, run.parkingSources
+	propagationConfig := run.config
 
 	receiverOutputs, err := computeRLS19RoadReceivers(ctx, input, receivers, roadSources, barriers, propagationConfig)
 	if err != nil {

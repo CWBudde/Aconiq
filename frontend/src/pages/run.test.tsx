@@ -59,6 +59,8 @@ const state = vi.hoisted(() => {
     cancelledRunIds: string[];
     cancelRunRequested: boolean;
     cancelRunError: Error | null;
+    runEstimate: unknown;
+    estimateSpecs: unknown[];
   } = {
     standards: [],
     runs: [],
@@ -78,6 +80,8 @@ const state = vi.hoisted(() => {
     cancelledRunIds: [] as string[],
     cancelRunRequested: false,
     cancelRunError: null as Error | null,
+    runEstimate: { status: "idle" } as unknown,
+    estimateSpecs: [] as unknown[],
   };
   return value;
 });
@@ -116,6 +120,10 @@ vi.mock("@/api/hooks", () => ({
     error: null,
   }),
   useRuns: () => ({ data: state.runs, isLoading: false, error: null }),
+  useRunEstimate: (spec: unknown) => {
+    state.estimateSpecs.push(spec);
+    return state.runEstimate;
+  },
   useRunLog: () => ({
     data: { run_id: "run-1", lines: state.logLines },
     isLoading: false,
@@ -323,6 +331,8 @@ beforeEach(() => {
   state.cancelledRunIds = [];
   state.cancelRunRequested = false;
   state.cancelRunError = null;
+  state.runEstimate = { status: "idle" };
+  state.estimateSpecs = [];
   useModelStore.getState().reset();
   resetProjectSyncStore();
   resetProjectHydration();
@@ -601,6 +611,110 @@ describe("RunPage run progress and cancellation", () => {
     // up so the user can start again with a smaller grid.
     expect(screen.queryByTestId("run-create-error")).toBeNull();
     expect(startRunButton()).toBeEnabled();
+  });
+});
+
+describe("RunPage run-time estimate", () => {
+  const longEstimate = {
+    available: true,
+    standard_id: "rls19-road",
+    wall_s: { low: 2.2 * 3600, estimate: 3 * 3600, high: 3.9 * 3600 },
+    cpu_s: { low: 60_000, estimate: 80_000, high: 100_000 },
+    cpu_per_receiver_s: { low: 460, estimate: 615, high: 770 },
+    parallelism: 8,
+    inputs: { receivers: 130, workers: 12, units: 5_810_870 },
+    probe: {
+      probe_receivers: 15,
+      measured_receivers: 15,
+      units_timed: 40,
+      budget_s: 3,
+      elapsed_s: 3.1,
+      prepare_s: 0.4,
+      budget_exhausted: true,
+    },
+    alternatives: [
+      {
+        params: { segment_length_mode: "distance_scaled" },
+        units: 147_132,
+        cpu_s: { low: 1100, estimate: 1350, high: 1700 },
+        wall_s: { low: 130, estimate: 220, high: 470 },
+      },
+    ],
+  };
+
+  it("asks for an estimate of exactly the run the dialog would start", () => {
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(state.estimateSpecs.at(-1)).toMatchObject({
+      standardId: "rls19-road",
+      version: "1",
+      profile: "default",
+      receiverMode: "auto-grid",
+    });
+  });
+
+  it("asks for none while the run is gated", () => {
+    useModelStore.getState().addFeature(sampleFeature);
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    // Unsaved edits: the run would read the older saved model.
+    expect(state.estimateSpecs.at(-1)).toBeNull();
+  });
+
+  it("shows that it is estimating, and leaves the run action alone", () => {
+    state.runEstimate = { status: "estimating" };
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.getByTestId("run-estimate")).toHaveTextContent(
+      m.status_run_estimating(),
+    );
+    expect(startRunButton()).toBeEnabled();
+  });
+
+  it("states a short run's band without a warning", () => {
+    state.runEstimate = {
+      status: "ready",
+      estimate: {
+        ...longEstimate,
+        wall_s: { low: 400, estimate: 420, high: 500 },
+      },
+    };
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.getByTestId("run-estimate")).toHaveTextContent(
+      m.msg_run_estimate({ band: "≈ 6–9 min" }),
+    );
+    expect(
+      screen.queryByRole("button", { name: /distance-scaled/i }),
+    ).toBeNull();
+  });
+
+  it("warns about a long run, and its suggestion reaches the run", () => {
+    state.runEstimate = { status: "ready", estimate: longEstimate };
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.getByTestId("run-estimate")).toHaveTextContent(
+      m.msg_run_estimate_warning(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /distance-scaled/i }));
+    fireEvent.click(startRunButton());
+
+    expect(state.runSpecs.at(-1)?.params).toMatchObject({
+      segment_length_mode: "distance_scaled",
+    });
+  });
+
+  it("says when a standard has no estimate", () => {
+    state.runEstimate = {
+      status: "ready",
+      estimate: { available: false, reason: "no estimate available" },
+    };
+    openRunDialog([standard("rls19-road", "normative")]);
+
+    expect(screen.getByTestId("run-estimate")).toHaveTextContent(
+      m.msg_run_estimate_unavailable(),
+    );
   });
 });
 

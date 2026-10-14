@@ -15,6 +15,7 @@
 export type KernelMethod =
   | "rls19Road"
   | "rls19RoadShard"
+  | "estimate"
   | "transform"
   | "maskFootprints"
   | "contours"
@@ -52,6 +53,12 @@ export type KernelCall =
       json: string;
       /** As `rls19Road`, but counting this shard's receivers. */
       progress: boolean;
+    }
+  | {
+      id: number;
+      method: "estimate";
+      /** A run's request plus `workers` and `budget_ms`. */
+      json: string;
     }
   | { id: number; method: "transform"; json: string }
   | { id: number; method: "maskFootprints"; json: string }

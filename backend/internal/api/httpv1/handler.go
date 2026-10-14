@@ -29,6 +29,8 @@ type Handler struct {
 	sseInterval time.Duration
 	registry    *framework.Registry
 	runExecutor runExecutor
+	// estimateExecutor prices a run request without starting it.
+	estimateExecutor estimateExecutor
 	// runs is every run this server has started and not yet settled. A
 	// pointer for the reason manifest is one.
 	runs *runSupervisor
@@ -127,6 +129,7 @@ type handlerOptions struct {
 	allowedHosts []string // extra Host header values beyond loopback
 	apiToken     string   // optional bearer token; empty disables the check
 	runExecutor  runExecutor
+	estimate     estimateExecutor   // nil falls back to the CLI child process
 	runs         *runSupervisor     // nil gets a supervisor of its own
 	runStartWait time.Duration      // zero falls back to runStartTimeout
 	lgln         *lglnimport.Client // nil falls back to lglnimport.NewClient()
@@ -176,16 +179,17 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	}
 
 	handler := Handler{
-		store:           store,
-		now:             now,
-		sseInterval:     sseInterval,
-		registry:        opts.registry,
-		runExecutor:     opts.runExecutor,
-		runs:            opts.runs,
-		runStartTimeout: opts.runStartWait,
-		manifest:        &sync.Mutex{},
-		lgln:            opts.lgln,
-		logger:          logger,
+		store:            store,
+		now:              now,
+		sseInterval:      sseInterval,
+		registry:         opts.registry,
+		runExecutor:      opts.runExecutor,
+		estimateExecutor: opts.estimate,
+		runs:             opts.runs,
+		runStartTimeout:  opts.runStartWait,
+		manifest:         &sync.Mutex{},
+		lgln:             opts.lgln,
+		logger:           logger,
 	}
 	if handler.lgln == nil {
 		handler.lgln = lglnimport.NewClient()
@@ -199,15 +203,14 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		handler.runStartTimeout = runStartTimeout
 	}
 
-	if handler.runExecutor == nil {
-		handler.runExecutor = newCLIProcessRunExecutor(store.Root())
-	}
+	useChildProcessExecutors(&handler, store.Root())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", handler.handleHealth)
 	mux.HandleFunc("/api/v1/project/status", handler.handleProjectStatus)
 	mux.HandleFunc("/api/v1/standards", handler.handleStandards)
 	mux.HandleFunc("/api/v1/runs", handler.handleRuns)
+	mux.HandleFunc("/api/v1/runs/estimate", handler.handleRunEstimate)
 	mux.HandleFunc("/api/v1/runs/{id}", handler.handleRun)
 	mux.HandleFunc("/api/v1/runs/{id}/log", handler.handleRunLog)
 	mux.HandleFunc("/api/v1/runs/{id}/cancel", handler.handleRunCancel)

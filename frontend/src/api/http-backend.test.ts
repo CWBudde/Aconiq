@@ -259,6 +259,42 @@ describe("httpBackend.startRun", () => {
   });
 });
 
+describe("httpBackend.estimateRun", () => {
+  it("posts the run's own body to the estimate route, with the signal", async () => {
+    const estimate = {
+      available: true,
+      standard_id: "rls19-road",
+      wall_s: { low: 360, estimate: 420, high: 540 },
+    };
+    const mock = stubFetch(jsonResponse(estimate, 200));
+    const controller = new AbortController();
+
+    const got = await httpBackend.estimateRun(
+      {
+        standardId: "rls19-road",
+        version: "2019",
+        profile: "default",
+        params: { grid_resolution_m: "20" },
+        receiverMode: "auto-grid",
+      },
+      controller.signal,
+    );
+
+    expect(got.wall_s?.estimate).toBe(420);
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/runs/estimate"));
+    expect(init.method).toBe("POST");
+    expect(init.signal).toBe(controller.signal);
+    expect(JSON.parse(init.body as string)).toEqual({
+      standard_id: "rls19-road",
+      standard_version: "2019",
+      standard_profile: "default",
+      receiver_mode: "auto-grid",
+      params: { grid_resolution_m: "20" },
+    });
+  });
+});
+
 describe("httpBackend.cancelRun", () => {
   it("posts to the run's cancel route with the client header and no body", async () => {
     const mock = stubFetch(

@@ -1,9 +1,16 @@
 package cli
 
 import (
+	"time"
+
+	"github.com/aconiq/backend/internal/runestimate"
 	"github.com/aconiq/backend/internal/standards/dummy/freefield"
 	"github.com/spf13/cobra"
 )
+
+// runCommandName is the command's name, and the "command" its JSON output
+// reports.
+const runCommandName = "run"
 
 func newRunCommand() *cobra.Command {
 	var (
@@ -20,10 +27,12 @@ func newRunCommand() *cobra.Command {
 		cpuProfile      string
 		memProfile      string
 		runID           string
+		estimate        bool
+		estimateBudget  time.Duration
 	)
 
 	cmd := &cobra.Command{
-		Use:   "run",
+		Use:   runCommandName,
 		Short: "Execute a run and persist result artifacts",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			profiles, err := startRunProfiles(cpuProfile, memProfile)
@@ -43,6 +52,8 @@ func newRunCommand() *cobra.Command {
 				experimental:    experimental,
 				workers:         workers,
 				runID:           runID,
+				estimate:        estimate,
+				estimateBudget:  estimateBudget,
 			})
 
 			return finishRunProfiles(cmd, profiles, runErr)
@@ -60,6 +71,8 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringArrayVar(&inputPaths, "input", nil, "Input path to hash into provenance (repeatable)")
 	cmd.Flags().BoolVar(&experimental, "experimental", false, "Acknowledge that a scaffold-tier standard emits invented levels and run it anyway")
 	cmd.Flags().IntVar(&workers, "workers", 0, "Compute worker count (0 = one per available CPU)")
+	cmd.Flags().BoolVar(&estimate, "estimate", false, "Report what the run would cost in time, from a short probe of its own kernel, and exit without creating a run")
+	cmd.Flags().DurationVar(&estimateBudget, "estimate-budget", runestimate.DefaultBudget, "Wall-clock budget of the --estimate probe")
 	cmd.Flags().StringVar(&cpuProfile, "cpuprofile", "", "Write a pprof CPU profile of the command to this file (written on failure and cancellation too)")
 	cmd.Flags().StringVar(&memProfile, "memprofile", "", "Write a pprof heap profile, taken after a GC at the end of the command, to this file")
 

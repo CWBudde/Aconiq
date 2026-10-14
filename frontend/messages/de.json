@@ -854,5 +854,21 @@
       }
     }
   ],
-  "action_import_lgln_apply": "OSM-Gebäude ersetzen"
+  "action_import_lgln_apply": "OSM-Gebäude ersetzen",
+  "status_run_estimating": "Rechenzeit wird geschätzt …",
+  "msg_run_estimate": "Geschätzte Rechenzeit: {band}",
+  "msg_run_estimate_detail": "{receivers} Immissionsorte auf {workers} Workern; gemessen an {timed} Stichproben-Arbeitseinheiten",
+  "msg_run_estimate_unavailable": "Für diese Norm ist keine Rechenzeitschätzung verfügbar.",
+  "msg_run_estimate_failed": "Die Rechenzeit konnte nicht geschätzt werden.",
+  "msg_run_estimate_warning": "Diese Berechnung dauert lange. In Richtung einer Minute kommt sie mit:",
+  "action_use_estimate_grid": "Rasterweite {resolution} m — {receivers} Immissionsorte, {band}",
+  "action_use_estimate_distance_scaled": "Entfernungsabhängige Teilstücke — {band}",
+  "action_use_estimate_both": "Entfernungsabhängige Teilstücke und Rasterweite {resolution} m — {receivers} Immissionsorte, {band}",
+  "duration_band_s": "≈ {low}–{high} s",
+  "duration_band_min": "≈ {low}–{high} Min.",
+  "duration_band_h": "≈ {low}–{high} Std.",
+  "duration_single_s": "≈ {value} s",
+  "duration_single_min": "≈ {value} Min.",
+  "duration_single_h": "≈ {value} Std.",
+  "duration_under_a_second": "< 1 s"
 }
