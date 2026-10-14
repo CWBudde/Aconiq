@@ -26,31 +26,47 @@ func newCLIProcessRunExecutor(projectRoot string) runExecutor {
 			return fmt.Errorf("resolve executable: %w", err)
 		}
 
-		cmd := newRunProcess(ctx, executable, runCommandArgs(projectRoot, runID, req))
+		return awaitRunProcess(newRunProcess(ctx, executable, runCommandArgs(projectRoot, runID, req)))
+	}
+}
 
-		var stdout, stderr tailBuffer
+// awaitRunProcess runs a prepared `aconiq run` child to its end and, when it
+// fails, answers with what it said was wrong.
+//
+// Only stderr is kept. The run command logs there, and a failed run's last
+// record carries its error; stdout is the command's result, which the server
+// reads from the project the child writes rather than from the child.
+func awaitRunProcess(cmd *exec.Cmd) error {
+	var stderr tailBuffer
 
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
+	cmd.Stderr = &stderr
 
-		err = cmd.Run()
-		if err != nil {
-			message := childErrorMessage(stdout.Bytes(), stderr.Bytes())
-
-			var exitErr *exec.ExitError
-			if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
-				return domainerrors.New(domainerrors.KindUserInput, "httpv1.runExecutor", message, err)
-			}
-
-			if message == "" {
-				message = err.Error()
-			}
-
-			return fmt.Errorf("execute run command: %s", message)
-		}
-
+	err := cmd.Run()
+	if err == nil {
 		return nil
 	}
+
+	return childProcessError(err, stderr.Bytes(), "httpv1.runExecutor", "execute run command")
+}
+
+// childProcessError is the error a failed `aconiq run` child is answered
+// with: a user error in the child's own words when it refused the request
+// (exit status 2, and its log says so), otherwise an error carrying the
+// child's reason, or how the process exited when it gave none.
+func childProcessError(err error, stderr []byte, op string, prefix string) error {
+	failure := readChildFailure(stderr)
+
+	var exitErr *exec.ExitError
+	if stderrors.As(err, &exitErr) && exitErr.ExitCode() == 2 && failure.mayBeUserError {
+		return domainerrors.New(domainerrors.KindUserInput, op, failure.message, err)
+	}
+
+	message := failure.message
+	if message == "" {
+		message = err.Error()
+	}
+
+	return fmt.Errorf("%s: %s", prefix, message)
 }
 
 // runInterruptGrace is how long an interrupted `aconiq run` child has to record

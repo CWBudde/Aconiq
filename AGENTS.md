@@ -209,6 +209,12 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `aconiq openapi`    | Export the OpenAPI contract (default `.noise/api/openapi.v1.json`)                                        |
 | `aconiq bench`      | Run synthetic benchmark scenarios (runtime, memory, cache IO, numeric drift)                              |
 
+**Streams:** stdout is a command's result and nothing else; log records (`internal/app/logging`)
+go to stderr, text by default and JSON under `--json`. Under `--json` stdout is exactly one JSON
+document; only `--help` and `--version` print text regardless. The `httpv1` handlers that spawn `aconiq run` depend on this: they decode the estimate
+from stdout and read a refusal from the last ERROR record on stderr. Never log to stdout, and
+log a command's failure at ERROR — a WARN with an `error` attribute is not read as one.
+
 ### Local HTTP API (`internal/api/httpv1`)
 
 ```

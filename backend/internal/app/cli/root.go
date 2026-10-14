@@ -49,7 +49,7 @@ func Execute(args []string) int {
 			slog.Any("error", err),
 		)
 	} else {
-		_, _ = fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
 	}
 
 	if domainerrors.IsUserError(err) {
@@ -108,7 +108,9 @@ func newRootCommand() *cobra.Command {
 				return domainerrors.New(domainerrors.KindUserInput, "config.FromFlags", "failed to resolve runtime configuration", err)
 			}
 
-			logger := logging.New(cfg.LogLevel, cfg.JSONLogs)
+			// Logs go to stderr, in text and JSON alike: stdout is the
+			// command's result, and under --json exactly one JSON document.
+			logger := logging.New(cmd.ErrOrStderr(), cfg.LogLevel, cfg.JSONLogs)
 			run := logging.Begin(logger, cmd.CommandPath(), args)
 
 			setState(cmd, commandState{

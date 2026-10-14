@@ -35,6 +35,13 @@ func newOpenAPICommand() *cobra.Command {
 				return domainerrors.New(domainerrors.KindInternal, "cli.openapi", "write openapi spec", err)
 			}
 
+			if state.Config.JSONLogs {
+				return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
+					"command": "openapi",
+					"out":     resolvedOut,
+				})
+			}
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "OpenAPI exported: %s\n", resolvedOut)
 
 			return nil

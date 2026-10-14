@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -158,8 +160,12 @@ func runServe(cmd *cobra.Command, cfg serveConfig) error {
 		"cors_origins", strings.Join(cfg.corsOrigins, ","),
 		"api_token_required", cfg.apiToken != "",
 	)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Serving local API on http://%s\n", cfg.listenAddr)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Health: http://%s/api/v1/health\n", cfg.listenAddr)
+	// A closed stdout does not stop a server that is already listening; the
+	// log says the announcement was lost.
+	err = announceServe(cmd.OutOrStdout(), state.Config.JSONLogs, cfg.listenAddr)
+	if err != nil {
+		state.Logger.Warn("serve announcement not written", "error", err)
+	}
 
 	select {
 	case err := <-errCh:
@@ -167,6 +173,35 @@ func runServe(cmd *cobra.Command, cfg serveConfig) error {
 	case <-runCtx.Done():
 		return shutdownServer(server, handler, errCh, cfg.shutdownTimeout, state)
 	}
+}
+
+// announceServe says where the server listens: two lines of text, or under
+// --json one compact JSON document on one line. A server's stdout stays open
+// for as long as it runs, so a caller waiting for it to come up reads a line,
+// not a document that ends only when the process does.
+func announceServe(out io.Writer, jsonOutput bool, listenAddr string) error {
+	url := "http://" + listenAddr
+	health := url + "/api/v1/health"
+
+	if jsonOutput {
+		err := json.NewEncoder(out).Encode(map[string]string{
+			"command": "serve",
+			"url":     url,
+			"health":  health,
+		})
+		if err != nil {
+			return fmt.Errorf("announce serve: %w", err)
+		}
+
+		return nil
+	}
+
+	_, err := fmt.Fprintf(out, "Serving local API on %s\nHealth: %s\n", url, health)
+	if err != nil {
+		return fmt.Errorf("announce serve: %w", err)
+	}
+
+	return nil
 }
 
 // serveRunStopTimeout is how long a stopping server waits for its runs. A run

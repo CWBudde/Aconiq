@@ -52,7 +52,9 @@ Note that `just check-formatted` runs `treefmt --fail-on-change`, which formats 
 | `aconiq serve`    | Start the local HTTP API                                                                  |
 | `aconiq openapi`  | Export the OpenAPI contract for the local API (default `.noise/api/openapi.v1.json`)      |
 
-All commands accept `--project`, `--cache-dir`, `--verbose` and `--json`.
+All commands accept `--project`, `--cache-dir`, `--verbose` and `--json`. A command's result goes
+to stdout and its log records to stderr; `--json` makes both JSON, and stdout then carries exactly
+one JSON document. `--help` and `--version` are the exceptions: they print text either way.
 
 ## Supported Input Formats
 
