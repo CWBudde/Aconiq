@@ -2244,10 +2244,15 @@ before the pages they protect are cut apart.
 - [ ] **What is left of a building-dense RLS-19 run is the mirrored paths' crossing test.** With
       the reflection search running from the receiver's side and the barrier fan in place, a
       fixed-mode Linden receiver spends ~70 % of its CPU shielding mirrored paths and ~30 % in
-      the remaining search; `geo.SegmentIntersection` alone is ~24 % of it. The fan's candidates
-      are already the crossed buildings, and a call costs ~3 ns, so neither fewer buildings nor
-      cheaper arithmetic is left: what costs is the number of facade edges tested per candidate. Any prune there
-      must keep `LineStringIntersectsSegment`'s nearest-crossing answer, edge index included. One
+      the remaining search. The fan's candidates are already the crossed buildings. The edge test
+      itself is now branch-free and reads the scene's `geo.RayEdges` layout; it is still ~14 % of
+      the synthetic city benchmark's CPU on arm64 (`geo.nearestEdgeCrossing`). Two exact levers
+      are left. Fewer facade edges tested per candidate: any prune there must keep
+      `LineStringIntersectsSegment`'s nearest-crossing answer, edge index included. Or a NEON/AVX2
+      kernel over the `RayEdges` arrays: NEON's two float64 lanes cap it at ~5–8 % of an arm64
+      run, so measure what AVX2 buys on amd64 before writing either. It must not fuse
+      multiply-adds, which moves arm64 to amd64's bits and keeps amd64's, and the pure-Go loop
+      stays as the wasm path and as the reference it is fuzzed against. One
       constraint stays live: the receiver-side search is bit-identical to the source-side one on
       every scene compared, but it can _add_ a second-order path the old search's fixed-margin
       source-side prune dropped by rounding (source millimetres off a facade's line, second wall

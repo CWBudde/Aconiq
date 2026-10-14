@@ -56,10 +56,17 @@ func barrierCrossingsAmong(
 		crossings = scratch.barrierCrossings[:0]
 	}
 
-	rays = geo.AppendRayCrossings(
-		rays, source, receiver, barriers, candidates,
-		barrierPolyline, barrierEndpointToleranceM,
-	)
+	if scratch != nil && scratch.barrierEdges != nil {
+		rays = geo.AppendRayEdgeCrossings(
+			rays, source, receiver, scratch.barrierEdges, candidates,
+			barrierEndpointToleranceM,
+		)
+	} else {
+		rays = geo.AppendRayCrossings(
+			rays, source, receiver, barriers, candidates,
+			barrierPolyline, barrierEndpointToleranceM,
+		)
+	}
 
 	for _, crossing := range rays {
 		crossings = append(crossings, barrierCrossing{

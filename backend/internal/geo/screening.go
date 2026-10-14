@@ -268,6 +268,17 @@ func appendRayCrossing[T any](
 		return dst
 	}
 
+	return appendCrossingAt(dst, source, receiver, point, index, segment, endpointToleranceM)
+}
+
+// appendCrossingAt appends the crossing found at point, unless it grazes
+// either end of the ray.
+func appendCrossingAt(
+	dst []RayCrossing,
+	source, receiver, point Point2D,
+	index, segment int,
+	endpointToleranceM float64,
+) []RayCrossing {
 	distFromSource := Distance(source, point)
 	if endpointToleranceM > 0 &&
 		(distFromSource < endpointToleranceM || Distance(point, receiver) < endpointToleranceM) {
@@ -280,6 +291,112 @@ func appendRayCrossing[T any](
 		ObstacleIndex:  index,
 		SegmentIndex:   segment,
 	})
+}
+
+// RayEdges holds the plan-view edges of an obstacle slice, laid out for the
+// ray test rather than for reading: one array per quantity, each obstacle's
+// edges contiguous, and each edge's direction computed once instead of once
+// per ray. A scene builds it once; every ray of every receiver reads it.
+type RayEdges struct {
+	x, y   []float64 // the edge's start vertex
+	dx, dy []float64 // end minus start
+
+	// first[i] is obstacle i's first edge, and first[i+1] is one past its
+	// last; an obstacle with fewer than two vertices has none.
+	first []int
+}
+
+// NewRayEdges lays out the edges of obstacles, in slice order.
+func NewRayEdges[T any](obstacles []T, polyline func(T) []Point2D) *RayEdges {
+	n := 0
+	for _, obstacle := range obstacles {
+		n += max(len(polyline(obstacle))-1, 0)
+	}
+
+	edges := &RayEdges{
+		x:     make([]float64, 0, n),
+		y:     make([]float64, 0, n),
+		dx:    make([]float64, 0, n),
+		dy:    make([]float64, 0, n),
+		first: make([]int, 0, len(obstacles)+1),
+	}
+
+	for _, obstacle := range obstacles {
+		edges.first = append(edges.first, len(edges.x))
+
+		line := polyline(obstacle)
+		for k := 1; k < len(line); k++ {
+			a, b := line[k-1], line[k]
+			edges.x = append(edges.x, a.X)
+			edges.y = append(edges.y, a.Y)
+			edges.dx = append(edges.dx, b.X-a.X)
+			edges.dy = append(edges.dy, b.Y-a.Y)
+		}
+	}
+
+	edges.first = append(edges.first, len(edges.x))
+
+	return edges
+}
+
+// Len is the number of obstacles the edges were laid out from.
+func (e *RayEdges) Len() int { return len(e.first) - 1 }
+
+// AppendRayEdgeCrossings is AppendRayCrossings over obstacles already laid
+// out as RayEdges. It answers with the same crossings, to the bit and in the
+// same order, and carries the same contract on candidates: ascending, and a
+// superset of the obstacles the ray can cross.
+func AppendRayEdgeCrossings(
+	dst []RayCrossing,
+	source, receiver Point2D,
+	edges *RayEdges,
+	candidates []int,
+	endpointToleranceM float64,
+) []RayCrossing {
+	start := len(dst)
+	dx1 := receiver.X - source.X
+	dy1 := receiver.Y - source.Y
+
+	for _, i := range candidates {
+		lo, hi := edges.first[i], edges.first[i+1]
+
+		t, segment := nearestEdgeCrossing(
+			edges.x[lo:hi], edges.y[lo:hi], edges.dx[lo:hi], edges.dy[lo:hi],
+			source, dx1, dy1,
+		)
+		if segment < 0 {
+			continue
+		}
+
+		point := Point2D{X: source.X + t*dx1, Y: source.Y + t*dy1}
+		dst = appendCrossingAt(dst, source, receiver, point, i, segment, endpointToleranceM)
+	}
+
+	sortRayCrossings(dst[start:])
+
+	return dst
+}
+
+// nearestEdgeCrossing is LineStringIntersectsSegment's loop over one
+// obstacle's edges in the RayEdges layout. It returns the ray parameter of the
+// nearest crossing and the crossed edge, or -1 for none.
+func nearestEdgeCrossing(x, y, dx, dy []float64, p1 Point2D, dx1, dy1 float64) (float64, int) {
+	y = y[:len(x)]
+	dx = dx[:len(x)]
+	dy = dy[:len(x)]
+
+	bestT := math.MaxFloat64
+	bestEdge := -1
+
+	for k := range x {
+		t, ok := rayEdgeT(dx1, dy1, dx[k], dy[k], x[k]-p1.X, y[k]-p1.Y)
+		if ok && t < bestT {
+			bestT = t
+			bestEdge = k
+		}
+	}
+
+	return bestT, bestEdge
 }
 
 // rayCrossingInsertionMax is the length up to which sortRayCrossings sorts by
