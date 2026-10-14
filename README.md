@@ -54,7 +54,7 @@ Note that `just check-formatted` runs `treefmt --fail-on-change`, which formats 
 
 All commands accept `--project`, `--cache-dir`, `--verbose` and `--json`. A command's result goes
 to stdout and its log records to stderr; `--json` makes both JSON, and stdout then carries exactly
-one JSON document.
+one JSON document. `--help` and `--version` are the exceptions: they print text either way.
 
 ## Supported Input Formats
 
