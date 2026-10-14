@@ -104,6 +104,10 @@ func TestRunResultsDigestsAreStable(t *testing.T) {
 
 			assertDigestsAgree(t, first, second)
 
+			if golden.SkipAMD64Bits(t) {
+				return
+			}
+
 			golden.AssertJSONSnapshot(t, testdataPath(t, "digest", descriptor.ID+".golden.json"), first)
 		})
 	}

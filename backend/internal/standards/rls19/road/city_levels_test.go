@@ -36,6 +36,12 @@ func assertSourceSideGolden(t *testing.T, name string, levels []cityLevel) {
 
 	path := filepath.Join("testdata", name)
 
+	// Before the rewrite as well: a golden rewritten off amd64 would hold
+	// that machine's bits, and every amd64 job would then fail against it.
+	if golden.SkipAMD64Bits(t) {
+		return
+	}
+
 	if golden.UpdateEnabled() && os.Getenv("ACONIQ_REWRITE_SOURCE_SIDE_GOLDENS") == "1" {
 		golden.AssertJSONSnapshot(t, path, levels)
 

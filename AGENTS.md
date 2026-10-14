@@ -28,6 +28,7 @@ All common tasks are orchestrated via [`just`](https://github.com/casey/just) fr
 | `just build`            | Build the CLI → `bin/aconiq`                                                                     |
 | `just test`             | Run all Go tests                                                                                 |
 | `just test-race`        | Run tests with the race detector                                                                 |
+| `just test-arm64`       | All tests minus the amd64-bit golden comparisons — the arm64 gate (CI job `go-arm64`)            |
 | `just test-coverage`    | Run tests with a coverage report (`backend/coverage.html`)                                       |
 | `just coverage-report`  | Render the coverage Markdown CI publishes                                                        |
 | `just coverage-check`   | Check the coverage floor (`COVERAGE_FLOOR` to enforce)                                           |

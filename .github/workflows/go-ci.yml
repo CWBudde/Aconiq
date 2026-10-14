@@ -155,6 +155,39 @@ jobs:
       - name: Go tests (race detector)
         run: just test-race
 
+  # The suite on arm64, where Go fuses multiply-adds. Every other job runs on
+  # amd64, where the compiler never contracts `x*y + z` at the default GOAMD64
+  # and the wasm backend never does at all, so a guard such as
+  # TestGridReceiversAreUnfused — a coordinate the browser and the kernel must
+  # compute to the same bit — could not fail anywhere CI looked. GOAMD64=v3 is
+  # not a substitute: in Go 1.26 it fuses `x*y + z` only (AMD64.rules), where
+  # arm64 also fuses the subtracting and negated forms (ARM64.rules) and runs
+  # different math assembly. `just test-arm64` leaves out only the comparisons
+  # against goldens that hold amd64's bits, and says why. Not a required check;
+  # it reports on every pull request.
+  go-arm64:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+
+      - name: Go tests (arm64)
+        run: just test-arm64
+
   # Coverage. Advisory, and structurally so rather than merely by intent: this
   # is a separate job, it is deliberately NOT in the required-check set, and the
   # floor step carries `continue-on-error`. `go-ci` is required — a coverage

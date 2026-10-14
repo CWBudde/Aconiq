@@ -74,6 +74,20 @@ test:
 test-race:
     cd backend && go test -race ./...
 
+# Run all tests on an arm64 machine, leaving out only the comparisons against
+# goldens that hold amd64's bits. Go contracts `x*y + z` and `x*y - z` into one
+# fused instruction on arm64, and the stdlib's math assembly differs there, so
+# the run digests, the synthetic city's levels and the CI-safe acceptance suites
+# do not reproduce the goldens CI cut on amd64. The tests that make those
+# comparisons call `golden.SkipAMD64Bits` and keep every other assertion; the
+# switch below is ignored on amd64. Every other test states a fact that holds on
+# any architecture — `TestGridReceiversAreUnfused` among them, which only bites
+# where Go fuses — and must pass here. The go-arm64 job in
+# .github/workflows/go-ci.yml runs this; a new golden that holds one machine's
+# bits goes behind `golden.SkipAMD64Bits` or fails it.
+test-arm64:
+    cd backend && ACONIQ_SKIP_AMD64_GOLDENS=1 go test ./...
+
 # Compare the RLS-19 receiver-side reflection search and barrier fan against
 # their references on every pair, not the sample `just test` takes, and the full
 # synthetic city against its golden. Minutes, not seconds — hence not in go-ci;
@@ -234,6 +248,11 @@ license-report:
 # are therefore deliberately absent from this recipe:
 #   - `just license-report` + artifact upload (a report, not a gate)
 #   - `bin/aconiq openapi` + artifact upload (publishes the spec for consumers)
+#
+# The go-arm64 job's `just test-arm64` is absent for a different reason: on an
+# amd64 machine its switch is ignored and it is `test`, so it adds nothing here.
+# On an arm64 machine `test` fails on the amd64-bit goldens by design; run
+# `test-arm64` instead.
 
 # Run the full Go CI gate (mirrors .github/workflows/go-ci.yml)
 go-ci: check-formatted vet lint test test-race check-tidy govulncheck license-check build

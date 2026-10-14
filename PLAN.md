@@ -2196,8 +2196,9 @@ before the pages they protect are cut apart.
       stopped producing. The kernel refuses a grid over `geo.MaxGridReceivers` — the CLI's cap,
       in the CLI's words — before expanding it. The _time_ estimate is the kernel probe of #99.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
-      `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
-      WASM. Only the extraction is left; the threading is done.
+      `browser-backend.ts` shrinks to run bookkeeping + storage. Only the extraction is left: the
+      threading is done, and the standards descriptor already comes from the kernel's `standards`
+      export.
 - [ ] Store one IndexedDB record per run instead of one document — `persist` in
       `browser-backend.ts` structured-clones every stored run (receiver tables, CSV, export HTML)
       on each write. The raster bytes are already out of that document, under an `artifact-bytes:`
@@ -2289,10 +2290,25 @@ before the pages they protect are cut apart.
       centroid elevation and every shard read the identical list. **Ids are `padStart`'s**,
       `R10000` included. The persisted receiver table is still materialised at persist time; making
       it lazy would change the stored run format.
-- [ ] **Catch FMA fusion in CI.** Every runner is amd64, where Go does not fuse at the default
-      `GOAMD64`, and the wasm backend never fuses, so `TestGridReceiversAreUnfused` and the other
-      bit-exactness guards only bite on an arm64 machine. An arm64 runner — or `GOAMD64=v3`, if Go
-      fuses there; check before relying on it — would make them bite where they are meant to.
+- [x] **FMA fusion is caught in CI** (#107). The `go-arm64` job runs `just test-arm64` on
+      `ubuntu-24.04-arm`: the whole suite, with only the comparisons against goldens that hold
+      amd64's bits left out (run digests, `city-levels.golden.json`, the CI-safe acceptance
+      suites) — the two-run agreement and the rest of those tests still run. It is not a required
+      check. Two constraints stay live. **A new golden that holds one machine's bits goes behind
+      `golden.SkipAMD64Bits`**, or it fails the job; everything else must state a fact that holds
+      on any architecture. **`GOAMD64=v3` is not a substitute**: Go 1.26 fuses only `x*y + z`
+      there, where arm64 also fuses the subtracting and negated forms and runs different math
+      assembly.
+- [ ] **An arm64 build computes different levels, by up to 0.3 dB.** Measured on darwin/arm64
+      (go1.26.9) against the CI-safe snapshots: RLS-19 test-20 receivers off by up to 0.297 dB
+      (75.749 → 75.452) against a 1e-6 tolerance, Schall 03 `b5_reflective_barrier` off by
+      0.080 dB. That is not ulps: a fused multiply-add flips a discrete decision somewhere (a
+      path admitted or shielded). It is the compiler's fusion in this module's code, not the
+      stdlib — with `-gcflags=all=-d=fmahash=n` both suites and the city levels pass on arm64,
+      and only the digests still differ, by ulps. So a macOS-arm64 `aconiq` and the amd64 one
+      (and browser mode, whose wasm never fuses) can assess the same model differently. Find the
+      flipping comparisons and decide the remedy — `float64(...)`-proofing them, or building
+      release binaries without fusion — before trusting an arm64 build's levels.
 - [x] **Schall 03 writes progress, Schall 03 and ISO 9613-2 stop inside a receiver, and the
       frontend listens to `/api/v1/events`** (#102). Three constraints stay live.
       **Schall 03 logs through `runLog` as it goes**, not into a buffer appended afterwards, so
