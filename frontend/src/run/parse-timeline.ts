@@ -40,9 +40,11 @@ const LOG_STAGES: Array<{ key: string; pattern: RegExp; label: () => string }> =
     },
     {
       key: "compute",
-      // The engine's stage events, or the receiver-count progress lines the
-      // standards that walk receivers themselves (RLS-19, ISO 9613) write.
-      pattern: /stage=compute|computed \d+ of \d+ receivers/,
+      // The engine's stage events (dummy-freefield), or the receiver-count
+      // progress line every other standard writes once it has counted every
+      // receiver. The first progress line is written as the walk starts, so
+      // it marks this step under way, not done.
+      pattern: /stage=compute|computed (\d+) of \1 receivers/,
       label: m.timeline_computing,
     },
     {
