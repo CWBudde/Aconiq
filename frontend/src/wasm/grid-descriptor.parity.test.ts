@@ -10,12 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { materializeGrid } from "@/model/receiver-grid";
 import { getNodeKernel, kernelSkipReason } from "./kernel-node";
-import type {
-  ComputeRequest,
-  GridComputeRequest,
-  ReceiverGrid,
-  RoadSource,
-} from "./types";
+import type { ReceiverGrid, RoadSource } from "./types";
 
 const skipReason = kernelSkipReason();
 
@@ -66,10 +61,7 @@ describe.skipIf(skipReason !== null)("receiver grid descriptor", () => {
 
     // rls19Road echoes every receiver, which is what makes it the reference:
     // sent the descriptor, it answers with the kernel's own expansion.
-    const echoed = await kernel.rls19Road({
-      ...scene,
-      grid,
-    } as unknown as ComputeRequest);
+    const echoed = await kernel.rls19Road({ ...scene, grid });
 
     const named = materializeGrid(grid);
     expect(echoed.map((output) => output.Receiver)).toEqual(named);
@@ -84,10 +76,7 @@ describe.skipIf(skipReason !== null)("receiver grid descriptor", () => {
       ...scene,
       receivers: materializeGrid(grid),
     });
-    const described = await kernel.rls19RoadGrid({
-      ...scene,
-      grid,
-    } as GridComputeRequest);
+    const described = await kernel.rls19RoadGrid({ ...scene, grid });
 
     expect(described).toEqual(listed.map((output) => output.Indicators));
   });

@@ -23,20 +23,20 @@ import type {
   KernelProgressListener,
   WorkerMessage,
 } from "./protocol";
-import type {
-  AnyComputeRequest,
-  ComputeRequest,
-  ContourRequest,
-  ContourResult,
-  FootprintMaskRequest,
-  FootprintMaskResponse,
-  GridComputeRequest,
-  PropagationConfig,
-  ReceiverIndicators,
-  ReceiverOutput,
-  TerrainInfo,
-  TransformRequest,
-  TransformResponse,
+import {
+  requestReceiverCount,
+  type AnyComputeRequest,
+  type ContourRequest,
+  type ContourResult,
+  type FootprintMaskRequest,
+  type FootprintMaskResponse,
+  type GridComputeRequest,
+  type PropagationConfig,
+  type ReceiverIndicators,
+  type ReceiverOutput,
+  type TerrainInfo,
+  type TransformRequest,
+  type TransformResponse,
 } from "./types";
 
 /**
@@ -297,7 +297,7 @@ export class KernelClient implements AconiqKernel {
   }
 
   async rls19Road(
-    req: ComputeRequest,
+    req: AnyComputeRequest,
     onProgress?: KernelProgressListener,
   ): Promise<ReceiverOutput[]> {
     // Zero of n, before the call is even dispatched. The kernel cannot report
@@ -308,7 +308,7 @@ export class KernelClient implements AconiqKernel {
     // seconds, and a reader watching an indeterminate "starting the run"
     // through it has no way to tell a slow model from a hung one. A
     // determinate bar at 0 of 13,000 says which.
-    onProgress?.(0, req.receivers.length);
+    onProgress?.(0, requestReceiverCount(req));
 
     const value = await this.call(
       (id) => ({
@@ -341,7 +341,7 @@ export class KernelClient implements AconiqKernel {
    * checked in.
    */
   async rls19RoadShard(
-    req: ComputeRequest,
+    req: AnyComputeRequest,
     shard: Shard,
     onProgress?: KernelProgressListener,
   ): Promise<ChunkOutput[]> {

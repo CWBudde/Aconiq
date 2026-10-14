@@ -25,7 +25,6 @@ import { fromSyncExport, withKernelErrors } from "./kernel-error";
 import { mergeChunks, type ChunkOutput } from "./kernel-pool";
 import type {
   AnyComputeRequest,
-  ComputeRequest,
   ContourRequest,
   ContourResult,
   FootprintMaskRequest,
@@ -167,7 +166,7 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
   // so without this the two kernels would differ in what they throw — and the
   // parity suites would be pinning the wrong one.
   return {
-    async rls19Road(req: ComputeRequest): Promise<ReceiverOutput[]> {
+    async rls19Road(req: AnyComputeRequest): Promise<ReceiverOutput[]> {
       const json = await withKernelErrors(
         exports.rls19Road(JSON.stringify(req)),
       );

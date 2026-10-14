@@ -29,7 +29,6 @@ import { spawnKernelWorker } from "./spawn-worker";
 import {
   requestReceiverCount,
   type AnyComputeRequest,
-  type ComputeRequest,
   type ContourRequest,
   type ContourResult,
   type FootprintMaskRequest,
@@ -65,7 +64,7 @@ export interface AconiqKernel {
    * export still takes exactly one argument.
    */
   rls19Road(
-    req: ComputeRequest,
+    req: AnyComputeRequest,
     onProgress?: KernelProgressListener,
   ): Promise<ReceiverOutput[]>;
   /**
@@ -411,8 +410,12 @@ interface PoolRun<T> {
   ): Promise<ChunkOutput<T>[]>;
 }
 
-/** A run that lists its receivers: `rls19Road`, and `rls19RoadShard` per shard. */
-function listedRun(req: ComputeRequest): PoolRun<ReceiverOutput> {
+/**
+ * A run answered with its receivers echoed: `rls19Road`, and `rls19RoadShard`
+ * per shard. What a run that lists its receivers takes, and the reference a
+ * grid descriptor is held to.
+ */
+function listedRun(req: AnyComputeRequest): PoolRun<ReceiverOutput> {
   return {
     whole: (client, report) => client.rls19Road(req, report),
     shard: (client, shard, report) => client.rls19RoadShard(req, shard, report),
