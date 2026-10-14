@@ -2234,24 +2234,28 @@ before the pages they protect are cut apart.
       plan-shadow and across a Bild-14 active/inactive boundary is cheap against
       `Scene.barrierGrid` and `reflectors.grid`, and it is the condition for this mode ever
       becoming the default. Until it exists the mode stays opt-in.
-- [ ] **The per-pair cost is now the mirrored path's crossing test, which is the work itself.**
-      The reflection search runs from the receiver's side and the diffraction search reads a
-      per-receiver barrier fan (`reflections_receiver.go`, `shielding_fan.go`), both exact: on
-      three Linden receivers in `distance_scaled` mode 1 724 s CPU became 46 s with a
-      byte-identical receiver table, and the synthetic city of `city_scene_test.go` went from 408 s
-      to 8 s per receiver. Fixed mode at 1 m is still ~540 s CPU per Linden receiver (measured
-      under load), because ~44 000 Teilstücke each shield their ~300 mirrored paths one by one,
-      and that shielding is now 70 % of the profile: per path (measured on the synthetic city) the
-      fan hands over ~12 buildings, the ray crosses ~12, and ~110 facade edges go through
-      `geo.SegmentIntersection`. The candidate set is already the crossed set, so what is left
-      exact is cheaper arithmetic, not fewer candidates: a sign pre-test that rejects an edge
-      before the two divisions (it needs an error-bound argument, and the function is shared with
-      Schall 03 and ISO 9613-2), and integer reflector exclusion in place of
-      `dropExcludedBarriers`' string compares (~6 %). Memory is now bounded per worker: the
-      receiver-side table (~1 M wall pairs, ~40 MB on Linden) is reused from one receiver to the
-      next, and the contributions are energy-summed as they arise (`periodSums`) instead of being
-      held — they used to reach 2.7 GB for one fixed-mode receiver, and RSS grew without bound on
-      a 20-worker run. Three fixed-mode Linden receivers now peak at 173 MB RSS (1 607 s CPU).
+- [ ] **What is left of a building-dense RLS-19 run is the mirrored paths' crossing test.** With
+      the reflection search running from the receiver's side and the barrier fan in place, a
+      fixed-mode Linden receiver spends ~70 % of its CPU shielding mirrored paths and ~30 % in
+      the remaining search. The fan's candidates are already the crossed buildings, so the exact
+      levers left are cheaper arithmetic, not fewer candidates. First, a sign pre-test that
+      rejects a facade edge before `geo.SegmentIntersection`'s two divisions (~27 % on its own);
+      it needs an error-bound argument that every skipped edge is one the division would have
+      rejected, and the function is shared with Schall 03 and ISO 9613-2, so the argument has to
+      hold for their callers too. Second, integer reflector exclusion in place of
+      `dropExcludedBarriers`' string compares (~6 %): an ID class per barrier and per wall owner,
+      resolved when the scene is prepared. One constraint stays live for both: the receiver-side
+      search is bit-identical to the source-side one on every scene compared, but it can _add_ a
+      second-order path the old search's fixed-margin source-side prune dropped by rounding
+      (source millimetres off a facade's line, second wall far away) — see "The one way it can
+      differ" in `reflections_receiver.go`. A mismatch of that shape against
+      `reflections_reference_test.go` is that, not a regression.
+- [ ] **The receiver-side reflection table is not bounded.** It holds one entry per wall pair a
+      receiver can see, 40 bytes each, per worker for the worker's lifetime (`road.Walker`). The
+      pair count grows faster than the facade count — ~1 M (~40 MB) on Linden's 8 083 facades —
+      so a larger extract costs proportionally more per worker, times the worker count, and
+      nothing caps it. A cap needs a fallback that stays exact: the source-side search for a
+      receiver over the limit, or a table built and consumed in second-wall slices.
 - [x] **The Linden scene can be profiled through the real binary** (#96). `aconiq run --cpuprofile`
       and `--memprofile` write pprof profiles, on a failed or cancelled run too, and
       `just repro-linden DIR` reruns the scene from `SOURCE_PROJECT` or a fresh OSM import (which
