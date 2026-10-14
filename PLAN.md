@@ -2231,8 +2231,11 @@ before the pages they protect are cut apart.
       sharing its ID, resolved once in `prepareScene` (`reflectorField.bindBarriers`), so
       `dropExcludedBarriers` compares two `int32`s per candidate instead of string IDs — ~4x
       faster in isolation, 35 ns against 149 ns per mirrored path. `TestReflectorClassesDropWhatIDsDrop`
-      holds it to the string compare it replaced. One constraint stays live: a field's paths can
-      only be shielded against the barrier set it was bound to.
+      holds it to the string compare it replaced. On the Linden calc-area in fixed mode it cut
+      CPU from 66 098 s to 62 193 s (−5.9 %; `dropExcludedBarriers` 4.5 % → 0.8 % of the profile),
+      and `receivers.csv` came out byte-identical to `main`'s in fixed and in `distance_scaled`
+      mode. One constraint stays live: a field's paths can only be shielded against the barrier
+      set it was bound to.
       **The sign pre-test this file proposed for `geo.SegmentIntersection` was built, shown exact
       and measured slower**: 6.1 ns a call against 3.3 ns, because the CPU overlaps the two
       divisions and does not overlap the branches that skip them; deferring the second division
@@ -2241,9 +2244,9 @@ before the pages they protect are cut apart.
 - [ ] **What is left of a building-dense RLS-19 run is the mirrored paths' crossing test.** With
       the reflection search running from the receiver's side and the barrier fan in place, a
       fixed-mode Linden receiver spends ~70 % of its CPU shielding mirrored paths and ~30 % in
-      the remaining search. The fan's candidates are already the crossed buildings, and a
-      `SegmentIntersection` call costs ~3 ns, so neither fewer buildings nor cheaper arithmetic
-      is left: what costs is the number of facade edges tested per candidate. Any prune there
+      the remaining search; `geo.SegmentIntersection` alone is ~24 % of it. The fan's candidates
+      are already the crossed buildings, and a call costs ~3 ns, so neither fewer buildings nor
+      cheaper arithmetic is left: what costs is the number of facade edges tested per candidate. Any prune there
       must keep `LineStringIntersectsSegment`'s nearest-crossing answer, edge index included. One
       constraint stays live: the receiver-side search is bit-identical to the source-side one on
       every scene compared, but it can _add_ a second-order path the old search's fixed-margin
