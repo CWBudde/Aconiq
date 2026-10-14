@@ -38,12 +38,35 @@ type HullPoint struct {
 	Index  int
 }
 
+// HullCollinearToleranceM is how far above the line between its neighbours a
+// point must stand, measured vertically, for the rubber band to rest on it.
+//
+// A point on the line is a tie the band may resolve either way, and the
+// standards' diffraction terms are not continuous across it: a second edge
+// switches multiple diffraction on, which in Schall 03 Gl. 25/26 and RLS-19
+// raises A_bar by up to 10 lg 3 at once. A cross-section with an edge exactly
+// on the line is not rare — a source and two barrier tops at heights in
+// arithmetic step stand on one line for every ray across them — and the
+// computed cross product of such a triple is zero only as long as every
+// rounding falls the same way. One rounding difference anywhere upstream (a
+// fused multiply-add on arm64, a refactored midpoint) moved it to either side,
+// and A_bar with it. A point within this tolerance of the line is therefore
+// dropped, as an exactly collinear one always was.
+//
+// It is a vertical distance on purpose: rescaling the distance axis, as
+// ISO 9613-2 does to measure perpendicular to an edge, scales the cross
+// product and the chord's run alike and leaves the selection unchanged. A
+// micrometre is far beyond the rounding of any coordinate the engine computes
+// in, and far below anything a barrier height is surveyed to.
+const HullCollinearToleranceM = 1e-6
+
 // UpperConvexHull returns the upper convex hull of points already sorted by
 // Dist, by Andrew's monotone chain run over the upper side only.
 //
 // A point is dropped when it lies on or below the line between its
-// neighbours, which is exactly the rubber band laid over the cross-section:
-// what survives is what the band rests on.
+// neighbours, or above it by no more than HullCollinearToleranceM, which is
+// exactly the rubber band laid over the cross-section: what survives is what
+// the band rests on.
 func UpperConvexHull(points []HullPoint) []HullPoint {
 	if len(points) <= 2 {
 		return points
@@ -64,11 +87,14 @@ func appendUpperConvexHull(hull, points []HullPoint) []HullPoint {
 			b := hull[len(hull)-1]
 			c := points[i]
 
-			// Cross product of (a→b) × (a→c). If it is >= 0, b lies on or
-			// below the line a→c and the band does not touch it.
+			// Cross product of (a→b) × (a→c). It is -h·(c.Dist-a.Dist), h
+			// the height of b above the line a→c at b's distance, so b
+			// protrudes by more than the tolerance exactly when it is below
+			// -tolerance·(c.Dist-a.Dist). Otherwise b lies on, below or
+			// within the tolerance of the line, and the band does not touch it.
 			cross := (b.Dist-a.Dist)*(c.Height-a.Height) - (b.Height-a.Height)*(c.Dist-a.Dist)
 
-			if cross < 0 {
+			if cross < -HullCollinearToleranceM*(c.Dist-a.Dist) {
 				break // b protrudes above a→c, so the band rests on it.
 			}
 

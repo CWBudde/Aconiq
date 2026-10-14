@@ -127,7 +127,7 @@ Status: DRAFT — Eisenbahn Strecke + Straßenbahnen + Rangier- und Umschlagbahn
 ### Unterstützt (Phase 20d — Nr. 6.5 Abschirmung durch Hindernisse)
 
 - Abschirmung durch Hindernisse (Gl. 17–26) im Ausbreitungsweg ✓
-- Gummibandmethode (Upper Convex Hull) zur Auswahl maßgeblicher Beugungskanten ✓
+- Gummibandmethode (Upper Convex Hull) zur Auswahl maßgeblicher Beugungskanten ✓ — eine Kante, die weniger als 1 µm über der Geraden zwischen ihren Nachbarn steht, gilt als auf ihr liegend und wird nicht gewählt (`geo.HullCollinearToleranceM`). Liegt sie genau darauf, entschied zuvor die letzte Rundung zwischen Einfach- und Doppelbeugung; im CI-safe-Fall `b5_reflective_barrier` (Quelle auf 4 m, Schirmkanten auf 5 m und 6 m im Abstand von 10 m) wählte die Rundung die mittlere Kante für einzelne Teilstücke, auf amd64 und arm64 für verschiedene. Der Fall steigt damit um 0,011 dB.
 - Einfachbeugung (D_z ≤ 20 dB) und Doppelbeugung (D_z ≤ 25 dB, C₃-Faktor Gl. 22) ✓
 - Seitliche Beugung um Schirmenden (Gl. 18) ✓
 - Minimum aus Beugung über Oberkante und seitlicher Beugung je Oktavband ✓

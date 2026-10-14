@@ -17,6 +17,12 @@ import (
 // before the receiver-side search and the barrier fan existed, and every
 // level here must still come out of it unchanged. Where the property tests
 // compare the searches path by path, this compares what a user reads.
+//
+// It has been rewritten once, deliberately, when the acceptance test both
+// searches share changed: a specular point a rounding past a facade end now
+// counts, and a two-bounce path through a corner does not (see
+// reflectionEndToleranceM). The rewrite ran on amd64, with the property tests
+// holding the two searches to the same paths under the new test.
 
 // assertSourceSideGolden compares levels against a golden that the source-side
 // search wrote, and refuses to let `just update-golden` rewrite it.
