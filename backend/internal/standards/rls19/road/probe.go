@@ -29,7 +29,9 @@ import (
 // from hours to minutes. Its sources are prepared again in that mode (see
 // withSegmentLengthMode) and probed on their own, because which pairs survive
 // the ladder changes what the average pair costs — but only if the budget
-// has time left once the run's own probe is done.
+// has time left once the run's own probe is done. Its wall time carries its
+// own preparation (see alternativePrepare), because building the ladders is
+// work the fixed-mode scene never did.
 func Estimate(
 	ctx context.Context,
 	receivers []geo.PointReceiver,
@@ -57,22 +59,25 @@ func Estimate(
 		}
 	}
 
-	opts.Prepare = time.Since(startedAt)
+	prepare := time.Since(startedAt)
+	opts.Prepare = prepare
 
 	if cfg.SegmentLengthMode.resolved() == SegmentLengthFixed {
 		scaledCfg := cfg
 		scaledCfg.SegmentLengthMode = SegmentLengthDistanceScaled
 
-		// Built only if the budget leaves time for it.
+		// Built only if the budget leaves time for it, and priced with the
+		// preparation a distance-scaled run would spend: its own ladders in
+		// place of the fixed Teilstücke, everything else as measured here.
 		opts.Alternatives = append(opts.Alternatives, runestimate.AlternativeKernel{
 			Params: map[string]string{"segment_length_mode": string(SegmentLengthDistanceScaled)},
-			NewKernel: func() (runestimate.Kernel, error) {
+			NewKernel: func() (runestimate.Kernel, time.Duration, error) {
 				scaled, err := scene.withSegmentLengthMode(sources, scaledCfg)
 				if err != nil {
-					return nil, err
+					return nil, 0, err
 				}
 
-				return newEstimateKernel(scaled, receivers, scaledCfg), nil
+				return newEstimateKernel(scaled, receivers, scaledCfg), alternativePrepare(prepare, scene, scaled), nil
 			},
 		})
 	}
@@ -103,15 +108,32 @@ func Estimate(
 // prepareSources, the function prepareScene uses, so the ladder is the one a
 // run in that mode would build.
 func (s *Scene) withSegmentLengthMode(sources []RoadSource, cfg PropagationConfig) (*Scene, error) {
-	prepared, err := prepareSources(sources, cfg)
+	prepared, took, err := prepareSourcesTimed(sources, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	scene := *s
 	scene.sources = prepared
+	scene.sourcesPrepare = took
 
 	return &scene, nil
+}
+
+// alternativePrepare is how long a run would spend preparing the scene
+// `alternative` stands for, given that the estimate spent `prepare` on
+// `scene`, from which `alternative` was derived by withSegmentLengthMode.
+//
+// A run in the alternative's mode prepares the whole scene from scratch, but
+// only its sources differ from what the estimate prepared: the barrier set,
+// the reflector field, both indices, the receiver and Parkplatz checks are
+// the same work in either mode. So it is the measured preparation with the
+// one set of sources swapped for the other — exact up to the clock, and
+// without preparing anything twice. Both terms are wall-clock, as prepare
+// is, and scene.sourcesPrepare is a part of prepare, so the result is never
+// negative.
+func alternativePrepare(prepare time.Duration, scene, alternative *Scene) time.Duration {
+	return prepare - scene.sourcesPrepare + alternative.sourcesPrepare
 }
 
 // estimateCounts names what the scene is made of, for the reader of an

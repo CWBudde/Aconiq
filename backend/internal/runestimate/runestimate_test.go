@@ -234,7 +234,7 @@ func TestRunWalksThePlan(t *testing.T) {
 		Workers:             4,
 		Alternatives: []AlternativeKernel{{
 			Params:    map[string]string{"k": "v"},
-			NewKernel: func() (Kernel, error) { return alt, nil },
+			NewKernel: func() (Kernel, time.Duration, error) { return alt, 0, nil },
 		}},
 	})
 	if err != nil {
@@ -292,6 +292,48 @@ func TestRunWalksThePlan(t *testing.T) {
 	}
 }
 
+// An alternative is priced with the preparation it reports for itself, not
+// with the run's: a variant that prepares its scene differently — RLS-19's
+// distance-scaled ladders — spends a different time doing it, and the
+// suggested run's wall time has to say so.
+func TestRunPricesAnAlternativeWithItsOwnPreparation(t *testing.T) {
+	t.Parallel()
+
+	kernel := &fakeKernel{units: func(int) int { return 4 }, spin: 100}
+	alt := &fakeKernel{units: func(int) int { return 4 }, spin: 100}
+
+	estimate, err := Run(t.Context(), kernel, gridPoints(4, 4, 5), Options{
+		Budget:              time.Minute,
+		MaxUnitsPerReceiver: 4,
+		Workers:             2,
+		Prepare:             time.Second,
+		Alternatives: []AlternativeKernel{{
+			Params:    map[string]string{"k": "v"},
+			NewKernel: func() (Kernel, time.Duration, error) { return alt, 30 * time.Second, nil },
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if estimate.Probe.PrepareSeconds != 1 || estimate.WallSeconds.High >= 30 {
+		t.Fatalf("the run's own preparation %v s, wall %+v", estimate.Probe.PrepareSeconds, estimate.WallSeconds)
+	}
+
+	if len(estimate.Alts) != 1 || !estimate.Alts[0].Measured {
+		t.Fatalf("alternatives %+v", estimate.Alts)
+	}
+
+	got := estimate.Alts[0]
+	if got.PrepareSeconds == nil || *got.PrepareSeconds != 30 {
+		t.Fatalf("the alternative's preparation %v, want its own 30 s", got.PrepareSeconds)
+	}
+
+	if got.WallSeconds.Low < 30 || got.WallSeconds.Estimate < 30 {
+		t.Fatalf("the alternative's wall %+v leaves out its own 30 s preparation", got.WallSeconds)
+	}
+}
+
 // The first probe receiver is begun by the warm-up and again by the probe on
 // the same walker; its one-off cost is the warm-up's Begin, not the cache hit.
 func TestRunReportsTheWarmUpBeginAsTheFirstSetup(t *testing.T) {
@@ -329,10 +371,10 @@ func TestRunSkipsAnAlternativeOnceTheBudgetIsGone(t *testing.T) {
 		Budget: 20 * time.Millisecond,
 		Alternatives: []AlternativeKernel{{
 			Params: map[string]string{"k": "v"},
-			NewKernel: func() (Kernel, error) {
+			NewKernel: func() (Kernel, time.Duration, error) {
 				built = true
 
-				return &fakeKernel{units: func(int) int { return 1 }}, nil
+				return &fakeKernel{units: func(int) int { return 1 }}, 0, nil
 			},
 		}},
 	})
@@ -340,7 +382,8 @@ func TestRunSkipsAnAlternativeOnceTheBudgetIsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if built || len(estimate.Alts) != 1 || estimate.Alts[0].Measured || estimate.Alts[0].WallSeconds != nil {
+	if built || len(estimate.Alts) != 1 || estimate.Alts[0].Measured || estimate.Alts[0].WallSeconds != nil ||
+		estimate.Alts[0].PrepareSeconds != nil {
 		t.Fatalf("built=%v alternatives %+v", built, estimate.Alts)
 	}
 

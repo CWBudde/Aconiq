@@ -255,9 +255,6 @@ function RunSetupForm({
   const createRun = useCreateRun();
   const receiverCount = useModelStore((s) => s.receivers.length);
   const calcArea = useModelStore((s) => s.calcArea);
-  // Identity only: an edit to the model makes a new array, and the run
-  // estimate asks again.
-  const modelFeatures = useModelStore((s) => s.features);
   // Where a run reads the saved model, starting one with unsaved edits would
   // silently compute the project's older copy. The same save the header
   // offers is offered here, so the user need not leave the dialog.
@@ -366,6 +363,8 @@ function RunSetupForm({
   // What the run would cost in time, asked only of a run that could be
   // started: an estimate of a run the backend would refuse answers nothing.
   // Paused while a run is starting, so the probe does not compete with it.
+  // The hook reads the model inputs of the request from the store itself, so
+  // a receiver moved or a calc area redrawn asks again as a feature edit does.
   const estimateWanted =
     selectedProfile !== undefined &&
     !createRun.isPending &&
@@ -373,10 +372,7 @@ function RunSetupForm({
     !unsavedChanges &&
     !startBlocked &&
     !customReceiversMissing;
-  const runEstimate = useRunEstimate(
-    estimateWanted ? runSpec : null,
-    modelFeatures,
-  );
+  const runEstimate = useRunEstimate(estimateWanted ? runSpec : null);
 
   function handleSubmit() {
     if (experimentalOptInMissing || unsavedChanges || startBlocked) return;

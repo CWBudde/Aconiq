@@ -322,6 +322,49 @@ func TestEstimateSamplesDeterministically(t *testing.T) {
 		fixed.Alts[0].Units != first.Inputs.Units {
 		t.Fatalf("a fixed-mode estimate should cost the distance-scaled run (%d units), got %+v", first.Inputs.Units, fixed.Alts)
 	}
+
+	// And its preparation is its own measurement, not the fixed scene's
+	// borrowed: two wall-clock readings in nanoseconds do not coincide.
+	alt := fixed.Alts[0]
+	if alt.PrepareSeconds == nil || *alt.PrepareSeconds <= 0 || *alt.PrepareSeconds == fixed.Probe.PrepareSeconds {
+		t.Fatalf("the alternative's preparation %v, the fixed run's %v", alt.PrepareSeconds, fixed.Probe.PrepareSeconds)
+	}
+
+	if alt.WallSeconds.Low < *alt.PrepareSeconds {
+		t.Fatalf("the alternative's wall %+v leaves out its preparation %v", alt.WallSeconds, *alt.PrepareSeconds)
+	}
+}
+
+// TestScenesRecordTheirSourcePreparation pins what the alternative's
+// preparation is computed from: a scene prepared from scratch and one
+// re-prepared in another mode each record how long their own sources took,
+// and the alternative is the run's preparation with the one swapped for the
+// other.
+func TestScenesRecordTheirSourcePreparation(t *testing.T) {
+	t.Parallel()
+
+	sources, barriers, fixedCfg := probeScene(SegmentLengthFixed)
+	_, _, scaledCfg := probeScene(SegmentLengthDistanceScaled)
+
+	fixed, err := PrepareSceneFor(probeReceivers(3), sources, barriers, fixedCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scaled, err := fixed.withSegmentLengthMode(sources, scaledCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if fixed.sourcesPrepare <= 0 || scaled.sourcesPrepare <= 0 {
+		t.Fatalf("sources prepared in %v fixed, %v distance-scaled", fixed.sourcesPrepare, scaled.sourcesPrepare)
+	}
+
+	fixed.sourcesPrepare, scaled.sourcesPrepare = 3*time.Second, 7*time.Second
+
+	if got := alternativePrepare(10*time.Second, fixed, scaled); got != 14*time.Second {
+		t.Fatalf("a 10 s preparation with 3 s of fixed sources swapped for 7 s of scaled ones gave %v, want 14 s", got)
+	}
 }
 
 // TestEstimateRefusesWhatTheRunRefuses keeps the estimate from answering a

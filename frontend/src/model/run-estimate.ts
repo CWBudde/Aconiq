@@ -39,7 +39,9 @@ export interface EstimateAlternative {
   measured: boolean;
   units?: number;
   cpu_s?: EstimateBand;
+  /** Includes `prepare_s`, the variant's own scene preparation. */
   wall_s?: EstimateBand;
+  prepare_s?: number;
 }
 
 /** Mirrors Go's `runestimate.Estimate`. */

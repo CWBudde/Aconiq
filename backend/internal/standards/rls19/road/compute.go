@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/aconiq/backend/internal/acoustics"
 	"github.com/aconiq/backend/internal/geo"
@@ -43,6 +44,13 @@ type Scene struct {
 	// bounding box, and a nil index means "test them all" — the walk the code
 	// did before the index existed.
 	barrierGrid *geo.BBoxGrid
+
+	// sourcesPrepare is how long prepareSources took for this scene, on the
+	// wall clock. Nothing in the walk reads it. The estimate does: a run in
+	// the other segment_length_mode prepares everything else the same and
+	// its sources differently, so this is the part of a scene's preparation
+	// that the alternative it prices swaps out (see alternativePrepare).
+	sourcesPrepare time.Duration
 }
 
 // preparedSource is one road source reduced to what the propagation walk reads
@@ -114,17 +122,27 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 
 	effectiveBarriers := buildingBarriers(barriers, cfg.Buildings)
 
-	prepared, err := prepareSources(sources, cfg)
+	prepared, sourcesPrepare, err := prepareSourcesTimed(sources, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Scene{
-		sources:     prepared,
-		barriers:    effectiveBarriers,
-		reflectors:  newReflectorField(buildingReflectors(cfg.Reflectors, cfg.Buildings)),
-		barrierGrid: newBarrierGrid(effectiveBarriers),
+		sources:        prepared,
+		barriers:       effectiveBarriers,
+		reflectors:     newReflectorField(buildingReflectors(cfg.Reflectors, cfg.Buildings)),
+		barrierGrid:    newBarrierGrid(effectiveBarriers),
+		sourcesPrepare: sourcesPrepare,
 	}, nil
+}
+
+// prepareSourcesTimed is prepareSources and the wall-clock time it took.
+func prepareSourcesTimed(sources []RoadSource, cfg PropagationConfig) ([]preparedSource, time.Duration, error) {
+	startedAt := time.Now()
+
+	prepared, err := prepareSources(sources, cfg)
+
+	return prepared, time.Since(startedAt), err
 }
 
 // prepareSources prepares every source in the order given. It is the only
