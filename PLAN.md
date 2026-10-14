@@ -2300,16 +2300,10 @@ before the pages they protect are cut apart.
       token travels as a header and never in the URL. One stream is shared by every `useRuns`
       (`api/project-events.ts`), and polling stays the fallback: the runs list drops to the idle
       rate only while the stream carries every active run.
-- [ ] **Stream run logs, the last thing about a running run that is still polled.** Every
-      standard but `dummy-freefield` writes progress, and `/api/v1/events` carries every open
-      run in `active_runs`, so the runs list no longer polls for progress at all. The run log is
-      still fetched every second while its run runs (`useRunLog`), because the stream has no
-      event for it: one needs a cursor — the lines after an offset — or each event would resend
-      the whole log. Decide its shape before building it.
-      (2026-10-14) — partial: scaffold, `beb-exposure` and every-run progress landed; the logs
-      remain. The item's `useProjectStatus` clause rested on a wrong premise and is dropped:
-      that hook does not poll (no `refetchInterval`), so there is no polling for the stream to
-      replace, and feeding it mid-run stays the separate review the item already named.
+- [ ] **Stream run logs, the last thing about a running run that is still polled.** The run
+      log is fetched every second while its run runs (`useRunLog`), because `/api/v1/events`
+      has no event for it: one needs a cursor — the lines after an offset — or each event would
+      resend the whole log. Decide its shape before building it.
 - [ ] **Make the run-time estimate (#99) honest on a dense scene.**
       `rls19-road`, `iso9613` and `schall03` (both chains) implement `runestimate.Kernel`; the
       latter two walk receivers on one goroutine and are priced on one worker, so what follows
@@ -2319,10 +2313,8 @@ before the pages they protect are cut apart.
       `minUnitCV` rather than on observed spread — sampling pairs stratified by source distance,
       or a longer budget when the first receiver is slow, would narrow it. A Schall 03
       normative unit is one whole line-source walk, whose cost spans orders of magnitude between
-      a short stub and a long line; the same stratification would narrow its band too.
-      (2026-10-14) — partial: `iso9613` and `schall03` estimate, held bit-exact to their walks
-      and within 3x of their runs (`probe_test.go` in each); the parallel efficiency and the
-      dense-scene sampling remain, and both need the Linden scene to measure against.
+      a short stub and a long line; the same stratification would narrow its band too. Both
+      levers need the Linden scene to measure against.
 - [ ] **Paint a coarse raster first, then refine.** Compute at 4x the chosen spacing (a sixteenth
       of the receivers), show it, then compute the full grid and replace it. The final numbers are
       the ordinary computation, unchanged. Align the coarse grid to the fine one — same origin,
