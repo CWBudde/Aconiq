@@ -153,8 +153,14 @@ func writeEstimateText(w io.Writer, estimate runestimate.Estimate) {
 		probe.MeasuredReceivers, probe.ProbeReceivers, probe.UnitsTimed, probe.ElapsedSeconds, probe.PrepareSeconds)
 
 	for _, alt := range estimate.Alts {
+		if !alt.Measured || alt.WallSeconds == nil {
+			_, _ = fmt.Fprintf(w, "  with %s: not measured (the budget ran out first)\n", formatParams(alt.Params))
+
+			continue
+		}
+
 		_, _ = fmt.Fprintf(w, "  with %s: %s (%d work units)\n",
-			formatParams(alt.Params), runestimate.FormatBand(alt.WallSeconds), alt.Units)
+			formatParams(alt.Params), runestimate.FormatBand(*alt.WallSeconds), alt.Units)
 	}
 
 	_, _ = fmt.Fprintln(w, "No run was created.")

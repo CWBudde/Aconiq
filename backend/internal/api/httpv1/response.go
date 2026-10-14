@@ -57,6 +57,9 @@ const (
 	// the run command failed before it created the run's row, or never
 	// created one at all.
 	errorCodeRunFailed = "run_failed"
+	// errorCodeEstimateSuperseded answers an estimate a newer one replaced
+	// before it finished: the server takes one at a time.
+	errorCodeEstimateSuperseded = "estimate_superseded"
 	// errorCodeExportInsideRun answers a delete whose export bundle sits inside
 	// the run directory: the bundle is kept, so the directory cannot go.
 	errorCodeExportInsideRun = "export_inside_run"

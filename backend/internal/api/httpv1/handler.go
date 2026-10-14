@@ -31,6 +31,9 @@ type Handler struct {
 	runExecutor runExecutor
 	// estimateExecutor prices a run request without starting it.
 	estimateExecutor estimateExecutor
+	// estimates holds the one estimate in flight. A pointer for the reason
+	// manifest is one.
+	estimates *estimateSlot
 	// runs is every run this server has started and not yet settled. A
 	// pointer for the reason manifest is one.
 	runs *runSupervisor
@@ -185,6 +188,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 		registry:         opts.registry,
 		runExecutor:      opts.runExecutor,
 		estimateExecutor: opts.estimate,
+		estimates:        &estimateSlot{},
 		runs:             opts.runs,
 		runStartTimeout:  opts.runStartWait,
 		manifest:         &sync.Mutex{},

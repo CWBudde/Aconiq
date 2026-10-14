@@ -26,9 +26,10 @@ import (
 //
 // A run in fixed segment_length_mode also gets the distance-scaled
 // alternative costed, because that is the switch most likely to take a run
-// from hours to minutes. It is a second scene, prepared in that mode by the
-// same prepareScene, and probed on its own: which pairs survive the ladder
-// changes what the average pair costs.
+// from hours to minutes. Its sources are prepared again in that mode (see
+// withSegmentLengthMode) and probed on their own, because which pairs survive
+// the ladder changes what the average pair costs — but only if the budget
+// has time left once the run's own probe is done.
 func Estimate(
 	ctx context.Context,
 	receivers []geo.PointReceiver,
@@ -62,17 +63,17 @@ func Estimate(
 		scaledCfg := cfg
 		scaledCfg.SegmentLengthMode = SegmentLengthDistanceScaled
 
-		// The configuration has been validated and the sources prepared
-		// once already; only the mode differs, and prepareScene in that mode
-		// is the ladder a distance-scaled run would build.
-		scaled, err := prepareScene(sources, barriers, scaledCfg)
-		if err != nil {
-			return runestimate.Estimate{}, err
-		}
-
+		// Built only if the budget leaves time for it.
 		opts.Alternatives = append(opts.Alternatives, runestimate.AlternativeKernel{
 			Params: map[string]string{"segment_length_mode": string(SegmentLengthDistanceScaled)},
-			Kernel: newEstimateKernel(scaled, receivers, scaledCfg),
+			NewKernel: func() (runestimate.Kernel, error) {
+				scaled, err := scene.withSegmentLengthMode(sources, scaledCfg)
+				if err != nil {
+					return nil, err
+				}
+
+				return newEstimateKernel(scaled, receivers, scaledCfg), nil
+			},
 		})
 	}
 
@@ -90,6 +91,27 @@ func Estimate(
 	estimate.Inputs.Counts = scene.estimateCounts(len(barriers), cfg)
 
 	return estimate, nil
+}
+
+// withSegmentLengthMode is the scene a run in cfg's segment_length_mode would
+// prepare, sharing everything of s that the mode does not touch.
+//
+// Only the sources read SegmentLengthMode; the barrier set, the reflector
+// field and both indices are functions of the model alone and immutable once
+// prepared, so they are shared rather than rebuilt — on a city extract the
+// reflector index is the expensive half of a scene. The sources come from
+// prepareSources, the function prepareScene uses, so the ladder is the one a
+// run in that mode would build.
+func (s *Scene) withSegmentLengthMode(sources []RoadSource, cfg PropagationConfig) (*Scene, error) {
+	prepared, err := prepareSources(sources, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	scene := *s
+	scene.sources = prepared
+
+	return &scene, nil
 }
 
 // estimateCounts names what the scene is made of, for the reader of an

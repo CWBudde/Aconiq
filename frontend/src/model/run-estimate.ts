@@ -30,12 +30,16 @@ export interface EstimateBand {
   high: number;
 }
 
-/** A variant of the run costed from the same probe. */
+/**
+ * A variant of the run, probed on its own. `measured` is false when the
+ * budget ran out before it could be; the counts and bands are then absent.
+ */
 export interface EstimateAlternative {
   params: Record<string, string>;
-  units: number;
-  cpu_s: EstimateBand;
-  wall_s: EstimateBand;
+  measured: boolean;
+  units?: number;
+  cpu_s?: EstimateBand;
+  wall_s?: EstimateBand;
 }
 
 /** Mirrors Go's `runestimate.Estimate`. */
@@ -197,7 +201,13 @@ export function suggestFasterRun(
     });
   }
 
-  if (scaled !== undefined && params.segment_length_mode !== DISTANCE_SCALED) {
+  // An alternative the budget never reached suggests nothing: its cost is
+  // unknown, and a button quoting no time is not a suggestion.
+  if (
+    scaled?.wall_s !== undefined &&
+    scaled.cpu_s !== undefined &&
+    params.segment_length_mode !== DISTANCE_SCALED
+  ) {
     suggestions.push({
       params: { segment_length_mode: DISTANCE_SCALED },
       distanceScaled: true,

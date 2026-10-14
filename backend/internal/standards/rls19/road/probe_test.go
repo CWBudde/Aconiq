@@ -182,6 +182,65 @@ func TestProbeUnitsFollowTheLadder(t *testing.T) {
 	}
 }
 
+// TestSceneInAnotherModeIsThatModesScene pins the alternative's scene: sharing
+// the barrier and reflector indices of the fixed-mode scene, it must compute
+// what a scene prepared from scratch in distance-scaled mode computes, to the
+// bit, and must leave the fixed-mode scene it was derived from as it was.
+func TestSceneInAnotherModeIsThatModesScene(t *testing.T) {
+	t.Parallel()
+
+	sources, barriers, fixedCfg := probeScene(SegmentLengthFixed)
+	_, _, scaledCfg := probeScene(SegmentLengthDistanceScaled)
+	receivers := probeReceivers(5)
+
+	fixed, err := PrepareSceneFor(receivers, sources, barriers, fixedCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := fixed.ComputeReceivers(receivers, fixedCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	derived, err := fixed.withSegmentLengthMode(sources, scaledCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fresh, err := PrepareSceneFor(receivers, sources, barriers, scaledCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := derived.ComputeReceivers(receivers, scaledCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want, err := fresh.ComputeReceivers(receivers, scaledCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatal("a scene re-prepared in distance-scaled mode computes differently from one prepared in it")
+	}
+
+	if derived.barrierGrid != fixed.barrierGrid || derived.reflectors.grid != fixed.reflectors.grid {
+		t.Fatal("the derived scene rebuilt mode-independent indices")
+	}
+
+	after, err := fixed.ComputeReceivers(receivers, fixedCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("deriving a scene changed the fixed-mode scene's levels")
+	}
+}
+
 // TestEstimateSamplesDeterministically holds the budget out of the way and
 // the per-receiver count fixed, so the amount of work is as fixed as its
 // selection, and asks for the same estimate twice.

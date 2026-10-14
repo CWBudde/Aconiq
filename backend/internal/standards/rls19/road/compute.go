@@ -114,12 +114,24 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 
 	effectiveBarriers := buildingBarriers(barriers, cfg.Buildings)
 
-	scene := &Scene{
-		sources:     make([]preparedSource, 0, len(sources)),
+	prepared, err := prepareSources(sources, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Scene{
+		sources:     prepared,
 		barriers:    effectiveBarriers,
 		reflectors:  newReflectorField(buildingReflectors(cfg.Reflectors, cfg.Buildings)),
 		barrierGrid: newBarrierGrid(effectiveBarriers),
-	}
+	}, nil
+}
+
+// prepareSources prepares every source in the order given. It is the only
+// part of a Scene that reads SegmentLengthMode; the barrier and reflector sets
+// and their indices do not depend on it.
+func prepareSources(sources []RoadSource, cfg PropagationConfig) ([]preparedSource, error) {
+	out := make([]preparedSource, 0, len(sources))
 
 	for _, source := range sources {
 		prepared, err := prepareSource(source, cfg)
@@ -133,10 +145,10 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 			continue
 		}
 
-		scene.sources = append(scene.sources, prepared)
+		out = append(out, prepared)
 	}
 
-	return scene, nil
+	return out, nil
 }
 
 // prepareSource validates one source, computes its emission and splits its

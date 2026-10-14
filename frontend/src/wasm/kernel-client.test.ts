@@ -419,3 +419,43 @@ describe("kernel worker teardown", () => {
     }).not.toThrow();
   });
 });
+
+describe("kernel estimate", () => {
+  it("posts the request with the pool and the budget", async () => {
+    const { port, client } = await connected();
+
+    const pending = client.estimate(emptyRequest, {
+      workers: 4,
+      budgetMs: 200,
+    });
+    const call = port.sent[0];
+    expect(call?.method).toBe("estimate");
+    expect(JSON.parse((call as { json: string }).json)).toMatchObject({
+      workers: 4,
+      budget_ms: 200,
+    });
+
+    port.emit({
+      kind: "result",
+      id: call?.id ?? 0,
+      ok: true,
+      value: '{"available":true}',
+    });
+    expect(await pending).toEqual({ available: true });
+  });
+
+  it("never posts an estimate whose caller already gave up", async () => {
+    const { port, client } = await connected();
+    const controller = new AbortController();
+    controller.abort();
+
+    const error = await client
+      .estimate(emptyRequest, { signal: controller.signal })
+      .catch((e: unknown) => e);
+
+    expect((error as Error).name).toBe(CancelledErrorName);
+    // A probe cannot be stopped once the Worker runs it, so the stale one
+    // must not reach the Worker at all.
+    expect(port.sent).toEqual([]);
+  });
+});

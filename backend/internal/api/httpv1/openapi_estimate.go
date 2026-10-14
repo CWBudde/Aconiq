@@ -13,7 +13,8 @@ func openapiRunEstimatePathItems() map[string]any {
 					"its own work units (for `rls19-road`, its (source, Teilstück) pairs). No run is " +
 					"created and the manifest is not written. The request is refused where the run " +
 					"would be, in the run's words. A standard that has no probe answers `200` with " +
-					"`available: false` and a `reason`. Closing the connection interrupts the probe.",
+					"`available: false` and a `reason`. Closing the connection stops the probe, and so " +
+					"does a newer estimate request: the server takes one at a time.",
 				"requestBody": map[string]any{
 					"required": true,
 					"content": map[string]any{
@@ -32,6 +33,7 @@ func openapiRunEstimatePathItems() map[string]any {
 						},
 					},
 					"400": openapiErrorResponse("Invalid run request, or one the run command refuses"),
+					"409": openapiErrorResponse("A newer estimate replaced this one before it finished (`" + errorCodeEstimateSuperseded + "`)"),
 					"404": openapiErrorResponse("Project not initialized"),
 					"405": methodNotAllowedResponse(),
 					"500": openapiErrorResponse("The estimate could not be taken (`" + errorCodeRunFailed + "`)"),
@@ -81,7 +83,7 @@ func openapiRunEstimateSchemas() map[string]any {
 			"properties": map[string]any{
 				"available": map[string]any{
 					"type":        "boolean",
-					"description": "False for a standard without a probe; every field after `reason` is then absent.",
+					"description": "False for a standard without a probe; only `reason` and `standard_id` are then present.",
 				},
 				"reason":             map[string]any{"type": "string", "description": "Why there is no estimate"},
 				"standard_id":        map[string]any{"type": "string"},
@@ -124,22 +126,32 @@ func openapiRunEstimateSchemas() map[string]any {
 				"alternatives": map[string]any{
 					"type":        "array",
 					"description": "Variants of the run costed by their own probe — today the distance-scaled Teilstücke of a fixed-mode RLS-19 run",
-					"items": map[string]any{
-						"type":                 "object",
-						"additionalProperties": false,
-						"required":             []string{"params", "units", "cpu_s", "wall_s"},
-						"properties": map[string]any{
-							"params": map[string]any{
-								"type":                 "object",
-								"additionalProperties": map[string]any{"type": "string"},
-							},
-							"units":  integer("Work units of the variant"),
-							"cpu_s":  map[string]any{"$ref": "#/components/schemas/EstimateBand"},
-							"wall_s": map[string]any{"$ref": "#/components/schemas/EstimateBand"},
-						},
-					},
+					"items":       openapiEstimateAlternativeSchema(),
 				},
 			},
+		},
+	}
+}
+
+// openapiEstimateAlternativeSchema describes runestimate.Alternative.
+func openapiEstimateAlternativeSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"params", "measured"},
+		"properties": map[string]any{
+			"params": map[string]any{
+				"type":                 "object",
+				"additionalProperties": map[string]any{"type": "string"},
+			},
+			"measured": map[string]any{
+				"type": "boolean",
+				"description": "False when the budget ran out before the variant was probed; " +
+					"`units`, `cpu_s` and `wall_s` are then absent",
+			},
+			"units":  map[string]any{"type": "integer", "description": "Work units of the variant"},
+			"cpu_s":  map[string]any{"$ref": "#/components/schemas/EstimateBand"},
+			"wall_s": map[string]any{"$ref": "#/components/schemas/EstimateBand"},
 		},
 	}
 }

@@ -12,10 +12,10 @@ import (
 
 // DefaultBudget is how long a probe may take when the caller does not say.
 //
-// It is a wall-clock bound on the probe, checked between units: a unit already
-// running finishes, so the probe can overrun by one unit's cost. On the
-// scenes where an estimate matters most a single receiver takes minutes,
-// which is why the probe samples units and never whole receivers.
+// It bounds the timed probe and everything optional, checked between units;
+// see Run for the three things that can still run past it. On the scenes
+// where an estimate matters most a single receiver takes minutes, which is
+// why the probe samples units and never whole receivers.
 const DefaultBudget = 3 * time.Second
 
 // Kernel is what a standard implements to be estimated.
@@ -51,9 +51,13 @@ type Walker interface {
 // distance-scaled Teilstücke keep the near pairs and merge the far ones, and
 // on a building-dense scene a near pair admits several times the mirrored
 // paths a far one does.
+//
+// NewKernel builds the variant's kernel, and is called only once the run's
+// own probe is done and only if the budget has time left for the variant:
+// preparing it is part of what the budget bounds.
 type AlternativeKernel struct {
-	Params map[string]string
-	Kernel Kernel
+	Params    map[string]string
+	NewKernel func() (Kernel, error)
 }
 
 // Options shape one estimate.
@@ -141,6 +145,17 @@ const (
 // points are the run's receivers in the run's order; kernel walks them. The
 // estimate it returns has no StandardID and no Counts — the caller knows
 // those, and Run does not.
+//
+// # What the budget bounds
+//
+// The budget bounds the timed probe, checked between units, plus anything
+// optional: an alternative is built and probed only while budget remains,
+// and reported as unmeasured otherwise. Three things can still run past it,
+// because an estimate cannot be had without them: counting the run's own
+// units (one Units call per receiver, cancellable through ctx), the first
+// probe receiver's Begin, and the one unit already running when the deadline
+// passes. On a city-sized scene a Begin is a few tenths of a second, so the
+// probe overruns its budget by about that much.
 func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options) (Estimate, error) {
 	if len(points) == 0 {
 		return Estimate{}, errors.New("estimate: at least one receiver is required")
@@ -152,32 +167,51 @@ func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options)
 	}
 
 	startedAt := time.Now()
+	deadline := startedAt.Add(budget)
 	probeOrder := ProbeReceivers(points, opts.MaxProbeReceivers)
 
-	warmUp(kernel, probeOrder[0], startedAt.Add(time.Duration(float64(budget)*warmUpShare)))
-
-	ownBudget := budget
-	if len(opts.Alternatives) > 0 {
-		ownBudget = time.Duration(float64(budget) * (1 - alternativeShare))
-	}
-
-	own, err := probeKernel(ctx, kernel, points, probeOrder, startedAt.Add(ownBudget), opts.MaxUnitsPerReceiver)
+	units, total, _, err := countUnits(ctx, kernel, len(points), time.Time{})
 	if err != nil {
 		return Estimate{}, err
 	}
+
+	// One walker for the warm-up and the probe, so the first probe receiver
+	// is begun once: on the RLS-19 kernel a Begin builds the receiver's mirror
+	// table, and that is most of what a probe receiver costs on a dense scene.
+	walker := kernel.NewWalker()
+	firstSetup := warmUp(walker, probeOrder[0], units[probeOrder[0]], startedAt.Add(time.Duration(float64(budget)*warmUpShare)))
+
+	ownDeadline := deadline
+	if len(opts.Alternatives) > 0 {
+		ownDeadline = startedAt.Add(time.Duration(float64(budget) * (1 - alternativeShare)))
+	}
+
+	own, err := probeKernel(ctx, walker, units, points, probeOrder, probeLimits{
+		deadline:    ownDeadline,
+		perReceiver: opts.MaxUnitsPerReceiver,
+		mustMeasure: true,
+		firstSetup:  firstSetup,
+	})
+	if err != nil {
+		return Estimate{}, err
+	}
+
+	own.total = total
 
 	estimate := extrapolate(points, own, opts)
 	timed, exhausted := own.timed, own.exhausted
 
 	for k, alt := range opts.Alternatives {
-		// Each alternative gets an equal part of what is left, so one that
-		// overran does not starve the next of its whole share.
-		remaining := budget - time.Since(startedAt)
-		deadline := time.Now().Add(remaining / time.Duration(len(opts.Alternatives)-k))
-
-		measured, err := probeKernel(ctx, alt.Kernel, points, probeOrder, deadline, opts.MaxUnitsPerReceiver)
+		measured, err := probeAlternative(ctx, alt, points, probeOrder, deadline, len(opts.Alternatives)-k, opts.MaxUnitsPerReceiver)
 		if err != nil {
 			return Estimate{}, err
+		}
+
+		if len(measured.probes) == 0 {
+			estimate.Alts = append(estimate.Alts, Alternative{Params: alt.Params, Measured: false})
+			exhausted = true
+
+			continue
 		}
 
 		estimate.Alts = append(estimate.Alts, costAlternative(alt.Params, points, measured, opts))
@@ -198,7 +232,82 @@ func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options)
 	return estimate, nil
 }
 
-// warmUp runs units of the first probe receiver, untimed, until deadline.
+// probeAlternative builds and probes one alternative within an equal part of
+// what is left of the budget — so one that overran does not starve the next
+// of its whole share — or returns an empty measurement when nothing is left.
+// Building the kernel and counting its units both happen inside that share,
+// and a count that runs past it leaves the alternative unmeasured.
+func probeAlternative(
+	ctx context.Context,
+	alt AlternativeKernel,
+	points []geo.Point2D,
+	probeOrder []int,
+	deadline time.Time,
+	remainingAlternatives int,
+	perReceiver int,
+) (measurement, error) {
+	now := time.Now()
+	if !now.Before(deadline) {
+		return measurement{}, nil
+	}
+
+	share := now.Add(deadline.Sub(now) / time.Duration(remainingAlternatives))
+
+	kernel, err := alt.NewKernel()
+	if err != nil {
+		return measurement{}, err
+	}
+
+	units, total, counted, err := countUnits(ctx, kernel, len(points), share)
+	if err != nil || !counted {
+		return measurement{}, err
+	}
+
+	m, err := probeKernel(ctx, kernel.NewWalker(), units, points, probeOrder, probeLimits{
+		deadline:    share,
+		perReceiver: perReceiver,
+		mustMeasure: false,
+		firstSetup:  -1,
+	})
+	m.total = total
+
+	return m, err
+}
+
+// unitsCtxStride is how many receivers countUnits counts between two checks
+// of its context and deadline.
+const unitsCtxStride = 1024
+
+// countUnits counts every receiver's units. It stops with ctx's error once
+// ctx is done, and with counted false once a non-zero deadline has passed.
+func countUnits(ctx context.Context, kernel Kernel, receivers int, deadline time.Time) ([]int, int64, bool, error) {
+	units := make([]int, receivers)
+
+	var total int64
+
+	for i := range units {
+		if i%unitsCtxStride == 0 {
+			err := ctx.Err()
+			if err != nil {
+				return nil, 0, false, fmt.Errorf("estimate: %w", err)
+			}
+
+			if !deadline.IsZero() && !time.Now().Before(deadline) {
+				return nil, 0, false, nil
+			}
+		}
+
+		units[i] = kernel.Units(i)
+		total += int64(units[i])
+	}
+
+	return units, total, true, nil
+}
+
+// warmUp begins the first probe receiver on walker and runs its units,
+// untimed, until deadline. It returns what the Begin took, which the probe
+// reports as that receiver's one-off cost: the probe begins it again on the
+// same walker, and the second Begin is the cache hit the first one paid for.
 //
 // A run of minutes computes on a warm machine: the core is at its working
 // clock, the scene's arrays are in cache, and the garbage the scene
@@ -208,23 +317,26 @@ func Run(ctx context.Context, kernel Kernel, points []geo.Point2D, opts Options)
 // rest, and with sixteen receivers each sampling a handful of units, the
 // first receiver's share of that would be extrapolated over a sixteenth of
 // the grid. So the collection is forced and the core is warmed first, on the
-// same kernel the probe then times.
-func warmUp(kernel Kernel, receiver int, deadline time.Time) {
+// same walker the probe then times.
+func warmUp(walker Walker, receiver, units int, deadline time.Time) float64 {
 	runtime.GC()
 
-	units := kernel.Units(receiver)
 	if units == 0 {
-		return
+		return -1
 	}
 
-	walker := kernel.NewWalker()
+	startedAt := time.Now()
+
 	walker.Begin(receiver)
 
+	setup := time.Since(startedAt).Seconds()
 	order := newSampleOrder(units)
 
 	for i := 0; i < units && time.Now().Before(deadline); i++ {
 		walker.Unit(order.take())
 	}
+
+	return setup
 }
 
 // measurement is one kernel's probe: every receiver's unit count, and what
@@ -264,30 +376,36 @@ func (p *receiverProbe) sampled() int {
 	return n
 }
 
-// probeKernel counts every receiver's units and times the probe receivers'
-// until deadline.
+// probeLimits are the bounds of one kernel's probe.
+type probeLimits struct {
+	deadline    time.Time
+	perReceiver int
+
+	// mustMeasure measures the first probe receiver even past the deadline:
+	// the run's own estimate needs one measurement, however late. An
+	// alternative does not, and is reported unmeasured instead.
+	mustMeasure bool
+
+	// firstSetup is the first probe receiver's Begin as warmUp measured it,
+	// or negative when nothing was warmed.
+	firstSetup float64
+}
+
+// probeKernel times the probe receivers' units until the deadline.
 //
 // Every probe receiver gets an equal part of what is left of the budget when
 // its turn comes, so one that overran costs the next ones only their share.
 // Past the deadline the remaining probe receivers are skipped — the nearest
-// measured one stands in for them — except that the first is always
-// measured: an estimate needs one measurement, however late.
+// measured one stands in for them.
 func probeKernel(
 	ctx context.Context,
-	kernel Kernel,
+	walker Walker,
+	units []int,
 	points []geo.Point2D,
 	probeOrder []int,
-	deadline time.Time,
-	perReceiverCap int,
+	limits probeLimits,
 ) (measurement, error) {
-	m := measurement{units: make([]int, len(points))}
-
-	for i := range points {
-		m.units[i] = kernel.Units(i)
-		m.total += int64(m.units[i])
-	}
-
-	walker := kernel.NewWalker()
+	m := measurement{units: units}
 
 	for k, r := range probeOrder {
 		err := ctx.Err()
@@ -297,16 +415,20 @@ func probeKernel(
 
 		now := time.Now()
 
-		if !now.Before(deadline) && len(m.probes) > 0 {
+		if !now.Before(limits.deadline) && (len(m.probes) > 0 || !limits.mustMeasure) {
 			m.exhausted = true
 
 			break
 		}
 
-		sliceEnd := now.Add(deadline.Sub(now) / time.Duration(len(probeOrder)-k))
+		sliceEnd := now.Add(limits.deadline.Sub(now) / time.Duration(len(probeOrder)-k))
 
-		probe, cutShort := measureReceiver(walker, r, m.units[r], probeOffset(k, m.units[r]), sliceEnd, perReceiverCap)
+		probe, cutShort := measureReceiver(walker, r, units[r], probeOffset(k, units[r]), sliceEnd, limits.perReceiver)
 		probe.point = points[r]
+
+		if k == 0 && limits.firstSetup >= 0 {
+			probe.setup = limits.firstSetup
+		}
 
 		m.exhausted = m.exhausted || cutShort
 		m.timed += probe.sampled()

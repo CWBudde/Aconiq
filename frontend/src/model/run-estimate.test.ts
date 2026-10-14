@@ -42,6 +42,7 @@ function longEstimate(withScaled = true): RunEstimate {
           alternatives: [
             {
               params: { segment_length_mode: "distance_scaled" },
+              measured: true,
               units: receivers * 200,
               cpu_s: {
                 low: receivers * 0.1,
@@ -95,6 +96,18 @@ describe("suggestFasterRun", () => {
     // Cheaper per receiver, so a finer grid fits the same minute.
     const grid = suggestions.find((s) => !s.distanceScaled);
     expect(both?.resolutionM).toBeLessThanOrEqual(grid?.resolutionM ?? 0);
+  });
+
+  it("offers no distance-scaled run the budget never measured", () => {
+    const estimate: RunEstimate = {
+      ...longEstimate(),
+      alternatives: [
+        { params: { segment_length_mode: "distance_scaled" }, measured: false },
+      ],
+    };
+    const suggestions = suggestFasterRun(estimate, EXTENT, SIZING, {});
+    expect(suggestions.some((s) => s.distanceScaled)).toBe(false);
+    expect(suggestions).toHaveLength(1);
   });
 
   it("offers no spacing for a custom receiver set, and no mode it already has", () => {

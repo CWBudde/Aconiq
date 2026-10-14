@@ -14,6 +14,11 @@ import (
 // names none. Shorter than the CLI's three seconds because the probe occupies
 // a Worker the run is about to want, and the dialog asks again whenever a
 // setting changes.
+//
+// The Worker is busy for longer than this: preparing the scene comes first,
+// and runestimate.Run lets three things run past the budget — counting every
+// receiver's units, the first probe receiver's setup (its mirror table, a few
+// tenths of a second on a city extract) and the unit in flight.
 const EstimateBudget = 1500 * time.Millisecond
 
 // EstimateRLS19Road says what ComputeRLS19RoadShard over workers shards will

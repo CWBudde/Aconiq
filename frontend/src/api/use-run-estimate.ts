@@ -92,9 +92,12 @@ export function useRunEstimate(
   });
 
   if (key === null) return { status: "idle" };
-  if (query.data !== undefined && settledKey === key) {
+  // Current only if neither the spec nor the model moved since it was asked
+  // for: an estimate of the model before an edit is not this model's.
+  const current = settledKey === key && settledRevision === revisionOf(model);
+  if (query.data !== undefined && current) {
     return { status: "ready", estimate: query.data };
   }
-  if (query.isError && settledKey === key) return { status: "failed" };
+  if (query.isError && current) return { status: "failed" };
   return { status: "estimating" };
 }

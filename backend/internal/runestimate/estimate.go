@@ -47,8 +47,8 @@ func (b Band) scaled(factor float64) Band {
 // `POST /api/v1/runs/estimate` and for the WASM kernel's `estimate`, because
 // all three are this struct marshalled.
 type Estimate struct {
-	// Available is false for a standard that has no probe. Every field below
-	// Reason is then absent.
+	// Available is false for a standard that has no probe. Reason and
+	// StandardID are then the only fields present.
 	Available bool `json:"available"`
 
 	// Reason says why there is no estimate, when there is none.
@@ -119,11 +119,15 @@ type ProbeReport struct {
 
 // Alternative is what the same run would cost with some parameters changed,
 // costed from the same measurement.
+//
+// Measured is false when the budget ran out before the variant could be
+// probed; Units and both bands are then absent rather than guessed.
 type Alternative struct {
 	Params      map[string]string `json:"params"`
-	Units       int64             `json:"units"`
-	CPUSeconds  Band              `json:"cpu_s"`
-	WallSeconds Band              `json:"wall_s"`
+	Measured    bool              `json:"measured"`
+	Units       int64             `json:"units,omitempty"`
+	CPUSeconds  *Band             `json:"cpu_s,omitempty"`
+	WallSeconds *Band             `json:"wall_s,omitempty"`
 }
 
 // Unavailable is the estimate of a standard that has no probe.

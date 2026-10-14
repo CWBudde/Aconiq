@@ -635,6 +635,7 @@ describe("RunPage run-time estimate", () => {
     alternatives: [
       {
         params: { segment_length_mode: "distance_scaled" },
+        measured: true,
         units: 147_132,
         cpu_s: { low: 1100, estimate: 1350, high: 1700 },
         wall_s: { low: 130, estimate: 220, high: 470 },

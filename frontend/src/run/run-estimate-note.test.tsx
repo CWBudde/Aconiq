@@ -40,6 +40,7 @@ function estimate(wallS: number): RunEstimate {
     alternatives: [
       {
         params: { segment_length_mode: "distance_scaled" },
+        measured: true,
         units: 1_200_000,
         cpu_s: { low: 300, estimate: 400, high: 600 },
         wall_s: { low: 40, estimate: 55, high: 80 },

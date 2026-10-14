@@ -2017,11 +2017,15 @@ async function prepareRLS19Request(
 async function estimateRLS19Road(
   kernel: AconiqKernel,
   spec: RunSpec,
+  signal?: AbortSignal,
 ): Promise<RunEstimate> {
   const { request } = await prepareRLS19Request(kernel, spec, {
     maskFootprints: false,
   });
-  return kernel.estimate(request);
+  // Preparing awaited the kernel's projection on the same Worker; a spec the
+  // dialog moved on from meanwhile is not worth a probe.
+  if (signal?.aborted === true) throw cancelledRun("The estimate is stale");
+  return kernel.estimate(request, signal === undefined ? {} : { signal });
 }
 
 export const browserBackend = {
@@ -2332,13 +2336,14 @@ out geom;`;
   async estimateRun(spec: RunSpec, signal?: AbortSignal): Promise<RunEstimate> {
     const kernel = await getKernel();
     // A probe cannot be interrupted short of terminating the worker, which
-    // would also take a run starting behind it. A stale estimate is cheap —
-    // the kernel's budget is a second and a half — so it is allowed to
-    // finish, and its answer is dropped.
+    // would also take a run starting behind it. So a stale estimate is
+    // dropped wherever it can be — here, after the request is prepared, and
+    // in the client before the call is posted — and one already posted is
+    // allowed to finish and its answer discarded.
     if (signal?.aborted === true) throw cancelledRun("The estimate is stale");
     switch (spec.standardId) {
       case "rls19-road":
-        return estimateRLS19Road(kernel, spec);
+        return estimateRLS19Road(kernel, spec, signal);
       default:
         return {
           available: false,

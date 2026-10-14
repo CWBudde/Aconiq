@@ -120,7 +120,8 @@ PLAN.md           Roadmap and the single status source
   over) and `budget_ms`, and answers what that run would cost in time — the JSON
   `aconiq run --estimate --json` prints and `POST /api/v1/runs/estimate` answers, because all three
   are `road.Estimate` timing a stratified sample of the run's own (source, Teilstück) pairs. It
-  computes no level, and it occupies the Worker for its budget (1.5 s by default).
+  computes no level. It occupies the Worker for the scene preparation plus its budget (1.5 s by
+  default), and can overrun that by counting the units and by one receiver's setup.
 - **`transform`** is the frontend's only map projection. It takes a batch of flat, interleaved
   coordinates and a `target_crs` of `"auto"`, and makes the CRS decision `aconiq run` makes — so
   browser mode and the CLI resolve the same UTM zone, and refuse the same site in the same words.

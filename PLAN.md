@@ -2191,8 +2191,8 @@ before the pages they protect are cut apart.
 - [x] **The run dialog states the receiver count before the run** (#85). The grid
       arithmetic is shared with `buildReceiverGrid` rather than duplicated, and must stay that
       way: a preview computed by a second copy would go on quoting a number the run had stopped
-      producing. Browser mode still has no receiver cap. A _time_ estimate wants a 16-receiver
-      kernel probe, left as a named follow-up at both sites.
+      producing. Browser mode still has no receiver cap. The _time_ estimate is the kernel
+      probe of #99.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM. Only the extraction is left; the threading is done.
@@ -2286,16 +2286,13 @@ before the pages they protect are cut apart.
       over.
       **The frontend polls rather than listening to `/api/v1/events`**, which carries the last
       run's progress now, because `EventSource` cannot send the `--api-token` header.
-- [ ] **Make the run-time estimate honest beyond RLS-19, and on a dense scene.** The probe
-      landed (`internal/runestimate`, `road.Estimate`; `aconiq run --estimate`,
-      `POST /api/v1/runs/estimate`, the kernel's `estimate`, the run dialog's band and
-      suggestions). What it does not yet do: `iso9613` and `schall03` answer "no estimate
-      available" until they implement `runestimate.Kernel`; the parallel efficiency (0.8 point,
-      0.55 slow end) is a constant, not a measurement of the machine, and a hybrid laptop sits
-      near the slow end; and on Linden in fixed mode a 3 s budget times ~10 pairs whose cost is
-      heavy-tailed, so the band rests on `minUnitCV` rather than on observed spread — sampling
-      pairs stratified by source distance, or a longer budget when the first receiver is slow,
-      would narrow it.
+- [ ] **Make the run-time estimate (#99) honest beyond RLS-19, and on a dense scene.**
+      `iso9613` and `schall03` answer "no estimate available" until they implement
+      `runestimate.Kernel`. The parallel efficiency (0.8 point, 0.55 slow end) is a constant,
+      not a measurement of the machine, and a hybrid laptop sits near the slow end. On Linden in
+      fixed mode a 3 s budget times ~10 pairs whose cost is heavy-tailed, so the band rests on
+      `minUnitCV` rather than on observed spread — sampling pairs stratified by source distance,
+      or a longer budget when the first receiver is slow, would narrow it.
 - [ ] **Paint a coarse raster first, then refine.** Compute at 4x the chosen spacing (a sixteenth
       of the receivers), show it, then compute the full grid and replace it. The final numbers are
       the ordinary computation, unchanged. Align the coarse grid to the fine one — same origin,

@@ -208,7 +208,7 @@ export interface paths {
         put?: never;
         /**
          * Estimate what a run would cost in time
-         * @description Runs `aconiq run --estimate` with the request a `POST /api/v1/runs` would take: the run's pipeline up to its prepared scene, then a probe of a few seconds that times a stratified sample of at most 16 receivers and, for each, a sample of its own work units (for `rls19-road`, its (source, Teilstück) pairs). No run is created and the manifest is not written. The request is refused where the run would be, in the run's words. A standard that has no probe answers `200` with `available: false` and a `reason`. Closing the connection interrupts the probe.
+         * @description Runs `aconiq run --estimate` with the request a `POST /api/v1/runs` would take: the run's pipeline up to its prepared scene, then a probe of a few seconds that times a stratified sample of at most 16 receivers and, for each, a sample of its own work units (for `rls19-road`, its (source, Teilstück) pairs). No run is created and the manifest is not written. The request is refused where the run would be, in the run's words. A standard that has no probe answers `200` with `available: false` and a `reason`. Closing the connection stops the probe, and so does a newer estimate request: the server takes one at a time.
          */
         post: operations["estimateRun"];
         delete?: never;
@@ -551,15 +551,17 @@ export interface components {
         RunEstimate: {
             /** @description Variants of the run costed by their own probe — today the distance-scaled Teilstücke of a fixed-mode RLS-19 run */
             alternatives?: {
-                cpu_s: components["schemas"]["EstimateBand"];
+                cpu_s?: components["schemas"]["EstimateBand"];
+                /** @description False when the budget ran out before the variant was probed; `units`, `cpu_s` and `wall_s` are then absent */
+                measured: boolean;
                 params: {
                     [key: string]: string;
                 };
                 /** @description Work units of the variant */
-                units: number;
-                wall_s: components["schemas"]["EstimateBand"];
+                units?: number;
+                wall_s?: components["schemas"]["EstimateBand"];
             }[];
-            /** @description False for a standard without a probe; every field after `reason` is then absent. */
+            /** @description False for a standard without a probe; only `reason` and `standard_id` are then present. */
             available: boolean;
             /** @description `cpu_s` over the receiver count */
             cpu_per_receiver_s?: components["schemas"]["EstimateBand"];
@@ -1687,6 +1689,15 @@ export interface operations {
             };
             /** @description Method not allowed */
             405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A newer estimate replaced this one before it finished (`estimate_superseded`) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

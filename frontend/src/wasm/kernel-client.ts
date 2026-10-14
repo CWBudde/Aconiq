@@ -367,6 +367,13 @@ export class KernelClient implements AconiqKernel {
     req: ComputeRequest,
     options: EstimateOptions = {},
   ): Promise<RunEstimate> {
+    // The Worker runs one call at a time, and a probe cannot be stopped once
+    // it runs; one nobody wants any more is not posted at all.
+    if (options.signal?.aborted === true) {
+      const stale = new Error("The estimate was cancelled before it was sent");
+      stale.name = CancelledErrorName;
+      throw stale;
+    }
     const value = await this.call(
       (id) => ({
         id,

@@ -24,9 +24,9 @@ package httpv1
 //
 // Unlike a run, an estimate is answered synchronously and writes nothing: the
 // child creates no run row, so there is nothing for the run supervisor to
-// track or settle. Its context is the request's: a client that gives up —
-// the run dialog cancels a stale estimate whenever a setting changes —
-// interrupts the child.
+// track or settle. Its context is the request's, and the server takes one
+// estimate at a time: a client that gives up — the run dialog cancels a stale
+// estimate whenever a setting changes — or a newer estimate kills the child.
 
 import (
 	"bytes"
@@ -37,6 +37,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
+	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 )
@@ -47,6 +49,50 @@ type estimateExecutor func(ctx context.Context, req createRunRequest) (json.RawM
 // estimateOutputMode is the "mode" the run command's JSON output names an
 // estimate with.
 const estimateOutputMode = "estimate"
+
+// estimateKillGrace bounds how long a killed estimate's output is drained.
+const estimateKillGrace = time.Second
+
+// estimateSlot is the one estimate this server computes at a time.
+//
+// The run dialog asks again whenever a setting changes, and the probe it
+// starts holds the machine's cores' worth of attention for seconds and a
+// city scene's worth of memory. Two at once would each measure a machine the
+// other is loading, so a new estimate cancels the one in flight — whose
+// answer was about to be stale anyway — rather than queueing behind it.
+type estimateSlot struct {
+	mu         sync.Mutex
+	generation uint64
+	cancel     context.CancelFunc
+}
+
+// claim cancels the estimate in flight, if any, and returns the context the
+// new one runs under and its release.
+func (s *estimateSlot) claim(parent context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(parent)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cancel != nil {
+		s.cancel()
+	}
+
+	s.generation++
+	generation := s.generation
+	s.cancel = cancel
+
+	return ctx, func() {
+		cancel()
+
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		if s.generation == generation {
+			s.cancel = nil
+		}
+	}
+}
 
 // useChildProcessExecutors gives the handler the `aconiq` child-process
 // executors it was not given one of: the production path, which tests replace.
@@ -77,6 +123,19 @@ func newCLIProcessEstimateExecutor(projectRoot string) estimateExecutor {
 		}
 
 		cmd := newRunProcess(ctx, executable, estimateCommandArgs(projectRoot, req))
+
+		// Killed rather than interrupted, and not waited for: an estimate
+		// writes nothing, so there is no record for a grace period to let it
+		// finish. WaitDelay only bounds how long its output pipes are drained.
+		cmd.Cancel = func() error {
+			err := cmd.Process.Kill()
+			if err != nil && !stderrors.Is(err, os.ErrProcessDone) {
+				return fmt.Errorf("kill estimate process: %w", err)
+			}
+
+			return nil
+		}
+		cmd.WaitDelay = estimateKillGrace
 
 		var stdout, stderr tailBuffer
 
@@ -189,8 +248,22 @@ func (h Handler) handleRunEstimate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	estimate, err := h.estimateExecutor(r.Context(), req)
+	ctx, release := h.estimates.claim(r.Context())
+	defer release()
+
+	estimate, err := h.estimateExecutor(ctx, req)
 	if err != nil {
+		// Cancelled while its own client was still there: a newer estimate
+		// took the slot.
+		if ctx.Err() != nil && r.Context().Err() == nil {
+			writeAPIError(w, http.StatusConflict, apiError{
+				Code:    errorCodeEstimateSuperseded,
+				Message: "a newer estimate replaced this one before it finished",
+			})
+
+			return
+		}
+
 		writeRunCreateError(w, err)
 
 		return

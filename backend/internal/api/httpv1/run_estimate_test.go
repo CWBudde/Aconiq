@@ -3,10 +3,12 @@ package httpv1
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -117,6 +119,58 @@ func TestRunEstimateEndpointRefusesLikeARun(t *testing.T) {
 		if rec.Code != tc.status {
 			t.Fatalf("%s: status %d, want %d: %s", tc.name, rec.Code, tc.status, rec.Body.String())
 		}
+	}
+}
+
+// A second estimate cancels the first: the first answers 409, the second its
+// estimate, and only one probe ever runs at a time.
+func TestRunEstimateEndpointTakesOneEstimateAtATime(t *testing.T) {
+	t.Parallel()
+
+	store := estimateTestStore(t)
+	firstStarted := make(chan struct{})
+
+	var calls atomic.Int32
+
+	handler := newHandlerWithOptions(store, handlerOptions{
+		clock: time.Now,
+		estimate: func(ctx context.Context, _ createRunRequest) (json.RawMessage, error) {
+			if calls.Add(1) == 1 {
+				close(firstStarted)
+				<-ctx.Done()
+
+				return nil, fmt.Errorf("estimate run: %w", ctx.Err())
+			}
+
+			return json.RawMessage(`{"available":true}`), nil
+		},
+	})
+
+	post := func() *httptest.ResponseRecorder {
+		req := newAPIRequest(http.MethodPost, "/api/v1/runs/estimate", strings.NewReader(`{"standard_id": "rls19-road"}`))
+		req.Header.Set("Content-Type", "application/json")
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		return rec
+	}
+
+	firstDone := make(chan *httptest.ResponseRecorder)
+
+	go func() { firstDone <- post() }()
+
+	<-firstStarted
+
+	second := post()
+	first := <-firstDone
+
+	if second.Code != http.StatusOK {
+		t.Fatalf("second: status %d: %s", second.Code, second.Body.String())
+	}
+
+	if first.Code != http.StatusConflict || !strings.Contains(first.Body.String(), errorCodeEstimateSuperseded) {
+		t.Fatalf("first: status %d: %s", first.Code, first.Body.String())
 	}
 }
 

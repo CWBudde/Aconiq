@@ -159,11 +159,36 @@ type fakeKernel struct {
 	calls    []int
 	receiver int
 	sink     float64
+
+	// beginSleep is what a receiver's first Begin costs; walkers and begins
+	// count calls.
+	beginSleep time.Duration
+	walkers    int
+	begins     map[int]int
 }
 
-func (k *fakeKernel) Units(i int) int    { return k.units(i) }
-func (k *fakeKernel) NewWalker() Walker  { return k }
-func (k *fakeKernel) Begin(receiver int) { k.receiver = receiver }
+func (k *fakeKernel) Units(i int) int { return k.units(i) }
+
+func (k *fakeKernel) NewWalker() Walker {
+	k.walkers++
+
+	return k
+}
+
+func (k *fakeKernel) Begin(receiver int) {
+	if k.begins == nil {
+		k.begins = map[int]int{}
+	}
+
+	k.begins[receiver]++
+	k.receiver = receiver
+
+	// Like the RLS-19 mirror table, a receiver's one-off work is cached on
+	// the walker: only its first Begin pays.
+	if k.begins[receiver] == 1 {
+		time.Sleep(k.beginSleep)
+	}
+}
 
 func (k *fakeKernel) Unit(unit int) {
 	k.calls = append(k.calls, k.receiver*1_000_000+unit)
@@ -189,21 +214,20 @@ func TestRunWalksThePlan(t *testing.T) {
 		MaxUnitsPerReceiver: 8,
 		Workers:             4,
 		Alternatives: []AlternativeKernel{{
-			Params: map[string]string{"k": "v"},
-			Kernel: alt,
+			Params:    map[string]string{"k": "v"},
+			NewKernel: func() (Kernel, error) { return alt, nil },
 		}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Each probe receiver visits its plan's units, rotated to its own offset.
+	// Each probe receiver visits exactly its plan's units, in plan order.
 	var want []int
 
-	for k, p := range SamplePlan(points, units, 0, 8) {
-		n := units(p.Receiver)
+	for _, p := range SamplePlan(points, units, 0, 8) {
 		for _, u := range p.Units {
-			want = append(want, p.Receiver*1_000_000+(u+probeOffset(k, n))%n)
+			want = append(want, p.Receiver*1_000_000+u)
 		}
 	}
 
@@ -238,8 +262,73 @@ func TestRunWalksThePlan(t *testing.T) {
 		t.Fatalf("wall band %+v against cpu %+v", wall, cpu)
 	}
 
-	if len(estimate.Alts) != 1 || estimate.Alts[0].Units != 500 || estimate.Alts[0].CPUSeconds.Estimate >= cpu.Estimate {
+	if len(estimate.Alts) != 1 || !estimate.Alts[0].Measured || estimate.Alts[0].Units != 500 ||
+		estimate.Alts[0].CPUSeconds.Estimate >= cpu.Estimate {
 		t.Fatalf("alternative %+v", estimate.Alts)
+	}
+
+	// One walker for the warm-up and the probe.
+	if kernel.walkers != 1 {
+		t.Fatalf("the run's kernel made %d walkers, want one", kernel.walkers)
+	}
+}
+
+// The first probe receiver is begun by the warm-up and again by the probe on
+// the same walker; its one-off cost is the warm-up's Begin, not the cache hit.
+func TestRunReportsTheWarmUpBeginAsTheFirstSetup(t *testing.T) {
+	t.Parallel()
+
+	kernel := &fakeKernel{units: func(int) int { return 4 }, beginSleep: 5 * time.Millisecond}
+
+	estimate, err := Run(t.Context(), kernel, gridPoints(2, 1, 1), Options{Budget: time.Minute, Workers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if kernel.walkers != 1 {
+		t.Fatalf("%d walkers, want one", kernel.walkers)
+	}
+
+	// Both receivers carry a 5 ms Begin. Had the probe timed the first one's
+	// second, cached Begin, the run would read as costing one of them.
+	if estimate.CPUSeconds.Estimate < 0.009 {
+		t.Fatalf("cpu %v s: the first receiver's one-off cost was lost", estimate.CPUSeconds.Estimate)
+	}
+}
+
+// An alternative is not built once the budget is gone, and says it was not
+// measured rather than borrowing a number.
+func TestRunSkipsAnAlternativeOnceTheBudgetIsGone(t *testing.T) {
+	t.Parallel()
+
+	kernel := &fakeKernel{units: func(int) int { return 1 << 20 }, spin: 2000, beginSleep: 30 * time.Millisecond}
+	built := false
+
+	startedAt := time.Now()
+
+	estimate, err := Run(t.Context(), kernel, gridPoints(10, 10, 5), Options{
+		Budget: 20 * time.Millisecond,
+		Alternatives: []AlternativeKernel{{
+			Params: map[string]string{"k": "v"},
+			NewKernel: func() (Kernel, error) {
+				built = true
+
+				return &fakeKernel{units: func(int) int { return 1 }}, nil
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if built || len(estimate.Alts) != 1 || estimate.Alts[0].Measured || estimate.Alts[0].WallSeconds != nil {
+		t.Fatalf("built=%v alternatives %+v", built, estimate.Alts)
+	}
+
+	// Past the budget by the first receiver's Begin and a unit — not by a
+	// receiver per kernel.
+	if elapsed := time.Since(startedAt); elapsed > 500*time.Millisecond {
+		t.Fatalf("a 20 ms budget took %v", elapsed)
 	}
 }
 

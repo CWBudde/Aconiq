@@ -202,19 +202,22 @@ type PlannedReceiver struct {
 
 // SamplePlan is the work an estimate times before the budget cuts it short:
 // the probe receivers in probe order, and for each the first units it would
-// visit (at most perReceiver of them). It exists so a test can hold the
-// sample fixed; the probe walks the same sequences.
+// visit (at most perReceiver of them), each in its sample order rotated by
+// its probeOffset, exactly as measureReceiver visits them. It exists so a
+// test can hold the sample fixed.
 func SamplePlan(points []geo.Point2D, units func(receiver int) int, limit, perReceiver int) []PlannedReceiver {
 	probes := ProbeReceivers(points, limit)
 	plan := make([]PlannedReceiver, 0, len(probes))
 
-	for _, r := range probes {
-		n := min(units(r), perReceiver)
-		order := newSampleOrder(units(r))
+	for k, r := range probes {
+		total := units(r)
+		n := min(total, perReceiver)
+		order := newSampleOrder(total)
+		offset := probeOffset(k, total)
 		visit := make([]int, 0, n)
 
 		for range n {
-			visit = append(visit, order.take())
+			visit = append(visit, (order.take()+offset)%total)
 		}
 
 		plan = append(plan, PlannedReceiver{Receiver: r, Units: visit})

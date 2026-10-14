@@ -153,7 +153,7 @@ func extrapolate(points []geo.Point2D, m measurement, opts Options) Estimate {
 func costAlternative(params map[string]string, points []geo.Point2D, m measurement, opts Options) Alternative {
 	cpu, wall, _ := costRun(points, m, opts)
 
-	return Alternative{Params: params, Units: m.total, CPUSeconds: cpu, WallSeconds: wall}
+	return Alternative{Params: params, Measured: true, Units: m.total, CPUSeconds: &cpu, WallSeconds: &wall}
 }
 
 // costRun is the CPU band, the wall band and the per-receiver point costs of

@@ -41,6 +41,8 @@ export interface EstimateOptions {
   workers?: number;
   /** The probe's wall-clock budget; the kernel's default when absent. */
   budgetMs?: number;
+  /** Aborted before the call is posted, the call is never sent. */
+  signal?: AbortSignal;
 }
 
 export interface AconiqKernel {
