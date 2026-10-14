@@ -112,9 +112,20 @@ PLAN.md           Roadmap and the single status source
 | `aconiq/` | The CLI                                                                             |
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
-`window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `estimate`, `transform`, `maskFootprints`,
-`standards`, `contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health` and
-`projectStatus`. Six of those carry contracts worth knowing before writing browser-mode code:
+`window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `rls19RoadGrid`, `estimate`, `transform`,
+`maskFootprints`, `standards`, `contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health`
+and `projectStatus`. Seven of those carry contracts worth knowing before writing browser-mode code:
+
+- **`rls19RoadGrid`** is the export an automatic-grid run uses. The request names its receivers as
+  `grid: {origin_x, origin_y, resolution_m, width, height, height_m}` instead of a `receivers`
+  list — a request carries one or the other — and the answer is `[{chunk, start, outputs}]` with
+  indicators only, never an echo of the receivers. The kernel expands the grid once, before the
+  terrain is applied (`wasmkernel.PrepareComputeRequest`), and `@/model/receiver-grid` names the
+  same receivers for the run's table and hash; the two must agree to the bit, so both compute
+  `origin + index * resolution_m` with each operation rounded on its own (Go's `float64(...)`
+  conversion stops FMA fusion) and spell ids `R0001`…`R10000`. `rls19Road`, `estimate` and
+  `maskFootprints` take the same `grid`, and `rls19Road` with a receiver list stays the
+  reference path the tests hold the descriptor to.
 
 - **`estimate`** takes an `rls19Road` request plus `workers` (the pool the run would be sharded
   over) and `budget_ms`, and answers what that run would cost in time — the JSON
