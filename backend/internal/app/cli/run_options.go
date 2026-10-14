@@ -7,6 +7,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/geo"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
 	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
 	bubrail "github.com/aconiq/backend/internal/standards/bub/rail"
@@ -26,7 +27,7 @@ import (
 const (
 	dummyResultUnit       = "dB"
 	defaultModelPath      = ".noise/model/model.normalized.geojson"
-	maxDummyReceivers     = 250000
+	maxDummyReceivers     = geo.MaxGridReceivers
 	receiverModeAutoGrid  = "auto-grid"
 	receiverModeCustom    = "custom"
 	explicitReceiverSetID = "explicit-manual"

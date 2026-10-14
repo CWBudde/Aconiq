@@ -48,6 +48,13 @@ func (s PointReceiverSet) Validate() error {
 	return nil
 }
 
+// MaxGridReceivers is the most receivers an automatic grid may hold, on both
+// targets: `aconiq run` refuses a larger one before generating it, and so does
+// the WASM kernel before expanding a grid descriptor. Counted before anything
+// is built, because a grid that is built first exhausts memory before a cap on
+// its result could refuse it.
+const MaxGridReceivers = 250_000
+
 // GridReceiverSet defines a regular receiver grid over a bbox.
 type GridReceiverSet struct {
 	ID         string  `json:"id"`

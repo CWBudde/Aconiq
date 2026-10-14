@@ -49,6 +49,14 @@ func (g ReceiverGrid) Validate() error {
 		return fmt.Errorf("grid: %d×%d receivers overflow the receiver count", g.Width, g.Height)
 	}
 
+	// Before Receivers allocates anything: a descriptor is six numbers, so a
+	// careless one costs nothing to send and a billion receivers to expand.
+	// The cap and the wording are `aconiq run`'s, so both targets refuse the
+	// same grids.
+	if count := g.Count(); count > geo.MaxGridReceivers {
+		return fmt.Errorf("receiver grid too large (%d > %d)", count, geo.MaxGridReceivers)
+	}
+
 	if math.IsNaN(g.ResolutionM) || math.IsInf(g.ResolutionM, 0) || g.ResolutionM <= 0 {
 		return fmt.Errorf("grid: resolution_m must be a positive finite distance, got %v", g.ResolutionM)
 	}

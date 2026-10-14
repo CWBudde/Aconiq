@@ -112,6 +112,8 @@ func TestReceiverGridRefusesWhatIsNotAGrid(t *testing.T) {
 		"infinite origin":     func(g *wasmkernel.ReceiverGrid) { g.OriginX = math.Inf(1) },
 		"NaN receiver height": func(g *wasmkernel.ReceiverGrid) { g.HeightM = math.NaN() },
 		"overflowing count":   func(g *wasmkernel.ReceiverGrid) { g.Width, g.Height = math.MaxInt/2, 3 },
+		"a billion receivers": func(g *wasmkernel.ReceiverGrid) { g.Width, g.Height = 1_000_000_000, 1 },
+		"one over the cap":    func(g *wasmkernel.ReceiverGrid) { g.Width, g.Height = geo.MaxGridReceivers+1, 1 },
 	} {
 		grid := valid
 		mutate(&grid)
@@ -123,6 +125,13 @@ func TestReceiverGridRefusesWhatIsNotAGrid(t *testing.T) {
 
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("Validate refused a valid grid: %v", err)
+	}
+
+	// The cap is the CLI's, and a grid exactly at it is still a grid: both
+	// targets refuse the same runs.
+	atCap := wasmkernel.ReceiverGrid{OriginX: 0, OriginY: 0, ResolutionM: 1, Width: geo.MaxGridReceivers / 500, Height: 500, HeightM: 4}
+	if err := atCap.Validate(); err != nil {
+		t.Fatalf("Validate refused a grid at the cap: %v", err)
 	}
 }
 

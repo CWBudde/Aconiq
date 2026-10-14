@@ -2189,10 +2189,10 @@ before the pages they protect are cut apart.
       never see a clock. Also closes line 1116's complaint that the worker-count guarantee was
       vacuous for every standard a user would actually run.
 - [x] **The run dialog states the receiver count before the run** (#85). The grid
-      arithmetic is shared with `buildReceiverGrid` rather than duplicated, and must stay that
-      way: a preview computed by a second copy would go on quoting a number the run had stopped
-      producing. Browser mode still has no receiver cap. The _time_ estimate is the kernel
-      probe of #99.
+      arithmetic is shared with `receiverGridDescriptor` rather than duplicated, and must stay
+      that way: a preview computed by a second copy would go on quoting a number the run had
+      stopped producing. The kernel refuses a grid over `geo.MaxGridReceivers` — the CLI's cap,
+      in the CLI's words — before expanding it. The _time_ estimate is the kernel probe of #99.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM. Only the extraction is left; the threading is done.
