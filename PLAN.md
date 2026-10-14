@@ -139,6 +139,8 @@ levels breaking, so these belong together, ideally before or with the first tag:
 - The exit-code kind of an Overpass upstream failure, today `KindUserInput` (P8, Phase D).
 - Validation from the Go kernel plus `POST /api/v1/validate`, and whether to run it per keystroke
   over the network (P8, Phase F).
+- The shape of a run-log event on `/api/v1/events` — a cursor over the lines, or none (P8,
+  Phase F).
 - `--allowed-hosts` for a real-interface bind, and a token escape hatch for SSE (P6).
 - A glyph source for contour labels that `OFFLINE_STYLE` can live with (deferred tracks).
 
@@ -2298,21 +2300,29 @@ before the pages they protect are cut apart.
       token travels as a header and never in the URL. One stream is shared by every `useRuns`
       (`api/project-events.ts`), and polling stays the fallback: the runs list drops to the idle
       rate only while the stream carries every active run.
-- [ ] **Progress for the scaffold modules and `beb-exposure`, and for every running run.** The
-      `receiverRunModule` scaffolds and `beb-exposure` still write no progress: their compute
-      calls live in the `cnossos/*`, `bub/*`, `buf/*` and `beb/exposure` packages, none of which
-      has a progress variant, so it is a change to each of them or a chunked call from the CLI.
-      `/api/v1/events` names only the last run, so a second concurrent run is still polled at
-      2 s, and run logs are polled throughout. The stream also carries the project status
-      `useProjectStatus` could consume instead of polling, but model sync and hydration react to
-      that query, so feeding it mid-run needs its own review.
-- [ ] **Make the run-time estimate (#99) honest beyond RLS-19, and on a dense scene.**
-      `iso9613` and `schall03` answer "no estimate available" until they implement
-      `runestimate.Kernel`. The parallel efficiency (0.8 point, 0.55 slow end) is a constant,
+- [ ] **Stream run logs, the last thing about a running run that is still polled.** Every
+      standard but `dummy-freefield` writes progress, and `/api/v1/events` carries every open
+      run in `active_runs`, so the runs list no longer polls for progress at all. The run log is
+      still fetched every second while its run runs (`useRunLog`), because the stream has no
+      event for it: one needs a cursor — the lines after an offset — or each event would resend
+      the whole log. Decide its shape before building it.
+      (2026-10-14) — partial: scaffold, `beb-exposure` and every-run progress landed; the logs
+      remain. The item's `useProjectStatus` clause rested on a wrong premise and is dropped:
+      that hook does not poll (no `refetchInterval`), so there is no polling for the stream to
+      replace, and feeding it mid-run stays the separate review the item already named.
+- [ ] **Make the run-time estimate (#99) honest on a dense scene.**
+      `rls19-road`, `iso9613` and `schall03` (both chains) implement `runestimate.Kernel`; the
+      latter two walk receivers on one goroutine and are priced on one worker, so what follows
+      is RLS-19's alone. The parallel efficiency (0.8 point, 0.55 slow end) is a constant,
       not a measurement of the machine, and a hybrid laptop sits near the slow end. On Linden in
       fixed mode a 3 s budget times ~10 pairs whose cost is heavy-tailed, so the band rests on
       `minUnitCV` rather than on observed spread — sampling pairs stratified by source distance,
-      or a longer budget when the first receiver is slow, would narrow it.
+      or a longer budget when the first receiver is slow, would narrow it. A Schall 03
+      normative unit is one whole line-source walk, whose cost spans orders of magnitude between
+      a short stub and a long line; the same stratification would narrow its band too.
+      (2026-10-14) — partial: `iso9613` and `schall03` estimate, held bit-exact to their walks
+      and within 3x of their runs (`probe_test.go` in each); the parallel efficiency and the
+      dense-scene sampling remain, and both need the Linden scene to measure against.
 - [ ] **Paint a coarse raster first, then refine.** Compute at 4x the chosen spacing (a sixteenth
       of the receivers), show it, then compute the full grid and replace it. The final numbers are
       the ordinary computation, unchanged. Align the coarse grid to the fine one — same origin,
