@@ -403,24 +403,36 @@ func ComputeReceiverPeriodLevelsWithDataPack(receiver geo.Point2D, sources []Rai
 // receiver before its spectra are summed, so it cannot move a level; see
 // computeNormativeReceiverLevels for the normative chain's version.
 func computeReceiverPeriodLevels(ctx context.Context, receiver geo.Point2D, sources []RailSource, cfg PropagationConfig, pack DataPack) (PeriodLevels, error) {
+	daySpectra, nightSpectra, err := walkPreviewReceiver(ctx, receiver, sources, cfg, pack)
+	if err != nil {
+		return PeriodLevels{}, err
+	}
+
+	day := SumSpectra(daySpectra).EnergeticTotal()
+	night := SumSpectra(nightSpectra).EnergeticTotal()
+
+	return PeriodLevels{LrDay: day, LrNight: night}, nil
+}
+
+// walkPreviewReceiver is the walk behind computeReceiverPeriodLevels: the
+// receiver's checks, then one day and one night spectrum per source, in
+// source order. computeReceiverPeriodLevels sums them into levels.
+//
+// The checks are repeated for every receiver; the estimate's probe times them
+// as the receiver's one-off cost (previewWalker.Begin), and its units are the
+// sources (previewSourceSpectra), in this order.
+func walkPreviewReceiver(
+	ctx context.Context,
+	receiver geo.Point2D,
+	sources []RailSource,
+	cfg PropagationConfig,
+	pack DataPack,
+) ([]OctaveSpectrum, []OctaveSpectrum, error) {
 	done := ctx.Done()
 
-	err := cfg.Validate()
+	err := checkPreviewReceiver(receiver, sources, cfg, pack)
 	if err != nil {
-		return PeriodLevels{}, err
-	}
-
-	err = pack.Validate()
-	if err != nil {
-		return PeriodLevels{}, err
-	}
-
-	if !receiver.IsFinite() {
-		return PeriodLevels{}, errors.New("receiver is not finite")
-	}
-
-	if len(sources) == 0 {
-		return PeriodLevels{}, errors.New("at least one source is required")
+		return nil, nil, err
 	}
 
 	daySpectra := make([]OctaveSpectrum, 0, len(sources))
@@ -429,20 +441,57 @@ func computeReceiverPeriodLevels(ctx context.Context, receiver geo.Point2D, sour
 	for _, source := range sources {
 		err = stopped(ctx, done)
 		if err != nil {
-			return PeriodLevels{}, err
+			return nil, nil, err
 		}
 
-		emission, err := ComputeEmissionWithDataPack(source, pack)
+		day, night, err := previewSourceSpectra(receiver, source, cfg, pack)
 		if err != nil {
-			return PeriodLevels{}, err
+			return nil, nil, err
 		}
 
-		daySpectra = append(daySpectra, lineSourceSpectrumAtReceiver(emission.DaySpectrum, receiver, source, cfg, pack))
-		nightSpectra = append(nightSpectra, lineSourceSpectrumAtReceiver(emission.NightSpectrum, receiver, source, cfg, pack))
+		daySpectra = append(daySpectra, day)
+		nightSpectra = append(nightSpectra, night)
 	}
 
-	day := SumSpectra(daySpectra).EnergeticTotal()
-	night := SumSpectra(nightSpectra).EnergeticTotal()
+	return daySpectra, nightSpectra, nil
+}
 
-	return PeriodLevels{LrDay: day, LrNight: night}, nil
+// checkPreviewReceiver refuses a configuration, a data pack, a receiver or an
+// empty source list the preview chain cannot compute over, before any source
+// is walked.
+func checkPreviewReceiver(receiver geo.Point2D, sources []RailSource, cfg PropagationConfig, pack DataPack) error {
+	err := cfg.Validate()
+	if err != nil {
+		return err
+	}
+
+	err = pack.Validate()
+	if err != nil {
+		return err
+	}
+
+	if !receiver.IsFinite() {
+		return errors.New("receiver is not finite")
+	}
+
+	if len(sources) == 0 {
+		return errors.New("at least one source is required")
+	}
+
+	return nil
+}
+
+// previewSourceSpectra is one source of the preview chain at one receiver:
+// its emission, and the day and night spectra that emission arrives with. It
+// is the walk's unit of work, and the estimate's: both call it.
+func previewSourceSpectra(receiver geo.Point2D, source RailSource, cfg PropagationConfig, pack DataPack) (OctaveSpectrum, OctaveSpectrum, error) {
+	emission, err := ComputeEmissionWithDataPack(source, pack)
+	if err != nil {
+		return OctaveSpectrum{}, OctaveSpectrum{}, err
+	}
+
+	day := lineSourceSpectrumAtReceiver(emission.DaySpectrum, receiver, source, cfg, pack)
+	night := lineSourceSpectrumAtReceiver(emission.NightSpectrum, receiver, source, cfg, pack)
+
+	return day, night, nil
 }

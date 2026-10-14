@@ -103,18 +103,67 @@ func TestRunEstimateCreatesNoRun(t *testing.T) {
 	}
 }
 
+// ISO 9613-2 and Schall 03 answered "no estimate available" until they had a
+// kernel probe; both chains of Schall 03 have one, and the fixture below runs
+// the normative one, which is what its engine resolves to on track data. They
+// walk their receivers on one goroutine, so the estimate prices one worker
+// whatever --workers says.
+func TestRunEstimateCoversISO9613AndSchall03(t *testing.T) {
+	t.Parallel()
+
+	for _, standard := range []string{"iso9613", "schall03"} {
+		t.Run(standard, func(t *testing.T) {
+			t.Parallel()
+
+			projectDir := t.TempDir()
+
+			mustRunCLI(t, "--project", projectDir, "init", "--name", "Estimate", "--crs", "EPSG:25832")
+			mustRunCLI(t, "--project", projectDir, "import", "--input", testdataPath(t, registryRunFixtures[standard]...))
+
+			manifestBefore, runsBefore := projectSnapshot(t, projectDir)
+
+			out := runCLIOutput(t, "--project", projectDir, "--json", "run", "--standard", standard,
+				"--estimate", "--estimate-budget", "100ms", "--workers", "4")
+
+			var payload struct {
+				Estimate runestimate.Estimate `json:"estimate"`
+			}
+
+			err := json.Unmarshal([]byte(out), &payload)
+			if err != nil {
+				t.Fatalf("decode %q: %v", out, err)
+			}
+
+			estimate := payload.Estimate
+			if !estimate.Available || estimate.StandardID != standard || estimate.WallSeconds == nil {
+				t.Fatalf("expected an estimate for %s: %s", standard, out)
+			}
+
+			if estimate.Inputs.Receivers == 0 || estimate.Inputs.Workers != 1 || estimate.Inputs.Units == 0 ||
+				estimate.Probe.MeasuredReceivers == 0 || estimate.WallSeconds.High <= 0 {
+				t.Fatalf("estimate is missing its measurements: %s", out)
+			}
+
+			manifestAfter, runsAfter := projectSnapshot(t, projectDir)
+			if manifestAfter != manifestBefore || strings.Join(runsAfter, ",") != strings.Join(runsBefore, ",") {
+				t.Fatalf("--estimate changed the project: runs %v -> %v", runsBefore, runsAfter)
+			}
+		})
+	}
+}
+
 func TestRunEstimateWithoutAProbeSaysSo(t *testing.T) {
 	t.Parallel()
 
 	projectDir := t.TempDir()
-	modelPath := testdataPath(t, "phase17", "rls19_road_model.geojson")
+	modelPath := testdataPath(t, registryRunFixtures["cnossos-road"]...)
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Estimate", "--crs", "EPSG:25832")
 	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
 
 	manifestBefore, _ := projectSnapshot(t, projectDir)
 
-	out := runCLIOutput(t, "--project", projectDir, "--json", "run", "--standard", "iso9613", "--estimate")
+	out := runCLIOutput(t, "--project", projectDir, "--json", "run", "--standard", "cnossos-road", "--experimental", "--estimate")
 
 	var payload struct {
 		Estimate runestimate.Estimate `json:"estimate"`
