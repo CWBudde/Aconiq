@@ -1,0 +1,39 @@
+name: RLS-19 exhaustive reflection check
+
+# The RLS-19 receiver-side reflection search and barrier fan are prunes that
+# must never change a result. `just test` compares them against their
+# references on a sample of (Teilstück, receiver) pairs; this workflow compares
+# every pair, plus the full synthetic city against the golden written by the
+# source-side search. It takes minutes, so it runs weekly and on demand rather
+# than on every pull request. See `just test-reflections-exhaustive`.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  exhaustive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Pinned tool versions
+        uses: ./.github/actions/toolchain
+
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+
+      - name: Exhaustive reflection check
+        run: just test-reflections-exhaustive

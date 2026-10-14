@@ -1,12 +1,14 @@
 package road
 
 import (
+	"bytes"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 
+	"github.com/aconiq/backend/internal/jsonio"
 	"github.com/aconiq/backend/internal/qa/golden"
 )
 
@@ -15,6 +17,46 @@ import (
 // before the receiver-side search and the barrier fan existed, and every
 // level here must still come out of it unchanged. Where the property tests
 // compare the searches path by path, this compares what a user reads.
+
+// assertSourceSideGolden compares levels against a golden that the source-side
+// search wrote, and refuses to let `just update-golden` rewrite it.
+//
+// These goldens are evidence only for as long as their provenance holds: they
+// were generated from origin/main's code, before the receiver-side search
+// existed, and the claim that the new search changes no number rests on that.
+// UPDATE_GOLDEN rewrites a snapshot from whatever the code produces now, so a
+// routine regeneration would silently replace the old search's numbers with
+// the new search's, and the comparison would become a tautology. Rewriting
+// them therefore takes a second, deliberate variable,
+// ACONIQ_REWRITE_SOURCE_SIDE_GOLDENS=1, and should only ever be done from a
+// checkout whose RLS-19 levels are known to be right by other means — a change
+// to the standard's arithmetic, reviewed as such.
+func assertSourceSideGolden(t *testing.T, name string, levels []cityLevel) {
+	t.Helper()
+
+	path := filepath.Join("testdata", name)
+
+	if golden.UpdateEnabled() && os.Getenv("ACONIQ_REWRITE_SOURCE_SIDE_GOLDENS") == "1" {
+		golden.AssertJSONSnapshot(t, path, levels)
+
+		return
+	}
+
+	got, err := jsonio.Marshal(levels)
+	if err != nil {
+		t.Fatalf("marshal levels: %v", err)
+	}
+
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Fatalf("levels differ from %s, which the source-side search wrote "+
+			"(UPDATE_GOLDEN alone does not rewrite it; see assertSourceSideGolden)\ngot:\n%s\nwant:\n%s", path, got, want)
+	}
+}
 
 // cityLevel is one receiver's levels, in decimal for a reader and as the
 // float64's bits, which is what the comparison is made on.
@@ -64,7 +106,7 @@ func TestCityLevelsMatchTheSourceSideSearch(t *testing.T) {
 	levels := cityLevels(t, "small", smallCity(), 2, 6, SegmentLengthFixed)
 	levels = append(levels, cityLevels(t, "small", smallCity(), 2, 1, SegmentLengthDistanceScaled)...)
 
-	golden.AssertJSONSnapshot(t, filepath.Join("testdata", "city-levels.golden.json"), levels)
+	assertSourceSideGolden(t, "city-levels.golden.json", levels)
 }
 
 // TestFullCityLevelsMatchTheSourceSideSearch is the same on the benchmark
@@ -78,5 +120,5 @@ func TestFullCityLevelsMatchTheSourceSideSearch(t *testing.T) {
 
 	levels := cityLevels(t, "full", fullCity(), 1, 1, SegmentLengthDistanceScaled)
 
-	golden.AssertJSONSnapshot(t, filepath.Join("testdata", "city-levels-full.golden.json"), levels)
+	assertSourceSideGolden(t, "city-levels-full.golden.json", levels)
 }
