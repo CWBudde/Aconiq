@@ -854,5 +854,21 @@
       }
     }
   ],
-  "action_import_lgln_apply": "Replace OSM buildings"
+  "action_import_lgln_apply": "Replace OSM buildings",
+  "status_run_estimating": "Estimating the run time…",
+  "msg_run_estimate": "Estimated run time: {band}",
+  "msg_run_estimate_detail": "{receivers} receivers on {workers} workers; measured from {timed} sampled work units",
+  "msg_run_estimate_unavailable": "No run-time estimate is available for this standard.",
+  "msg_run_estimate_failed": "The run time could not be estimated.",
+  "msg_run_estimate_warning": "This run will take a long time. To bring it towards a minute:",
+  "action_use_estimate_grid": "{resolution} m grid spacing — {receivers} receivers, {band}",
+  "action_use_estimate_distance_scaled": "Distance-scaled Teilstücke — {band}",
+  "action_use_estimate_both": "Distance-scaled Teilstücke and {resolution} m spacing — {receivers} receivers, {band}",
+  "duration_band_s": "≈ {low}–{high} s",
+  "duration_band_min": "≈ {low}–{high} min",
+  "duration_band_h": "≈ {low}–{high} h",
+  "duration_single_s": "≈ {value} s",
+  "duration_single_min": "≈ {value} min",
+  "duration_single_h": "≈ {value} h",
+  "duration_under_a_second": "< 1 s"
 }

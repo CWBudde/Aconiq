@@ -27,11 +27,13 @@ import type {
 import { apiURL } from "./mode";
 import type { GeoJSONFeatureCollection } from "@/model/types";
 import type { TransformResponse } from "@/wasm/types";
+import type { RunEstimate } from "@/model/run-estimate";
 
 interface RequestOptions {
   method?: "GET" | "POST" | "DELETE";
   headers?: Readonly<Record<string, string>>;
   body?: string;
+  signal?: AbortSignal;
 }
 
 /** Send one request to the local API with the headers every request carries. */
@@ -39,6 +41,7 @@ function send(path: string, options: RequestOptions = {}): Promise<Response> {
   return fetch(apiURL(path), {
     ...(options.method === undefined ? {} : { method: options.method }),
     ...(options.body === undefined ? {} : { body: options.body }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
     headers: apiHeaders(options.headers),
   });
 }
@@ -222,6 +225,18 @@ export const httpBackend: Backend = {
     // the run is followed through `getRuns`, whose summaries carry its
     // `progress`. A refusal the run command makes up front is still a 400.
     return postJSON<RunSummary>("/api/v1/runs", buildCreateRunRequest(spec));
+  },
+
+  estimateRun(spec, signal) {
+    // The same body a run takes, so the server prices exactly the run this
+    // spec would start. Aborting closes the request, and the server
+    // interrupts the probe it started for it.
+    return request<RunEstimate>("/api/v1/runs/estimate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildCreateRunRequest(spec)),
+      ...(signal === undefined ? {} : { signal }),
+    });
   },
 
   cancelRun(runId) {

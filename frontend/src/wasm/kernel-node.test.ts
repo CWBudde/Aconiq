@@ -103,6 +103,57 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     );
   });
 
+  it("estimates a run of the same request without computing it", async () => {
+    const kernel = await getNodeKernel();
+
+    const estimate = await kernel.estimate(
+      {
+        receivers: [
+          { id: "r1", point: { x: 0, y: 50 }, height_m: 4 },
+          { id: "r2", point: { x: 20, y: 80 }, height_m: 4 },
+        ],
+        sources: [
+          {
+            id: "road",
+            centerline: [
+              { x: -50, y: 0 },
+              { x: 50, y: 0 },
+            ],
+            surface_type: "SMA",
+            speeds: { pkw_kph: 100, lkw1_kph: 80, lkw2_kph: 70, krad_kph: 100 },
+            traffic_day: {
+              pkw_per_hour: 900,
+              lkw1_per_hour: 40,
+              lkw2_per_hour: 60,
+              krad_per_hour: 10,
+            },
+            traffic_night: {
+              pkw_per_hour: 200,
+              lkw1_per_hour: 10,
+              lkw2_per_hour: 20,
+              krad_per_hour: 2,
+            },
+          },
+        ],
+        barriers: [],
+        config: { SegmentLengthM: 5, MinDistanceM: 3, ReceiverHeightM: 4 },
+      },
+      { workers: 2, budgetMs: 100 },
+    );
+
+    // The same JSON `aconiq run --estimate --json` prints, from the same Go.
+    expect(estimate.available).toBe(true);
+    expect(estimate.standard_id).toBe("rls19-road");
+    expect(estimate.inputs).toMatchObject({ receivers: 2, workers: 2 });
+    // 100 m at 5 m: twenty Teilstücke for each of the two receivers.
+    expect(estimate.inputs?.units).toBe(40);
+    expect(estimate.wall_s?.high).toBeGreaterThan(0);
+    // Fixed mode, so the distance-scaled run is costed beside it.
+    expect(estimate.alternatives?.[0]?.params.segment_length_mode).toBe(
+      "distance_scaled",
+    );
+  });
+
   it("rejects a malformed request rather than answering it", async () => {
     const kernel = await getNodeKernel();
 

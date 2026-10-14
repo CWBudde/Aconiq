@@ -33,9 +33,9 @@ import {
   EvidenceTierBadge,
   EvidenceTierWarning,
 } from "@/ui/evidence-tier-badge";
-import { useCreateRun, useStandards } from "@/api/hooks";
+import { useCreateRun, useRunEstimate, useStandards } from "@/api/hooks";
 import { RunProgressBar } from "@/run/progress-bar";
-import { backend } from "@/api/backend";
+import { backend, type RunSpec } from "@/api/backend";
 import {
   asAPIRequestError,
   ERROR_CODE_EXPERIMENTAL_OPT_IN_REQUIRED,
@@ -50,6 +50,9 @@ import {
 } from "@/model/use-project-hydration";
 import { useProjectSync } from "@/model/use-project-sync";
 import { GridEstimateNote } from "@/run/grid-estimate-note";
+import { RunEstimateNote } from "@/run/run-estimate-note";
+
+import { gridSizingFromParams } from "@/model/grid-estimate";
 import { ParameterField } from "@/run/parameter-field";
 import {
   parameterDescription,
@@ -252,6 +255,9 @@ function RunSetupForm({
   const createRun = useCreateRun();
   const receiverCount = useModelStore((s) => s.receivers.length);
   const calcArea = useModelStore((s) => s.calcArea);
+  // Identity only: an edit to the model makes a new array, and the run
+  // estimate asks again.
+  const modelFeatures = useModelStore((s) => s.features);
   // Where a run reads the saved model, starting one with unsaved edits would
   // silently compute the project's older copy. The same save the header
   // offers is offered here, so the user need not leave the dialog.
@@ -341,27 +347,46 @@ function RunSetupForm({
     setAcknowledgedStandardId(null);
   }
 
+  const runSpec: RunSpec = {
+    standardId: effectiveStandardId,
+    version: effectiveVersion,
+    profile: effectiveProfile,
+    params,
+    receiverMode,
+    // Derived from the tier of the standard being run, so a normative one
+    // can never inherit an opt-in from an earlier selection.
+    ...(requiresExperimentalOptIn ? { experimental: true } : {}),
+  };
+
+  const customReceiversMissing =
+    !backend.capabilities.runsAgainstSavedModel &&
+    receiverMode === "custom" &&
+    receiverCount === 0;
+
+  // What the run would cost in time, asked only of a run that could be
+  // started: an estimate of a run the backend would refuse answers nothing.
+  // Paused while a run is starting, so the probe does not compete with it.
+  const estimateWanted =
+    selectedProfile !== undefined &&
+    !createRun.isPending &&
+    !experimentalOptInMissing &&
+    !unsavedChanges &&
+    !startBlocked &&
+    !customReceiversMissing;
+  const runEstimate = useRunEstimate(
+    estimateWanted ? runSpec : null,
+    modelFeatures,
+  );
+
   function handleSubmit() {
     if (experimentalOptInMissing || unsavedChanges || startBlocked) return;
 
-    createRun.mutate(
-      {
-        standardId: effectiveStandardId,
-        version: effectiveVersion,
-        profile: effectiveProfile,
-        params,
-        receiverMode,
-        // Derived from the tier of the standard being run, so a normative one
-        // can never inherit an opt-in from an earlier selection.
-        ...(requiresExperimentalOptIn ? { experimental: true } : {}),
+    createRun.mutate(runSpec, {
+      onSuccess: (run) => {
+        onCreated(run.id);
+        onClose();
       },
-      {
-        onSuccess: (run) => {
-          onCreated(run.id);
-          onClose();
-        },
-      },
-    );
+    });
   }
 
   return (
@@ -647,6 +672,25 @@ function RunSetupForm({
             </Callout>
           ) : null}
 
+          {/* What the run will cost in time. Below every parameter, because
+              every parameter moves it, and above the callouts that gate the
+              run, which the estimate waits for. */}
+          <RunEstimateNote
+            state={runEstimate}
+            extent={
+              receiverMode === "auto-grid" && gridExtent.status === "ready"
+                ? gridExtent.extent
+                : null
+            }
+            sizing={gridSizingFromParams(params)}
+            params={params}
+            onApplyParams={(suggested) => {
+              for (const [name, value] of Object.entries(suggested)) {
+                selection.setParam(name, value);
+              }
+            }}
+          />
+
           {/* The run reads the project's model, and hydration never delivered
               it, so this dialog does not know what is in it. Gates the run
               action. */}
@@ -767,9 +811,7 @@ function RunSetupForm({
               experimentalOptInMissing ||
               unsavedChanges ||
               startBlocked ||
-              (!backend.capabilities.runsAgainstSavedModel &&
-                receiverMode === "custom" &&
-                receiverCount === 0)
+              customReceiversMissing
             }
           >
             <Play aria-hidden="true" className="mr-2 h-4 w-4" />

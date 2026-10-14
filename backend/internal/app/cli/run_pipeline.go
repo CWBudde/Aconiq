@@ -45,6 +45,12 @@ type runCommandRequest struct {
 	// mints one here. projectfs.CreateRun validates it, so a malformed or
 	// already-used id is refused before anything is written.
 	runID string
+
+	// estimate is --estimate: resolve, load and prepare everything the run
+	// would, report what it would cost and stop — before a run row exists.
+	// estimateBudget is the probe's wall-clock budget.
+	estimate       bool
+	estimateBudget time.Duration
 }
 
 // requireExperimentalOptIn refuses a run against a standard whose tier demands
@@ -87,6 +93,10 @@ func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
 	state, ok := stateFromCommand(cmd)
 	if !ok {
 		return domainerrors.New(domainerrors.KindInternal, "cli.run", "command state unavailable", nil)
+	}
+
+	if req.estimate {
+		return executeRunEstimate(cmd, state, req)
 	}
 
 	prepared, err := prepareRun(cmd, state, req)
@@ -425,7 +435,7 @@ func reportRunCompletion(cmd *cobra.Command, state commandState, prepared prepar
 
 	if state.Config.JSONLogs {
 		return writeCommandOutput(cmd.OutOrStdout(), true, map[string]any{
-			"command":          "run",
+			"command":          runCommandName,
 			"run_id":           run.ID,
 			"status":           string(project.RunStatusCompleted),
 			"scenario":         run.ScenarioID,

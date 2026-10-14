@@ -19,6 +19,15 @@ anyone who ran an earlier working tree holds results those changes invalidate.
 
 ### Added
 
+- A run-time estimate before the run: `aconiq run --estimate` (`--json` for the structured form),
+  `POST /api/v1/runs/estimate` and the WASM kernel's `estimate`, all three the same Go probe.
+  It prepares the run's scene, times a deterministic, spatially stratified sample of at most 16
+  receivers and, per receiver, a spread sample of its own (source, Teilstück) pairs counted by
+  the walk's own ladder, and extrapolates through the run's chunk schedule to a wall-time band.
+  A fixed-mode RLS-19 run also gets its distance-scaled variant probed. It creates no run row and
+  computes no level. The run dialog shows the band while settings change and, above ten minutes,
+  offers the coarser grid and the distance-scaled Teilstücke that would bring it towards a
+  minute. Standards without a probe answer "no estimate available".
 - RLS-19 road: a `segment_length_mode` run parameter, `fixed` (default) or `distance_scaled`.
   `distance_scaled` lets a distant source line be split more coarsely, up to the bound the
   Anmerkung to RLS-19 Nr. 3.2 publishes for exactly this — `l_i <= s_i / 2`, the Teilstück no

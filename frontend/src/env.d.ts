@@ -51,6 +51,14 @@ interface Window {
       json: string,
       onProgress?: (done: number, total: number) => void,
     ) => Promise<string>;
+    /**
+     * What an `rls19Road` run of the same request would cost, from a short
+     * probe of the kernel itself. The request carries `workers` (the pool the
+     * run would be sharded over) and an optional `budget_ms`; the answer is
+     * the JSON `aconiq run --estimate --json` prints. See
+     * `wasmkernel.EstimateRLS19Road`.
+     */
+    estimate: (json: string) => Promise<string>;
     transform: (json: string) => Promise<string>;
     /** See `AconiqKernel.maskFootprints`. */
     maskFootprints: (json: string) => Promise<string>;

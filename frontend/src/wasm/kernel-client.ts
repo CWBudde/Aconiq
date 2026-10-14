@@ -13,8 +13,9 @@
 // error, a cancellation — has to settle its entry, and the one that does not
 // is a run that never finishes and never fails.
 
+import type { RunEstimate } from "@/model/run-estimate";
 import type { StandardDescriptor } from "@/standards/descriptor";
-import type { AconiqKernel } from "./kernel";
+import type { AconiqKernel, EstimateOptions } from "./kernel";
 import { reviveKernelError } from "./kernel-error";
 import type { ChunkOutput, Shard } from "./kernel-pool";
 import type {
@@ -355,6 +356,37 @@ export class KernelClient implements AconiqKernel {
     return JSON.parse(
       KernelClient.json(value, "rls19RoadShard"),
     ) as ChunkOutput[];
+  }
+
+  /**
+   * What a run of `req` would cost on `options.workers` shards, from the
+   * kernel's own probe. It occupies this worker for the probe's budget —
+   * `wasmkernel.EstimateBudget` unless `options.budgetMs` says otherwise.
+   */
+  async estimate(
+    req: ComputeRequest,
+    options: EstimateOptions = {},
+  ): Promise<RunEstimate> {
+    // The Worker runs one call at a time, and a probe cannot be stopped once
+    // it runs; one nobody wants any more is not posted at all.
+    if (options.signal?.aborted === true) {
+      const stale = new Error("The estimate was cancelled before it was sent");
+      stale.name = CancelledErrorName;
+      throw stale;
+    }
+    const value = await this.call(
+      (id) => ({
+        id,
+        method: "estimate",
+        json: JSON.stringify({
+          ...req,
+          workers: options.workers ?? 1,
+          budget_ms: options.budgetMs ?? 0,
+        }),
+      }),
+      [],
+    );
+    return JSON.parse(KernelClient.json(value, "estimate")) as RunEstimate;
   }
 
   async transform(req: TransformRequest): Promise<TransformResponse> {

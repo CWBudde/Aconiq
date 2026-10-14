@@ -18,8 +18,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runInThisContext } from "node:vm";
 
+import type { RunEstimate } from "@/model/run-estimate";
 import type { StandardDescriptor } from "@/standards/descriptor";
-import type { AconiqKernel } from "./kernel";
+import type { AconiqKernel, EstimateOptions } from "./kernel";
 import { fromSyncExport, withKernelErrors } from "./kernel-error";
 import type {
   ComputeRequest,
@@ -65,6 +66,7 @@ interface GoRuntimeGlobal {
   };
   aconiq?: {
     rls19Road: (json: string) => Promise<string>;
+    estimate: (json: string) => Promise<string>;
     transform: (json: string) => Promise<string>;
     maskFootprints: (json: string) => Promise<string>;
     contours: (payload: Uint8Array, json: string) => Promise<string>;
@@ -165,6 +167,21 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
         exports.rls19Road(JSON.stringify(req)),
       );
       return JSON.parse(json) as ReceiverOutput[];
+    },
+    async estimate(
+      req: ComputeRequest,
+      options?: EstimateOptions,
+    ): Promise<RunEstimate> {
+      const json = await withKernelErrors(
+        exports.estimate(
+          JSON.stringify({
+            ...req,
+            workers: options?.workers ?? 1,
+            budget_ms: options?.budgetMs ?? 0,
+          }),
+        ),
+      );
+      return JSON.parse(json) as RunEstimate;
     },
     async transform(req: TransformRequest): Promise<TransformResponse> {
       const json = await withKernelErrors(

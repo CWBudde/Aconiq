@@ -107,8 +107,13 @@ func interruptProcess(process *os.Process) error {
 // own defaults. The run id is the server's, passed through the hidden
 // --run-id, so the row the child creates is one the server can name.
 func runCommandArgs(projectRoot string, runID string, req createRunRequest) []string {
-	args := []string{"--project", projectRoot, "run", "--run-id", runID}
+	return appendRunRequestArgs([]string{"--project", projectRoot, "run", "--run-id", runID}, req)
+}
 
+// appendRunRequestArgs appends the flags that say what a request asks for —
+// standard, scenario, model, parameters, inputs — which a run and an estimate
+// of it share.
+func appendRunRequestArgs(args []string, req createRunRequest) []string {
 	for _, flag := range []struct {
 		name  string
 		value string

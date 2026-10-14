@@ -2191,8 +2191,8 @@ before the pages they protect are cut apart.
 - [x] **The run dialog states the receiver count before the run** (#85). The grid
       arithmetic is shared with `buildReceiverGrid` rather than duplicated, and must stay that
       way: a preview computed by a second copy would go on quoting a number the run had stopped
-      producing. Browser mode still has no receiver cap. A _time_ estimate wants a 16-receiver
-      kernel probe, left as a named follow-up at both sites.
+      producing. Browser mode still has no receiver cap. The _time_ estimate is the kernel
+      probe of #99.
 - [ ] Move RLS-19 extraction, OSM mapping and the standards descriptor into the Go WASM kernel so
       `browser-backend.ts` shrinks to run bookkeeping + storage and `BROWSER_STANDARDS` comes from
       WASM. Only the extraction is left; the threading is done.
@@ -2286,21 +2286,13 @@ before the pages they protect are cut apart.
       over.
       **The frontend polls rather than listening to `/api/v1/events`**, which carries the last
       run's progress now, because `EventSource` cannot send the `--api-token` header.
-- [ ] **Tell the user what a run will cost in _time_, and let them refuse it.** The receiver
-      count preview landed; the time estimate named as its follow-up is the part that matters,
-      because the cost is not proportional to anything the dialog currently shows. Measured on a
-      25 km network at a 25 m Teilstück length, one receiver costs 555 µs with no buildings in
-      the scene and 2.91 s with a hundred — a factor of ~5 200, because Nr. 3.6 requires first-
-      and second-order reflections and Nr. 3.5 gives every Spiegelschallquelle its own
-      diffraction search. At 400 buildings it is 12.9 s. Receiver count and Teilstück count are
-      each roughly linear on top of that, so halving the grid resolution buys 4x against a term
-      already in the thousands: **building count, not raster width, decides whether a run
-      finishes**, and no amount of parallelism reaches it (4 Workers on 9 202 receivers is 8 h at
-      400 buildings, 1 h 52 at 100). A 16-receiver kernel probe is the only honest estimate,
-      since it is the one measurement that knows whether the scene has buildings in it; show a
-      band, warn above a threshold, and offer the resolution that would bring it under a minute.
-      Until that exists the console diagnostics (`kernel-diagnostics.ts`) are the only warning a
-      user gets, and they arrive only after the first receiver.
+- [ ] **Make the run-time estimate (#99) honest beyond RLS-19, and on a dense scene.**
+      `iso9613` and `schall03` answer "no estimate available" until they implement
+      `runestimate.Kernel`. The parallel efficiency (0.8 point, 0.55 slow end) is a constant,
+      not a measurement of the machine, and a hybrid laptop sits near the slow end. On Linden in
+      fixed mode a 3 s budget times ~10 pairs whose cost is heavy-tailed, so the band rests on
+      `minUnitCV` rather than on observed spread — sampling pairs stratified by source distance,
+      or a longer budget when the first receiver is slow, would narrow it.
 - [ ] **Paint a coarse raster first, then refine.** Compute at 4x the chosen spacing (a sixteenth
       of the receivers), show it, then compute the full grid and replace it. The final numbers are
       the ordinary computation, unchanged. Align the coarse grid to the fine one — same origin,

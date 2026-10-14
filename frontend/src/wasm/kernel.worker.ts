@@ -50,6 +50,8 @@ interface AconiqExports {
     json: string,
     onProgress?: KernelProgressListener,
   ): Promise<string>;
+  /** A run's request plus `workers` and `budget_ms`; see `wasmkernel.EstimateRLS19Road`. */
+  estimate(json: string): Promise<string>;
   transform(json: string): Promise<string>;
   maskFootprints(json: string): Promise<string>;
   contours(payload: Uint8Array, json: string): Promise<string>;
@@ -211,6 +213,8 @@ async function dispatch(call: KernelCall): Promise<string | null> {
       return call.progress
         ? exports.rls19RoadShard(call.json, throttledProgress(call.id))
         : exports.rls19RoadShard(call.json);
+    case "estimate":
+      return exports.estimate(call.json);
     case "transform":
       return exports.transform(call.json);
     case "maskFootprints":

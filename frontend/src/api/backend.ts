@@ -24,6 +24,7 @@ import type {
 import { browserBackend } from "./browser-backend";
 import { httpBackend } from "./http-backend";
 import { IS_WASM_MODE } from "./mode";
+import type { RunEstimate } from "@/model/run-estimate";
 import type { GeoJSONFeatureCollection } from "@/model/types";
 import { CancelledErrorName } from "@/wasm/kernel-client";
 import type { TransformRequest, TransformResponse } from "@/wasm/types";
@@ -318,6 +319,17 @@ export interface Backend {
    * pretend — see `capabilities.runsAreCancellable`.
    */
   startRun(spec: RunSpec, hooks?: RunHooks): Promise<RunSummary>;
+  /**
+   * What {@link startRun} with this spec would cost in time, without starting
+   * it: the backend prepares the run's scene and times a short sample of its
+   * own kernel (`aconiq run --estimate` behind the API, the WASM kernel's
+   * `estimate` in browser mode — the same Go code). Takes a few seconds.
+   * A standard without a probe resolves with `available: false`.
+   *
+   * `signal` drops a stale request: the API interrupts the probe; browser mode
+   * lets the probe finish and discards it.
+   */
+  estimateRun(spec: RunSpec, signal?: AbortSignal): Promise<RunEstimate>;
   /**
    * Ask a running run to stop, and resolve with it as it stands — usually
    * still `running`: it stops at its next check and then reads `failed`

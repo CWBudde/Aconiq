@@ -13,6 +13,7 @@
 // kernel does, exercised by nothing, and no test needs one: every suite either
 // mocks this module or imports `kernel-node.ts` directly.
 
+import type { RunEstimate } from "@/model/run-estimate";
 import type { StandardDescriptor } from "@/standards/descriptor";
 import { connectKernel, type KernelClient } from "./kernel-client";
 import { RunDiagnostics, describeRun } from "./kernel-diagnostics";
@@ -34,6 +35,16 @@ import type {
 
 export type { KernelProgressListener } from "./protocol";
 
+/** How an {@link AconiqKernel.estimate} is to be taken. */
+export interface EstimateOptions {
+  /** The Worker pool the run would be sharded over. */
+  workers?: number;
+  /** The probe's wall-clock budget; the kernel's default when absent. */
+  budgetMs?: number;
+  /** Aborted before the call is posted, the call is never sent. */
+  signal?: AbortSignal;
+}
+
 export interface AconiqKernel {
   /**
    * Compute RLS-19 road traffic noise levels for all receivers.
@@ -47,6 +58,19 @@ export interface AconiqKernel {
     req: ComputeRequest,
     onProgress?: KernelProgressListener,
   ): Promise<ReceiverOutput[]>;
+  /**
+   * What an {@link rls19Road} run of `req` would cost in time, before it is
+   * started: the kernel prepares the scene the run would prepare and times a
+   * stratified sample of its (source, Teilstück) pairs. The answer is the
+   * JSON `aconiq run --estimate --json` prints, from the same Go code.
+   *
+   * `options.workers` defaults to the pool the run itself would be spread
+   * over, so the wall time is the one the run would take here.
+   */
+  estimate(
+    req: ComputeRequest,
+    options?: EstimateOptions,
+  ): Promise<RunEstimate>;
   /**
    * Project a batch of coordinates between two CRS.
    *
@@ -268,6 +292,13 @@ async function loadKernel(): Promise<AconiqKernel> {
 function retainingTerrain(client: KernelClient): AconiqKernel {
   return {
     rls19Road: (req, onProgress) => runOverPool(client, req, onProgress),
+    estimate: (req, options) =>
+      client.estimate(req, {
+        ...options,
+        workers:
+          options?.workers ??
+          poolSize(navigator.hardwareConcurrency, req.receivers.length),
+      }),
     transform: (req) => client.transform(req),
     maskFootprints: (req) => client.maskFootprints(req),
     contours: (payload, req) => client.contours(payload, req),

@@ -85,6 +85,7 @@ func openapiPathItems() map[string]any {
 	for _, group := range []map[string]any{
 		openapiStatusPathItems(),
 		openapiRunPathItems(),
+		openapiRunEstimatePathItems(),
 		openapiImportPathItems(),
 		openapiLGLNPathItems(),
 		openapiModelPathItems(),
@@ -128,6 +129,7 @@ func openapiSchemas() map[string]any {
 		openapiLGLNSchemas(),
 		openapiRunDeleteSchemas(),
 		openapiRunProgressSchemas(),
+		openapiRunEstimateSchemas(),
 		openapiStandardSchemas(),
 		openapiModelSchemas(),
 		openapiTransformSchemas(),

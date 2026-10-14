@@ -224,6 +224,70 @@ func rls19RoadShardFunc(_ js.Value, args []js.Value) any {
 	}))
 }
 
+// estimateRequest is a run's request plus how the browser would run it.
+type estimateRequest struct {
+	// Workers is the size of the Worker pool the run would be sharded over.
+	Workers int `json:"workers"`
+
+	// BudgetMS is the probe's wall-clock budget; zero takes
+	// wasmkernel.EstimateBudget.
+	BudgetMS int `json:"budget_ms"`
+}
+
+// estimateFunc says what an RLS-19 run will cost before it is started.
+// Signature: (request: string) => Promise<string> (runestimate.Estimate JSON)
+//
+// The request is rls19Road's, plus `workers` and `budget_ms`, and goes
+// through the same prepareComputeRequest, so the estimate prices the run that
+// request would start. The answer is the JSON `aconiq run --estimate` and
+// `POST /api/v1/runs/estimate` answer with, from the same Go code.
+func estimateFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsReject("estimate: expected exactly 1 JSON string argument")
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		req, err := prepareComputeRequest(input)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("estimate: %v", err)))
+
+			return nil
+		}
+
+		var extra estimateRequest
+		if err := json.Unmarshal([]byte(input), &extra); err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("estimate: invalid input JSON: %v", err)))
+
+			return nil
+		}
+
+		estimate, err := wasmkernel.EstimateRLS19Road(
+			req.Receivers, req.Sources, req.Barriers, req.Config,
+			extra.Workers, time.Duration(extra.BudgetMS)*time.Millisecond,
+		)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("estimate: %v", err)))
+
+			return nil
+		}
+
+		out, err := json.Marshal(estimate)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("estimate: marshal error: %v", err)))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
 // progressReporter turns the caller's JavaScript callback into the function
 // wasmkernel.ComputeRLS19Road reports through, or nil when there was none.
 //
@@ -574,6 +638,7 @@ func main() {
 	aconiq := js.Global().Get("Object").New()
 	aconiq.Set("rls19Road", js.FuncOf(rls19RoadFunc))
 	aconiq.Set("rls19RoadShard", js.FuncOf(rls19RoadShardFunc))
+	aconiq.Set("estimate", js.FuncOf(estimateFunc))
 	aconiq.Set("transform", js.FuncOf(transformFunc))
 	aconiq.Set("contours", js.FuncOf(contoursFunc))
 	aconiq.Set("maskFootprints", js.FuncOf(maskFootprintsFunc))

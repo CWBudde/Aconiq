@@ -41,6 +41,7 @@ import {
   getFeatureString,
   RLS19_SURFACE_TYPES,
 } from "@/model/source-acoustics";
+import type { RunEstimate } from "@/model/run-estimate";
 import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
 import { buildRasterBinary } from "@/model/raster-bin";
@@ -1606,97 +1607,12 @@ async function computeRLS19Road(
 ): Promise<RunSummary> {
   const onProgress = hooks?.onProgress;
   const signal = hooks?.signal;
-  // Project the whole workspace once, before anything reads a coordinate off
-  // it, mirroring `cli.resolveComputeModel`. Never per builder:
-  // `buildParkingSources` computes a shoelace area in m² and a centroid, and
-  // `resolveGridExtent` feeds a receiver grid whose padding and resolution are
-  // metres by contract. Every one of them needs the model already in metres.
-  const store = useModelStore.getState();
-  const computeModel = await resolveComputeModel(kernel, {
-    features: store.features,
-    receivers: store.receivers,
-    calcArea: store.calcArea,
-    crs: store.crs,
+  const prepared = await prepareRLS19Request(kernel, spec, {
+    maskFootprints: true,
   });
-  const projection = computeModel.projection;
-
-  const features = computeModel.features;
-  const sources = buildRoadSources(features, spec.params);
-  const parking = buildParkingSources(features);
-  if (sources.length === 0 && parking.sources.length === 0) {
-    throw new Error(
-      "model does not contain any rls19-road line source or parking area feature",
-    );
-  }
-
-  const barriers = buildBarriers(features);
-  const buildings = buildBuildings(features);
-
-  let gridReceivers: PointReceiver[];
-  let layout: BrowserGridLayout;
-  // Indices of the grid receivers standing inside a building. They are
-  // computed and kept in the receiver table like any other; only the raster
-  // writes them as nodata — `results.GridLayout.NoDataCells` on the Go side.
-  let maskedCells: number[] = [];
-
-  if (spec.receiverMode === "custom") {
-    const storeReceivers = computeModel.receivers;
-    if (storeReceivers.length === 0) {
-      throw new Error(
-        "Custom receiver mode requires at least one receiver placed in the map workspace",
-      );
-    }
-    // Model order, not id order: `extractExplicitReceivers`
-    // (backend/internal/app/cli/run_input.go) walks `model.Features` and keeps
-    // whatever order the model gives it. The receiver table's row order is
-    // what `output_hash` is computed over, so sorting here made the same model
-    // hash differently in the two targets.
-    gridReceivers = storeReceivers.map((r) => ({
-      id: r.id,
-      point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
-      height_m: r.heightM,
-    }));
-    // Not a grid, and the layout says so: explicit receivers are points the
-    // user placed, and no cell size describes where they sit. The shape still
-    // describes the raster truthfully — one column, one row per receiver.
-    layout = { width: 1, height: storeReceivers.length };
-  } else {
-    // The same extent the run dialog previewed, from the same function, over
-    // the same store — the dialog reaches it through `useGridExtent`. Two
-    // implementations here would let the dialog promise a grid the run then
-    // does not produce.
-    const bbox = resolveGridExtent({
-      features,
-      calcArea: computeModel.calcArea,
-    });
-    if (!bbox) {
-      throw new Error("Could not derive source extent from the current model");
-    }
-    const receiverGrid = buildReceiverGrid(bbox, spec.params);
-    gridReceivers = receiverGrid.receivers;
-    // Asked of the kernel, not answered here: `aconiq run` masks through
-    // `geo.MaskPointsInFootprints`, and a second point-in-polygon would be a
-    // second rule for a receiver standing exactly on a facade.
-    const footprints = buildingFootprints(features);
-    if (footprints.length > 0) {
-      const mask = await kernel.maskFootprints({
-        points: gridReceivers.flatMap((r) => [r.point.x, r.point.y]),
-        footprints,
-      });
-      maskedCells = mask.masked;
-    }
-    layout = {
-      width: receiverGrid.width,
-      height: receiverGrid.height,
-      ...(receiverGrid.georeference
-        ? { georeference: receiverGrid.georeference }
-        : undefined),
-    };
-  }
-
-  // Read before the lock is taken, because this one refuses: an unknown mode
-  // should fail the request without having minted a run id first.
-  const segmentLengthMode = parseSegmentLengthMode(spec.params);
+  const { request, layout, maskedCells, projection } = prepared;
+  const { sources, parking, buildings } = prepared;
+  const gridReceivers = prepared.receivers;
 
   // The lock spans the compute, not just the persist: the id is minted
   // from the store before the kernel runs, and a second tab that allocated
@@ -1707,30 +1623,6 @@ async function computeRLS19Road(
     const startedAt = nowISO();
     const runId = nextRunID(await reloadState());
     const basePath = `${DEFAULT_PROJECT_PATH}/runs/${runId}`;
-
-    const request: ComputeRequest = {
-      receivers: gridReceivers,
-      sources,
-      barriers,
-      // The kernel is told which CRS this scene is in; it cannot read one off
-      // the coordinates, which are bare numbers by the time they cross. It
-      // needs it for the terrain — a DTM has to be queried in the CRS its
-      // raster was written in — and sending it always keeps that from
-      // depending on whether a terrain happens to be loaded.
-      projection: {
-        project_crs: projection.projectCRS,
-        compute_crs: projection.computeCRS,
-        applied: projection.applied,
-      },
-      config: {
-        SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
-        SegmentLengthMode: segmentLengthMode,
-        MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
-        ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
-        Buildings: buildings,
-        ParkingSources: parking.sources,
-      },
-    };
 
     // The lock is held across this, and a rejection here — a cancel, most of
     // all — releases it with nothing written: the bytes and the document both
@@ -1971,6 +1863,169 @@ async function computeRLS19Road(
 
     return run;
   });
+}
+
+/**
+ * The kernel request a browser-mode RLS-19 run computes, built from the model
+ * store — and, for a run, which grid cells a building masks.
+ *
+ * Shared by {@link computeRLS19Road} and {@link estimateRLS19Road}, so the
+ * estimate prices the very request the run would send: the same projection,
+ * the same receivers from the same grid arithmetic, the same scene.
+ * `maskFootprints` only decides which cells the raster writes as nodata — the
+ * masked receivers are computed like any other — so an estimate skips it.
+ */
+async function prepareRLS19Request(
+  kernel: AconiqKernel,
+  spec: RunSpec,
+  options: { maskFootprints: boolean },
+) {
+  // Project the whole workspace once, before anything reads a coordinate off
+  // it, mirroring `cli.resolveComputeModel`. Never per builder:
+  // `buildParkingSources` computes a shoelace area in m² and a centroid, and
+  // `resolveGridExtent` feeds a receiver grid whose padding and resolution are
+  // metres by contract. Every one of them needs the model already in metres.
+  const store = useModelStore.getState();
+  const computeModel = await resolveComputeModel(kernel, {
+    features: store.features,
+    receivers: store.receivers,
+    calcArea: store.calcArea,
+    crs: store.crs,
+  });
+  const projection = computeModel.projection;
+
+  const features = computeModel.features;
+  const sources = buildRoadSources(features, spec.params);
+  const parking = buildParkingSources(features);
+  if (sources.length === 0 && parking.sources.length === 0) {
+    throw new Error(
+      "model does not contain any rls19-road line source or parking area feature",
+    );
+  }
+
+  const barriers = buildBarriers(features);
+  const buildings = buildBuildings(features);
+
+  let gridReceivers: PointReceiver[];
+  let layout: BrowserGridLayout;
+  // Indices of the grid receivers standing inside a building. They are
+  // computed and kept in the receiver table like any other; only the raster
+  // writes them as nodata — `results.GridLayout.NoDataCells` on the Go side.
+  let maskedCells: number[] = [];
+
+  if (spec.receiverMode === "custom") {
+    const storeReceivers = computeModel.receivers;
+    if (storeReceivers.length === 0) {
+      throw new Error(
+        "Custom receiver mode requires at least one receiver placed in the map workspace",
+      );
+    }
+    // Model order, not id order: `extractExplicitReceivers`
+    // (backend/internal/app/cli/run_input.go) walks `model.Features` and keeps
+    // whatever order the model gives it. The receiver table's row order is
+    // what `output_hash` is computed over, so sorting here made the same model
+    // hash differently in the two targets.
+    gridReceivers = storeReceivers.map((r) => ({
+      id: r.id,
+      point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
+      height_m: r.heightM,
+    }));
+    // Not a grid, and the layout says so: explicit receivers are points the
+    // user placed, and no cell size describes where they sit. The shape still
+    // describes the raster truthfully — one column, one row per receiver.
+    layout = { width: 1, height: storeReceivers.length };
+  } else {
+    // The same extent the run dialog previewed, from the same function, over
+    // the same store — the dialog reaches it through `useGridExtent`. Two
+    // implementations here would let the dialog promise a grid the run then
+    // does not produce.
+    const bbox = resolveGridExtent({
+      features,
+      calcArea: computeModel.calcArea,
+    });
+    if (!bbox) {
+      throw new Error("Could not derive source extent from the current model");
+    }
+    const receiverGrid = buildReceiverGrid(bbox, spec.params);
+    gridReceivers = receiverGrid.receivers;
+    // Asked of the kernel, not answered here: `aconiq run` masks through
+    // `geo.MaskPointsInFootprints`, and a second point-in-polygon would be a
+    // second rule for a receiver standing exactly on a facade.
+    const footprints = options.maskFootprints
+      ? buildingFootprints(features)
+      : [];
+    if (footprints.length > 0) {
+      const mask = await kernel.maskFootprints({
+        points: gridReceivers.flatMap((r) => [r.point.x, r.point.y]),
+        footprints,
+      });
+      maskedCells = mask.masked;
+    }
+    layout = {
+      width: receiverGrid.width,
+      height: receiverGrid.height,
+      ...(receiverGrid.georeference
+        ? { georeference: receiverGrid.georeference }
+        : undefined),
+    };
+  }
+
+  // Read here, before any run id is minted, because this one refuses: an
+  // unknown mode should fail the request without having minted one first.
+  const segmentLengthMode = parseSegmentLengthMode(spec.params);
+
+  const request: ComputeRequest = {
+    receivers: gridReceivers,
+    sources,
+    barriers,
+    // The kernel is told which CRS this scene is in; it cannot read one off
+    // the coordinates, which are bare numbers by the time they cross. It
+    // needs it for the terrain — a DTM has to be queried in the CRS its
+    // raster was written in — and sending it always keeps that from
+    // depending on whether a terrain happens to be loaded.
+    projection: {
+      project_crs: projection.projectCRS,
+      compute_crs: projection.computeCRS,
+      applied: projection.applied,
+    },
+    config: {
+      SegmentLengthM: parseNumber(spec.params, "segment_length_m", 1),
+      SegmentLengthMode: segmentLengthMode,
+      MinDistanceM: parseNumber(spec.params, "min_distance_m", 3),
+      ReceiverHeightM: parseNumber(spec.params, "receiver_height_m", 4),
+      Buildings: buildings,
+      ParkingSources: parking.sources,
+    },
+  };
+
+  return {
+    request,
+    layout,
+    maskedCells,
+    projection,
+    sources,
+    parking,
+    buildings,
+    receivers: gridReceivers,
+  };
+}
+
+/**
+ * What {@link computeRLS19Road} would cost on this machine's Worker pool,
+ * from the kernel's own probe of the request it would send.
+ */
+async function estimateRLS19Road(
+  kernel: AconiqKernel,
+  spec: RunSpec,
+  signal?: AbortSignal,
+): Promise<RunEstimate> {
+  const { request } = await prepareRLS19Request(kernel, spec, {
+    maskFootprints: false,
+  });
+  // Preparing awaited the kernel's projection on the same Worker; a spec the
+  // dialog moved on from meanwhile is not worth a probe.
+  if (signal?.aborted === true) throw cancelledRun("The estimate is stale");
+  return kernel.estimate(request, signal === undefined ? {} : { signal });
 }
 
 export const browserBackend = {
@@ -2275,6 +2330,26 @@ out geom;`;
         throw new Error(
           `The kernel publishes ${spec.standardId}, but this build has no model extraction for it`,
         );
+    }
+  },
+
+  async estimateRun(spec: RunSpec, signal?: AbortSignal): Promise<RunEstimate> {
+    const kernel = await getKernel();
+    // A probe cannot be interrupted short of terminating the worker, which
+    // would also take a run starting behind it. So a stale estimate is
+    // dropped wherever it can be — here, after the request is prepared, and
+    // in the client before the call is posted — and one already posted is
+    // allowed to finish and its answer discarded.
+    if (signal?.aborted === true) throw cancelledRun("The estimate is stale");
+    switch (spec.standardId) {
+      case "rls19-road":
+        return estimateRLS19Road(kernel, spec, signal);
+      default:
+        return {
+          available: false,
+          standard_id: spec.standardId,
+          reason: `no estimate available: browser mode has no kernel probe for ${spec.standardId}`,
+        };
     }
   },
 

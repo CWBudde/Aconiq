@@ -27,14 +27,11 @@
  * resolution and padding are arithmetic on top of this, which is what lets
  * the count follow the field keystroke by keystroke without a round trip.
  *
- * TODO: the exact receiver count is the free half of "what will this run
- * cost". The other half is wall time, and it cannot be derived from the count
- * alone — a scene with buildings in it costs tens of milliseconds a receiver
- * and a bare one costs well under a millisecond. The follow-up is a timing
- * probe: compute a fixed 16-receiver sample of this very grid through the
- * kernel, measure it, and scale. That needs the kernel (so browser mode only,
- * with API mode saying nothing rather than guessing) and a way to run a
- * throwaway compute that never becomes a run, which is why it is not here.
+ * The exact receiver count is the free half of "what will this run cost". The
+ * other half is wall time, which cannot be derived from the count alone; it is
+ * `useRunEstimate`'s, measured by the backend's own probe of the run. The
+ * extent here still serves it: a suggested coarser spacing is counted over
+ * this extent, with the arithmetic the run builds its grid from.
  */
 
 import { useEffect, useRef, useState } from "react";
