@@ -45,6 +45,10 @@ type Scene struct {
 	// did before the index existed.
 	barrierGrid *geo.BBoxGrid
 
+	// barrierEdges is barriers' plan-view edges laid out for the ray test,
+	// so that a ray reads each edge's direction instead of recomputing it.
+	barrierEdges *geo.RayEdges
+
 	// sourcesPrepare is how long prepareSources took for this scene, on the
 	// wall clock. Nothing in the walk reads it. The estimate does: a run in
 	// the other segment_length_mode prepares everything else the same and
@@ -135,6 +139,7 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 		barriers:       effectiveBarriers,
 		reflectors:     reflectors,
 		barrierGrid:    newBarrierGrid(effectiveBarriers),
+		barrierEdges:   geo.NewRayEdges(effectiveBarriers, barrierPolyline),
 		sourcesPrepare: sourcesPrepare,
 	}, nil
 }

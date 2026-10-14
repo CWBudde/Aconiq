@@ -186,20 +186,26 @@ func SegmentIntersection(a1, a2, b1, b2 Point2D) (Point2D, float64, bool) {
 // LineStringIntersectsSegment reports whether any edge of a polyline intersects
 // the segment (p1,p2). If so, it returns the intersection point closest to p1
 // and the intersected edge index. Returns false if no intersection.
+//
+// It answers exactly as SegmentIntersection(p1, p2, line[i], line[i+1]) over
+// every edge would, to the bit; rayEdgeT says why.
 func LineStringIntersectsSegment(line []Point2D, p1, p2 Point2D) (Point2D, int, bool) {
 	if len(line) < 2 {
 		return Point2D{}, 0, false
 	}
 
+	dx1 := p2.X - p1.X
+	dy1 := p2.Y - p1.Y
+
 	bestT := math.MaxFloat64
-	bestPt := Point2D{}
 	bestEdge := -1
 
 	for i := range len(line) - 1 {
-		pt, t, ok := SegmentIntersection(p1, p2, line[i], line[i+1])
+		b1, b2 := line[i], line[i+1]
+
+		t, ok := rayEdgeT(dx1, dy1, b2.X-b1.X, b2.Y-b1.Y, b1.X-p1.X, b1.Y-p1.Y)
 		if ok && t < bestT {
 			bestT = t
-			bestPt = pt
 			bestEdge = i
 		}
 	}
@@ -208,7 +214,46 @@ func LineStringIntersectsSegment(line []Point2D, p1, p2 Point2D) (Point2D, int, 
 		return Point2D{}, 0, false
 	}
 
-	return bestPt, bestEdge, true
+	return Point2D{
+		X: p1.X + bestT*dx1,
+		Y: p1.Y + bestT*dy1,
+	}, bestEdge, true
+}
+
+// rayEdgeT is SegmentIntersection's test of a ray (direction dx1, dy1) against
+// one edge (direction dx2, dy2, starting dx3, dy3 from the ray's start): it
+// returns the ray parameter t of the crossing and whether there is one, with
+// the same bits and the same verdict for every input, NaN and Inf included.
+//
+// It differs in not branching on which bound an edge misses. A ray through a
+// city misses nearly every edge it is tested against, and which of the five
+// tests rejects an edge is close to random, so SegmentIntersection's
+// short-circuit chain mispredicts where the divisions themselves are cheap:
+//
+//   - 0 <= t <= 1 holds exactly when t*(1-t) >= 0. Inside the interval both
+//     factors are non-negative. Outside it the factors have opposite signs and
+//     one of them exceeds 1 in magnitude, so the product cannot round to zero.
+//   - |denom| >= 1e-12 holds exactly when |denom|-1e-12 >= 0, because a
+//     difference of two floats is zero only when they are equal.
+//   - min of the three is >= 0 exactly when all three are; min propagates NaN.
+//     That rejects a NaN t, which SegmentIntersection accepts; the callers
+//     drop it anyway, because a NaN t is never below their best t so far. A
+//     NaN u it accepts too, and that one reaches the answer — it arises when
+//     both of u's cross products overflow — so its score is mapped into range.
+//
+// The divisions run for a parallel edge too. Their result is then discarded,
+// as SegmentIntersection discards it by not computing it.
+func rayEdgeT(dx1, dy1, dx2, dy2, dx3, dy3 float64) (float64, bool) {
+	denom := dx1*dy2 - dy1*dx2
+	t := (dx3*dy2 - dy3*dx2) / denom
+	u := (dx3*dy1 - dy3*dx1) / denom
+
+	uScore := u * (1 - u)
+	if uScore != uScore {
+		uScore = 0
+	}
+
+	return t, min(t*(1-t), uScore, math.Abs(denom)-1e-12) >= 0
 }
 
 // BBoxFromPoints computes a bbox from a point slice.

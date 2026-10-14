@@ -58,6 +58,9 @@ type pathScratch struct {
 	barrierCursor *geo.BBoxGridCursor
 	wallCursor    *geo.BBoxGridCursor
 
+	// barrierEdges is the Scene's, shared; nil means test the polylines.
+	barrierEdges *geo.RayEdges
+
 	barrierCandidates []int
 	wallCandidates    []int
 
@@ -81,6 +84,7 @@ func (s *Scene) newScratch() *pathScratch {
 	return &pathScratch{
 		barrierCursor:     s.barrierGrid.NewCursor(),
 		wallCursor:        s.reflectors.grid.NewCursor(),
+		barrierEdges:      s.barrierEdges,
 		barrierCandidates: nil,
 		wallCandidates:    nil,
 		rayCrossings:      nil,
