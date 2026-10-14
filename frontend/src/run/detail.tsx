@@ -258,9 +258,9 @@ export function RunDetail({
             to reattach to but the run's id.
 
             A run with no report shows a plain running label, not the bar's
-            "Starting…": the row exists, so the run has started, and a
-            standard that reports no progress (the scaffolds, beb-exposure)
-            would otherwise claim to be starting for its whole run. */}
+            "Starting…": the row exists, so the run has started, and a run
+            that has not reported yet (still loading its model) or never
+            will (dummy-freefield) would otherwise claim to be starting. */}
         {active ? (
           progress === null ? (
             <p

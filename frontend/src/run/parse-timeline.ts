@@ -35,16 +35,19 @@ const LOG_STAGES: Array<{ key: string; pattern: RegExp; label: () => string }> =
     },
     {
       key: "receivers",
-      pattern: /receivers=\d+/,
+      // beb-exposure builds its facade receivers inside its compute and logs
+      // the buildings it builds them from instead.
+      pattern: /receivers=\d+|beb_buildings=\d+/,
       label: m.timeline_building_receivers,
     },
     {
       key: "compute",
-      // The engine's stage events (dummy-freefield), or the receiver-count
-      // progress line every other standard writes once it has counted every
-      // receiver. The first progress line is written as the walk starts, so
-      // it marks this step under way, not done.
-      pattern: /stage=compute|computed (\d+) of \1 receivers/,
+      // The step is done when the walk is: the engine's closing event
+      // (dummy-freefield), or the receiver-count line every other standard
+      // writes once it has counted every receiver. The first event and the
+      // first count are written as the walk starts, so they mark it under
+      // way, not done.
+      pattern: /stage=compute message=done|computed (\d+) of \1 receivers/,
       label: m.timeline_computing,
     },
     {
