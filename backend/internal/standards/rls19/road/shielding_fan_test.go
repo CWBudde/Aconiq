@@ -26,8 +26,9 @@ type fanComparison struct {
 func (c *fanComparison) check(source geo.Point2D, sourceHeightM float64, receiver geo.Point2D, exclude []string) {
 	c.t.Helper()
 
-	want := computeShielding(source, sourceHeightM, receiver, 4, c.barriers, exclude, nil)
-	got := computeShielding(source, sourceHeightM, receiver, 4, c.barriers, exclude, c.scratch)
+	exclusion := exclusionByID(c.barriers, exclude)
+	want := computeShielding(source, sourceHeightM, receiver, 4, c.barriers, exclusion, nil)
+	got := computeShielding(source, sourceHeightM, receiver, 4, c.barriers, exclusion, c.scratch)
 
 	if got != want {
 		c.t.Fatalf("source %v, receiver %v, exclude %v: fan %+v, unindexed %+v", source, receiver, exclude, got, want)

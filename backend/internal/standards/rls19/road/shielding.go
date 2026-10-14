@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
 
 	"github.com/aconiq/backend/internal/geo"
 )
@@ -87,7 +86,7 @@ func barrierCrossingsAmong(
 func barrierCandidates(
 	source, receiver geo.Point2D,
 	barriers []Barrier,
-	exclude []string,
+	exclude reflectorExclusion,
 	scratch *pathScratch,
 ) []int {
 	var candidates []int
@@ -104,7 +103,7 @@ func barrierCandidates(
 		candidates = appendAllIndices(candidates, len(barriers))
 	}
 
-	candidates = dropExcludedBarriers(candidates, barriers, exclude)
+	candidates = dropExcludedBarriers(candidates, exclude)
 
 	if scratch != nil {
 		scratch.barrierCandidates = candidates
@@ -113,18 +112,44 @@ func barrierCandidates(
 	return candidates
 }
 
+// reflectorExclusion names the barriers a mirrored path's shielding leaves
+// out: those sharing an ID with a reflector it bounced off. The IDs are
+// compared as classes, resolved once when the scene is prepared
+// (reflectorField.bindBarriers), because this runs for every candidate barrier
+// of every mirrored path and a string compare was a measurable share of it.
+// The zero value excludes nothing.
+type reflectorExclusion struct {
+	// barrierClass is, per barrier, the class of the reflector sharing its ID,
+	// or noReflectorClass.
+	barrierClass []int32
+
+	// classes are the reflectors the path bounced off; the first count of
+	// them are set.
+	classes [2]int32
+	count   int
+}
+
 // dropExcludedBarriers removes, in place, the barriers a mirrored path bounced
 // off. Filtering in place keeps the list ascending, which is what compacting a
 // barrier slice used to do and what the stable sort downstream relies on.
-func dropExcludedBarriers(candidates []int, barriers []Barrier, exclude []string) []int {
-	if len(exclude) == 0 {
+//
+// It drops exactly the barriers whose ID is one of the reflectors' IDs: two
+// IDs are equal exactly when their classes are, and a barrier no reflector
+// shares an ID with has noReflectorClass, which no reflector has.
+func dropExcludedBarriers(candidates []int, exclude reflectorExclusion) []int {
+	if exclude.count == 0 {
 		return candidates
+	}
+
+	first, second := exclude.classes[0], exclude.classes[0]
+	if exclude.count > 1 {
+		second = exclude.classes[1]
 	}
 
 	kept := candidates[:0]
 
 	for _, index := range candidates {
-		if !slices.Contains(exclude, barriers[index].ID) {
+		if class := exclude.barrierClass[index]; class != first && class != second {
 			kept = append(kept, index)
 		}
 	}
@@ -292,7 +317,7 @@ func ComputeShielding(
 	receiver geo.Point2D, receiverHeightM float64,
 	barriers []Barrier,
 ) ShieldingResult {
-	return computeShielding(source, sourceHeightM, receiver, receiverHeightM, barriers, nil, nil)
+	return computeShielding(source, sourceHeightM, receiver, receiverHeightM, barriers, reflectorExclusion{}, nil)
 }
 
 // computeShielding is ComputeShielding with the two things the propagation
@@ -303,7 +328,7 @@ func computeShielding(
 	source geo.Point2D, sourceHeightM float64,
 	receiver geo.Point2D, receiverHeightM float64,
 	barriers []Barrier,
-	exclude []string,
+	exclude reflectorExclusion,
 	scratch *pathScratch,
 ) ShieldingResult {
 	if len(barriers) == 0 {

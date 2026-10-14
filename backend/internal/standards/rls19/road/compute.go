@@ -127,10 +127,13 @@ func prepareScene(sources []RoadSource, barriers []Barrier, cfg PropagationConfi
 		return nil, err
 	}
 
+	reflectors := newReflectorField(buildingReflectors(cfg.Reflectors, cfg.Buildings))
+	reflectors.bindBarriers(effectiveBarriers)
+
 	return &Scene{
 		sources:        prepared,
 		barriers:       effectiveBarriers,
-		reflectors:     newReflectorField(buildingReflectors(cfg.Reflectors, cfg.Buildings)),
+		reflectors:     reflectors,
 		barrierGrid:    newBarrierGrid(effectiveBarriers),
 		sourcesPrepare: sourcesPrepare,
 	}, nil

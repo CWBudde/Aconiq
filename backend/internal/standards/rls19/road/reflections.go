@@ -122,7 +122,7 @@ func (r Reflector) effectiveLoss() float64 {
 
 // reflectedPath holds one reflected sound path from source to receiver.
 //
-// imagePoint and reflectorIDs exist so the path can be attenuated like any
+// imagePoint and reflectorClasses exist so the path can be attenuated like any
 // other path. RLS-19 Nr. 3.5 states that the source of a propagation
 // calculation may itself be a Spiegelschallquelle, so the mirrored path takes
 // the same Eq. 11 chain the direct one does — and the shielding calculation
@@ -136,18 +136,13 @@ type reflectedPath struct {
 
 	imagePoint geo.Point2D // final image source position (1st or 2nd order)
 
-	// reflectorIDs are the reflectors this path bounced off, in bounce order;
-	// the first bounces of them are set. An array rather than a slice, so
-	// that a path — of which a building-dense model produces thousands per
-	// Teilstück — costs no allocation of its own.
-	reflectorIDs [2]string
-	bounces      int
-}
-
-// reflectors returns the IDs of the reflectors the path bounced off, in
-// bounce order.
-func (rp *reflectedPath) reflectors() []string {
-	return rp.reflectorIDs[:rp.bounces]
+	// reflectorClasses are the reflectors this path bounced off, in bounce
+	// order, as the wall owners' classes (wallSeg.ownerClass); the first
+	// bounces of them are set. An array rather than a slice, so that a path —
+	// of which a building-dense model produces thousands per Teilstück — costs
+	// no allocation of its own.
+	reflectorClasses [2]int32
+	bounces          int
 }
 
 // wallSeg is an internal view of one wall segment from a Reflector.
@@ -156,6 +151,12 @@ type wallSeg struct {
 	ownerID string  // ID of the Reflector this segment came from
 	loss    float64 // per-reflection loss for this wall
 	heightM float64 // wall top height above ground [m]
+
+	// ownerClass is ownerID as a small integer: walls share a class exactly
+	// when they share an owner ID. It is what a mirrored path carries to name
+	// its reflectors, so that dropping them from its shielding compares
+	// integers rather than strings — see reflectorField.bindBarriers.
+	ownerClass int32
 
 	// bbox is the segment's own bounding box, kept so that a prune can reject
 	// the wall without touching its endpoints again.
@@ -234,6 +235,14 @@ type reflectorField struct {
 	walls []wallSeg
 	grid  *geo.BBoxGrid
 
+	// classOf maps every owner ID to its class, and barrierClass gives, per
+	// barrier of the set the field was bound to, the class of the owner that
+	// shares the barrier's ID — or noReflectorClass when no wall's owner
+	// does. A building is barrier and reflector at once under one ID, so this
+	// is how a mirrored path recognises its own reflector among the barriers.
+	classOf      map[string]int32
+	barrierClass []int32
+
 	// all is 0..len(walls)-1, the candidate list that narrows nothing. It is
 	// held rather than built so that the unindexed path allocates nothing per
 	// call either.
@@ -249,14 +258,30 @@ type reflectorField struct {
 func newReflectorField(reflectors []Reflector) reflectorField {
 	walls := reflectorWalls(reflectors)
 
+	// An owner's class is the index of its first wall, so the same reflectors
+	// always get the same numbers.
+	classOf := make(map[string]int32)
+
+	for i := range walls {
+		class, ok := classOf[walls[i].ownerID]
+		if !ok {
+			class = int32(i)
+			classOf[walls[i].ownerID] = class
+		}
+
+		walls[i].ownerClass = class
+	}
+
 	field := reflectorField{
 		walls: walls,
 		grid: buildBBoxGrid(len(walls), func(i int) (geo.BBox, bool) {
 			return walls[i].bbox, walls[i].bbox.IsFinite() && walls[i].bbox.IsValid()
 		}),
-		all:      appendAllIndices(nil, len(walls)),
-		bounds:   geo.BBox{},
-		boundsOK: false,
+		classOf:      classOf,
+		barrierClass: nil,
+		all:          appendAllIndices(nil, len(walls)),
+		bounds:       geo.BBox{},
+		boundsOK:     false,
 	}
 
 	if len(walls) > 0 {
@@ -270,6 +295,37 @@ func newReflectorField(reflectors []Reflector) reflectorField {
 	}
 
 	return field
+}
+
+// noReflectorClass is the class of a barrier no wall's owner shares an ID
+// with. Owner classes are wall indices and never negative, so it matches no
+// mirrored path's reflector.
+const noReflectorClass int32 = -1
+
+// bindBarriers records, per barrier, the class of the reflector that shares
+// its ID. The field's mirrored paths can only be shielded against the barrier
+// set it was bound to: their exclusion indexes barrierClass by barrier index.
+func (f *reflectorField) bindBarriers(barriers []Barrier) {
+	f.barrierClass = make([]int32, len(barriers))
+
+	for i := range barriers {
+		class, ok := f.classOf[barriers[i].ID]
+		if !ok {
+			class = noReflectorClass
+		}
+
+		f.barrierClass[i] = class
+	}
+}
+
+// exclusion names the barriers rp's shielding must leave out: those that
+// share an ID with a reflector the path bounced off.
+func (f *reflectorField) exclusion(rp *reflectedPath) reflectorExclusion {
+	return reflectorExclusion{
+		barrierClass: f.barrierClass,
+		classes:      rp.reflectorClasses,
+		count:        rp.bounces,
+	}
 }
 
 // mirrorPoint mirrors p across the infinite line defined by segment a→b.
@@ -410,12 +466,12 @@ func (f *reflectorField) appendFirstOrder(
 
 		slantDist := math.Sqrt(planDist*planDist + dz*dz)
 		paths = append(paths, reflectedPath{
-			planDistM:    planDist,
-			slantDistM:   slantDist,
-			lossDB:       w.loss, // D_RV1 for this 1st-order path (RLS-19 Eq. 2)
-			imagePoint:   img,
-			reflectorIDs: [2]string{w.ownerID, ""},
-			bounces:      1,
+			planDistM:        planDist,
+			slantDistM:       slantDist,
+			lossDB:           w.loss, // D_RV1 for this 1st-order path (RLS-19 Eq. 2)
+			imagePoint:       img,
+			reflectorClasses: [2]int32{w.ownerClass, 0},
+			bounces:          1,
 		})
 	}
 
@@ -517,12 +573,12 @@ func secondOrderPath(
 	}
 
 	return reflectedPath{
-		planDistM:    planDist,
-		slantDistM:   math.Sqrt(planDist*planDist + dz*dz),
-		lossDB:       w1.loss + w2.loss, // D_RV1 + D_RV2 (RLS-19 Eq. 3)
-		imagePoint:   img2,
-		reflectorIDs: [2]string{w1.ownerID, w2.ownerID},
-		bounces:      2,
+		planDistM:        planDist,
+		slantDistM:       math.Sqrt(planDist*planDist + dz*dz),
+		lossDB:           w1.loss + w2.loss, // D_RV1 + D_RV2 (RLS-19 Eq. 3)
+		imagePoint:       img2,
+		reflectorClasses: [2]int32{w1.ownerClass, w2.ownerClass},
+		bounces:          2,
 	}, true
 }
 

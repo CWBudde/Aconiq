@@ -195,7 +195,7 @@ func TestIndexedShieldingKeepsEquidistantOrder(t *testing.T) {
 		receiver := geo.Point2D{X: float64(ix)*5 - 50, Y: 40}
 
 		want := ComputeShielding(source, 0.5, receiver, 4, scene.barriers)
-		got := computeShielding(source, 0.5, receiver, 4, scene.barriers, nil, scratch)
+		got := computeShielding(source, 0.5, receiver, 4, scene.barriers, reflectorExclusion{}, scratch)
 
 		if got != want {
 			t.Fatalf("source x=%v: indexed %+v != unindexed %+v", source.X, got, want)
