@@ -225,7 +225,7 @@ func (e beforeRunError) Unwrap() error {
 	return e.err
 }
 
-// receiverRunModule is the shape nine of the thirteen standards share: parse
+// receiverRunModule is the shape eight of the thirteen standards share: parse
 // options, extract typed sources, resolve a receiver set, compute receiver
 // outputs, persist. What differs between them is the five functions and the
 // three strings below — which is precisely what the 562-line switch used to
@@ -243,7 +243,7 @@ type receiverRunModule[Opt any, Src any, Out any] struct {
 	parseOptions   func(map[string]string) (Opt, error)
 	extract        func(modelgeojson.Model, Opt, []string) ([]Src, error)
 	buildReceivers func([]Src, *geo.BBox, Opt) ([]geo.PointReceiver, results.GridLayout, error)
-	compute        func(context.Context, []geo.PointReceiver, []Src, Opt) ([]Out, error)
+	compute        func(context.Context, []geo.PointReceiver, []Src, Opt, func(done, total int)) ([]Out, error)
 	persist        func(runDir string, outputs []Out, layout results.GridLayout, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error)
 }
 
@@ -276,7 +276,9 @@ func (m receiverRunModule[Opt, Src, Out]) run(ctx context.Context, input runModu
 	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
 	input.log.addGridExtent(input.receiverMode, calcArea, layout)
 
-	outputs, err := m.compute(ctx, receivers, sources, options)
+	input.progress.start(len(receivers))
+
+	outputs, err := m.compute(ctx, receivers, sources, options, input.progress.report)
 	if err != nil {
 		input.log.addf("%s: %v", m.computeFailure, err)
 

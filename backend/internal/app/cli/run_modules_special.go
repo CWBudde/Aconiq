@@ -305,6 +305,25 @@ func runBEBExposureModule(ctx context.Context, input runModuleInput) (runModuleR
 	}, nil
 }
 
+// bebProgress adapts a run's progress to BEB, whose total only the package
+// knows: it counts the facade receivers the level step computes, which it
+// builds from the buildings itself. The first report starts the walk, so the
+// 0-of-total line is written as for every other standard, just after the
+// first facade rather than before it.
+func bebProgress(progress *runProgress) func(done, total int) {
+	started := false
+
+	return func(done, total int) {
+		if !started {
+			started = true
+
+			progress.start(total)
+		}
+
+		progress.report(done, total)
+	}
+}
+
 // computeBEBExposure runs the upstream mapping standard the BEB options name
 // and aggregates its sources onto the buildings.
 func computeBEBExposure(
@@ -324,7 +343,7 @@ func computeBEBExposure(
 
 		logBEBUpstream(input, options, len(roadSources), len(buildings))
 
-		outputs, summary, err := bebexposure.ComputeOutputsContext(ctx, buildings, roadSources, options.ExposureConfig(), options.BUBRoadOptions().PropagationConfig(), options.FacadeReceiverHeightM)
+		outputs, summary, err := bebexposure.ComputeOutputsProgress(ctx, buildings, roadSources, options.ExposureConfig(), options.BUBRoadOptions().PropagationConfig(), options.FacadeReceiverHeightM, bebProgress(input.progress))
 		if err != nil {
 			input.log.addf("beb exposure compute failed: %v", err)
 
@@ -342,7 +361,7 @@ func computeBEBExposure(
 
 		logBEBUpstream(input, options, len(aircraftSources), len(buildings))
 
-		outputs, summary, err := bebexposure.ComputeOutputsFromAircraftContext(ctx, buildings, aircraftSources, options.ExposureConfig(), options.BUFAircraftOptions().PropagationConfig(), options.FacadeReceiverHeightM)
+		outputs, summary, err := bebexposure.ComputeOutputsFromAircraftProgress(ctx, buildings, aircraftSources, options.ExposureConfig(), options.BUFAircraftOptions().PropagationConfig(), options.FacadeReceiverHeightM, bebProgress(input.progress))
 		if err != nil {
 			input.log.addf("beb exposure compute failed: %v", err)
 
