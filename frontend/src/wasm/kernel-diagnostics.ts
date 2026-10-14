@@ -36,11 +36,12 @@
 // motivated the mode, the ceiling is 5.8e6 pairs against about 1.5e5 actually
 // walked.
 
-import type {
-  ComputeRequest,
-  Point2D,
-  RoadSource,
-  SegmentLengthMode,
+import {
+  requestReceiverCount,
+  type AnyComputeRequest,
+  type Point2D,
+  type RoadSource,
+  type SegmentLengthMode,
 } from "./types";
 
 /** How often a run in flight repeats itself to the console, at most. */
@@ -85,7 +86,7 @@ function sourceSegments(source: RoadSource, targetLengthM: number): number {
  * Under `distance_scaled` this is an upper bound rather than a count: see the
  * note at the top of the file.
  */
-export function teilstueckCount(req: ComputeRequest): number {
+export function teilstueckCount(req: AnyComputeRequest): number {
   const target = req.config?.SegmentLengthM ?? 1;
 
   return req.sources.reduce(
@@ -110,9 +111,9 @@ export interface RunShape {
   workers: number;
 }
 
-export function describeRun(req: ComputeRequest, workers: number): RunShape {
+export function describeRun(req: AnyComputeRequest, workers: number): RunShape {
   return {
-    receivers: req.receivers.length,
+    receivers: requestReceiverCount(req),
     sources: req.sources.length,
     segments: teilstueckCount(req),
     segmentLengthM: req.config?.SegmentLengthM ?? 1,

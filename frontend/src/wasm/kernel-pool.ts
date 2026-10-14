@@ -80,10 +80,10 @@ export interface Shard {
  * `chunk` is the index the merge orders by — never the order shards happened
  * to finish in. It mirrors `partition.Chunk.Index` on the Go side.
  */
-export interface ChunkOutput {
+export interface ChunkOutput<T = ReceiverOutput> {
   chunk: number;
   start: number;
-  outputs: ReceiverOutput[];
+  outputs: T[];
 }
 
 /**
@@ -106,12 +106,12 @@ export interface ChunkOutput {
  * stops early. Only the run's own receiver count knows how long the answer
  * was supposed to be.
  */
-export function mergeChunks(
-  chunks: ChunkOutput[],
+export function mergeChunks<T = ReceiverOutput>(
+  chunks: ChunkOutput<T>[],
   expected: number,
-): ReceiverOutput[] {
+): T[] {
   const ordered = [...chunks].sort((a, b) => a.chunk - b.chunk);
-  const merged: ReceiverOutput[] = [];
+  const merged: T[] = [];
 
   ordered.forEach((chunk, position) => {
     if (chunk.chunk !== position) {

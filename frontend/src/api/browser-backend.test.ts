@@ -19,7 +19,11 @@ import { useModelStore } from "@/model/model-store";
 import { normalizeModelGeoJSON } from "@/model/normalize";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
-import type { ComputeRequest, TransformRequest } from "@/wasm/types";
+import type {
+  ComputeRequest,
+  GridComputeRequest,
+  TransformRequest,
+} from "@/wasm/types";
 import type {
   RasterMetadata,
   ReceiverTable,
@@ -104,6 +108,14 @@ vi.mock("@/wasm/kernel", () => ({
             Indicators: kernelLevels(receiver.id),
           })),
         ),
+      // A grid run names its receivers by descriptor and gets indicators
+      // back; the stub names them the way the kernel does.
+      rls19RoadGrid: async (req: GridComputeRequest) => {
+        const { materializeGrid } = await import("@/model/receiver-grid");
+        return materializeGrid(req.grid).map((receiver) =>
+          kernelLevels(receiver.id),
+        );
+      },
       transform: (req: TransformRequest) => {
         transformRequests.push(req);
         return Promise.resolve({

@@ -15,7 +15,7 @@ import { isRunCancelled } from "./backend";
 import * as storage from "./browser-storage";
 import { useModelStore } from "@/model/model-store";
 import type { ModelFeature } from "@/model/types";
-import type { ComputeRequest } from "@/wasm/types";
+import type { ComputeRequest, GridComputeRequest } from "@/wasm/types";
 import { CancelledErrorName } from "@/wasm/kernel-client";
 import type { KernelProgressListener } from "@/wasm/protocol";
 
@@ -71,6 +71,29 @@ vi.mock("@/wasm/kernel", () => ({
             },
           });
         }),
+      // The same hanging call for a grid run, recorded with the receivers
+      // its descriptor names, so a test reads either kind of run alike.
+      rls19RoadGrid: async (
+        req: GridComputeRequest,
+        onProgress?: KernelProgressListener,
+      ) => {
+        const { materializeGrid } = await import("@/model/receiver-grid");
+        const receivers = materializeGrid(req.grid);
+        return new Promise((resolve, reject) => {
+          calls.push({
+            request: { ...req, receivers },
+            onProgress,
+            finish: () => {
+              const cancelled = new Error("kernel cancelled");
+              cancelled.name = CancelledErrorName;
+              reject(cancelled);
+            },
+            succeed: () => {
+              resolve(receivers.map(() => ({ lr_day: 50, lr_night: 40 })));
+            },
+          });
+        });
+      },
       transform: (req: { source_crs: string; coordinates: number[] }) =>
         Promise.resolve({
           source_crs: req.source_crs,

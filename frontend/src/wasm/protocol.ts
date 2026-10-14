@@ -15,6 +15,7 @@
 export type KernelMethod =
   | "rls19Road"
   | "rls19RoadShard"
+  | "rls19RoadGrid"
   | "estimate"
   | "transform"
   | "maskFootprints"
@@ -52,6 +53,18 @@ export type KernelCall =
        */
       json: string;
       /** As `rls19Road`, but counting this shard's receivers. */
+      progress: boolean;
+    }
+  | {
+      id: number;
+      method: "rls19RoadGrid";
+      /**
+       * A grid run's request — `grid` in place of `receivers`, and a `shard`
+       * when one Worker of a pool is asking. Six numbers instead of the whole
+       * receiver list, for every shard alike.
+       */
+      json: string;
+      /** As `rls19RoadShard`; the whole run when there is no shard. */
       progress: boolean;
     }
   | {

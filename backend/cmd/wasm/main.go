@@ -25,60 +25,18 @@ import (
 	"syscall/js"
 	"time"
 
-	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/standards/rls19/road"
 	"github.com/aconiq/backend/internal/wasmkernel"
 )
 
-type computeRequest struct {
-	Receivers []geo.PointReceiver    `json:"receivers"`
-	Sources   []road.RoadSource      `json:"sources"`
-	Barriers  []road.Barrier         `json:"barriers"`
-	Config    road.PropagationConfig `json:"config"`
-
-	// Projection is the CRS pair the caller resolved before it built this
-	// scene. It is optional — a request that loads no terrain needs nothing
-	// from it — and required the moment a terrain model is loaded, because the
-	// coordinates in this request name no CRS of their own and a DTM has to be
-	// queried in the one it was written in. See wasmkernel.ComputeProjection.
-	Projection *wasmkernel.ComputeProjection `json:"projection,omitempty"`
-
-	// Shard names which member of a Worker pool is asking, when one is.
-	// Absent means the whole run, which is what `rls19Road` always is —
-	// only `rls19RoadShard` reads it.
-	//
-	// The rest of this struct is the *whole run's* even when a shard is set:
-	// Receivers is every receiver, not the shard's slice. See
-	// wasmkernel.ComputeRLS19RoadShard for why that is load-bearing rather
-	// than wasteful.
-	Shard *wasmkernel.Shard `json:"shard,omitempty"`
-}
-
-// prepareComputeRequest parses a request and resolves the ground under it.
-//
-// Shared by rls19Road and rls19RoadShard so the two cannot come to disagree
-// about what a request means — which matters more than usual here, because
-// the whole point of the shard export is that N Workers reach the identical
-// configuration.
-func prepareComputeRequest(input string) (computeRequest, error) {
-	var req computeRequest
-	if err := json.Unmarshal([]byte(input), &req); err != nil {
-		return computeRequest{}, fmt.Errorf("invalid input JSON: %w", err)
-	}
-
-	req.Config = withPropagationDefaults(req.Config)
-
-	// The terrain is the ground h_m is measured above as well as the one
-	// elevation the receiver heights stack on, so both travel into the
-	// config — and both in the CRS this request computes in. Browser mode
-	// resolves the ground the way `aconiq run` does or it is answering a
-	// different question.
-	cfg, err := wasmkernel.ApplyTerrain(req.Config, req.Receivers, req.Projection)
+// prepareComputeRequest parses a request against the kernel's terrain; see
+// wasmkernel.PrepareComputeRequest, which every compute export shares so they
+// cannot come to disagree about what a request means.
+func prepareComputeRequest(input string) (wasmkernel.ComputeRequest, error) {
+	req, err := wasmkernel.PrepareComputeRequest([]byte(input))
 	if err != nil {
-		return computeRequest{}, fmt.Errorf("%w", err)
+		return wasmkernel.ComputeRequest{}, fmt.Errorf("%w", err)
 	}
-
-	req.Config = cfg
 
 	return req, nil
 }
@@ -214,6 +172,65 @@ func rls19RoadShardFunc(_ js.Value, args []js.Value) any {
 		out, err := json.Marshal(chunks)
 		if err != nil {
 			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19RoadShard: marshal error: %v", err)))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
+// rls19RoadGridFunc computes an RLS-19 road run whose receivers came as a
+// grid descriptor, whole or one Worker's shard of it.
+// Signature: (request: string, onProgress?: (done, total) => void)
+// => Promise<string> (JSON [{chunk, start, outputs: ReceiverIndicators[]}]).
+//
+// The request is rls19Road's with `grid` in place of `receivers`, and an
+// optional `shard`. It always answers in chunks — one for the whole run, the
+// shard's own otherwise — and never echoes a receiver: the caller sent six
+// numbers and rebuilds every receiver from them. A separate export, for the
+// reason rls19RoadShard is one: its answer has its own shape, and an export
+// whose return type depends on a field is a contract nobody can read off the
+// call site.
+func rls19RoadGridFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 && len(args) != 2 {
+		return jsReject("rls19RoadGrid: expected 1 or 2 arguments (string request JSON, optional progress callback)")
+	}
+
+	onProgress := js.Undefined()
+
+	if len(args) == 2 {
+		if args[1].Type() != js.TypeFunction {
+			return jsReject("rls19RoadGrid: expected the second argument to be a progress callback function")
+		}
+
+		onProgress = args[1]
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		req, err := prepareComputeRequest(input)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19RoadGrid: %v", err)))
+
+			return nil
+		}
+
+		chunks, err := wasmkernel.ComputeRLS19RoadGrid(req, 0, progressReporter(onProgress))
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19RoadGrid: computation error: %v", err)))
+
+			return nil
+		}
+
+		out, err := json.Marshal(chunks)
+		if err != nil {
+			reject.Invoke(js.ValueOf(fmt.Sprintf("rls19RoadGrid: marshal error: %v", err)))
 
 			return nil
 		}
@@ -494,32 +511,6 @@ func clearTerrainFunc(_ js.Value, _ []js.Value) any {
 	return js.Undefined()
 }
 
-// withPropagationDefaults fills the three scalars a caller may leave unset,
-// one at a time.
-//
-// Replacing the whole struct would discard everything else the config carries
-// — Buildings, Reflectors, ParkingSources, Terrain — for a caller that simply
-// did not state a segment length. The browser sets all three today, so that
-// was latent rather than live, but the scene fields are exactly what a request
-// building a Parkplatz sends.
-func withPropagationDefaults(cfg road.PropagationConfig) road.PropagationConfig {
-	defaults := road.DefaultPropagationConfig()
-
-	if cfg.SegmentLengthM == 0 {
-		cfg.SegmentLengthM = defaults.SegmentLengthM
-	}
-
-	if cfg.MinDistanceM == 0 {
-		cfg.MinDistanceM = defaults.MinDistanceM
-	}
-
-	if cfg.ReceiverHeightM == 0 {
-		cfg.ReceiverHeightM = defaults.ReceiverHeightM
-	}
-
-	return cfg
-}
-
 // defaultConfigFunc returns the default PropagationConfig as a JSON string.
 func defaultConfigFunc(_ js.Value, _ []js.Value) any {
 	cfg := road.DefaultPropagationConfig()
@@ -638,6 +629,7 @@ func main() {
 	aconiq := js.Global().Get("Object").New()
 	aconiq.Set("rls19Road", js.FuncOf(rls19RoadFunc))
 	aconiq.Set("rls19RoadShard", js.FuncOf(rls19RoadShardFunc))
+	aconiq.Set("rls19RoadGrid", js.FuncOf(rls19RoadGridFunc))
 	aconiq.Set("estimate", js.FuncOf(estimateFunc))
 	aconiq.Set("transform", js.FuncOf(transformFunc))
 	aconiq.Set("contours", js.FuncOf(contoursFunc))

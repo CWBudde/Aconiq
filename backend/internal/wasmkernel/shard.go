@@ -1,6 +1,7 @@
 package wasmkernel
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/aconiq/backend/internal/geo"
@@ -56,9 +57,10 @@ type ChunkOutput struct {
 // Worker, and the equality of the shards' configs stops being a floating-point
 // argument and becomes a structural one.
 //
-// The cost is one JSON parse of the receiver list per Worker. That is real —
-// and it is what a binary receiver descriptor removes, once the grid case
-// stops sending receivers one JSON object at a time.
+// The cost is one JSON parse of the receiver list per Worker, for a run that
+// lists its receivers. A grid run sends the six numbers of a ReceiverGrid
+// instead, and every Worker expands the identical list from them
+// (ComputeRLS19RoadGrid), so the invariant costs it nothing.
 //
 // # Progress
 //
@@ -131,4 +133,69 @@ func ComputeRLS19RoadShard(
 	}
 
 	return outputs, nil
+}
+
+// IndicatorChunk is ChunkOutput without the receivers: what `rls19RoadGrid`
+// answers with. The caller sent a grid descriptor and can name every receiver
+// itself, so echoing ~150 bytes of receiver back per receiver — most of the
+// answer — is parse time on the main thread for nothing.
+//
+// The indicators stay road.ReceiverIndicators, encoded by the same struct as
+// the echoing exports encode them, so the browser's output_hash, which hashes
+// {receiver_id, indicators}, comes out of the same bytes either way.
+type IndicatorChunk struct {
+	Chunk   int                       `json:"chunk"`
+	Start   int                       `json:"start"`
+	Outputs []road.ReceiverIndicators `json:"outputs"`
+}
+
+// IndicatorChunks strips the receivers off computed chunks, keeping their
+// index and start for the merge.
+func IndicatorChunks(chunks []ChunkOutput) []IndicatorChunk {
+	out := make([]IndicatorChunk, len(chunks))
+
+	for i, chunk := range chunks {
+		out[i] = IndicatorChunk{
+			Chunk:   chunk.Chunk,
+			Start:   chunk.Start,
+			Outputs: make([]road.ReceiverIndicators, len(chunk.Outputs)),
+		}
+
+		for j, output := range chunk.Outputs {
+			out[i].Outputs[j] = output.Indicators
+		}
+	}
+
+	return out
+}
+
+// ComputeRLS19RoadGrid computes a run whose receivers came as a grid, and
+// answers with indicators only, in chunks: one chunk for the whole run, or
+// the shard's own when req.Shard names one.
+//
+// It is ComputeRLS19Road or ComputeRLS19RoadShard on the receivers the grid
+// expanded to, and nothing else, so it can only differ from the echoing
+// exports in what it leaves out. A request that listed its receivers is
+// refused: the caller of this export rebuilds every receiver from the
+// descriptor, which a list does not give it.
+func ComputeRLS19RoadGrid(req ComputeRequest, chunkSize int, progress func(done, total int)) ([]IndicatorChunk, error) {
+	if req.Grid == nil {
+		return nil, errors.New("rls19RoadGrid takes a receiver grid descriptor; a request that lists its receivers goes to rls19Road")
+	}
+
+	if req.Shard == nil {
+		outputs, err := ComputeRLS19Road(req.Receivers, req.Sources, req.Barriers, req.Config, chunkSize, progress)
+		if err != nil {
+			return nil, err
+		}
+
+		return IndicatorChunks([]ChunkOutput{{Chunk: 0, Start: 0, Outputs: outputs}}), nil
+	}
+
+	chunks, err := ComputeRLS19RoadShard(req.Receivers, req.Sources, req.Barriers, req.Config, *req.Shard, chunkSize, progress)
+	if err != nil {
+		return nil, err
+	}
+
+	return IndicatorChunks(chunks), nil
 }

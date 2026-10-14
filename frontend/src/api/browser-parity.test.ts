@@ -35,7 +35,11 @@ vi.mock("@/wasm/kernel", async () => {
   return { getKernel: load };
 });
 
-import { browserBackend, resetBrowserBackendForTests } from "./browser-backend";
+import {
+  browserBackend,
+  resetBrowserBackendForTests,
+  setReceiverTransportForTests,
+} from "./browser-backend";
 import { clearPersistedState } from "./browser-storage";
 import { useModelStore } from "@/model/model-store";
 import { normalizeModelGeoJSON } from "@/model/normalize";
@@ -581,6 +585,120 @@ describe.skipIf(skipReason !== null)(
       expect(
         log.lines.some((line) => line.includes(" grid_masked_cells=16 (")),
       ).toBe(true);
+    });
+  },
+);
+
+// A grid run sends the kernel six numbers instead of one object per receiver,
+// and gets indicators back instead of an echo of every receiver. It must be
+// the same run: the receiver-list path is the reference, and the run is sent
+// down both. A resolution of 7.7 m makes every coordinate past cell (0,0) an
+// inexact product, which is where the kernel's expansion and the browser's
+// naming of the receivers could disagree by an ulp — and the hash, the table
+// and the raster would all say so.
+describe.skipIf(skipReason !== null)(
+  "a grid run sent as a descriptor is the run sent as a receiver list",
+  () => {
+    async function runWith(transport: "grid" | "json") {
+      await clearPersistedState();
+      resetBrowserBackendForTests();
+      setReceiverTransportForTests(transport);
+
+      const collection: GeoJSONFeatureCollection = {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "road",
+            properties: { kind: "source", source_type: "line" },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [412_300, 5_800_010],
+                [412_460, 5_800_030],
+              ],
+            },
+          },
+          {
+            type: "Feature",
+            id: "block",
+            properties: { kind: "building", height_m: 12 },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [412_360, 5_800_050],
+                  [412_400, 5_800_050],
+                  [412_400, 5_800_090],
+                  [412_360, 5_800_090],
+                  [412_360, 5_800_050],
+                ],
+              ],
+            },
+          },
+        ],
+      };
+      const { features, skipped } = normalizeModelGeoJSON(collection);
+      expect(skipped).toEqual([]);
+      useModelStore.setState({
+        features,
+        receivers: [],
+        calcArea: null,
+        crs: "EPSG:25832",
+      });
+
+      const run = await browserBackend.startRun({
+        standardId: "rls19-road",
+        version: "2019",
+        profile: "default",
+        params: { ...RUN_PARAMS, grid_resolution_m: "7.7" },
+        receiverMode: "auto-grid",
+      });
+      expect(run.status).toBe("completed");
+
+      const artifactOf = (kind: string) =>
+        run.artifacts.find((artifact) => artifact.kind === kind)?.id ?? "";
+
+      return {
+        summary: await browserBackend.getArtifactContent<
+          Record<string, unknown>
+        >(artifactOf("run.result.summary")),
+        table: await browserBackend.getArtifactContent<unknown>(
+          artifactOf("run.result.receiver_table_json"),
+        ),
+        csv: await browserBackend.getArtifactContent<unknown>(
+          artifactOf("run.result.receiver_table_csv"),
+        ),
+        raster: new Uint8Array(
+          await browserBackend.getArtifactBytes(
+            artifactOf("run.result.raster_binary"),
+          ),
+        ),
+        hashLine: (await browserBackend.getRunLog(run.id)).lines.find((line) =>
+          line.includes(" output_hash="),
+        ),
+      };
+    }
+
+    it("answers with the same output_hash, table and raster", async () => {
+      const listed = await runWith("json");
+      const described = await runWith("grid");
+
+      expect(described.summary["output_hash"]).toBe(
+        listed.summary["output_hash"],
+      );
+      expect(described.hashLine?.split(" output_hash=")[1]).toBe(
+        listed.hashLine?.split(" output_hash=")[1],
+      );
+      expect(described.table).toEqual(listed.table);
+      expect(described.csv).toEqual(listed.csv);
+      expect(described.raster).toEqual(listed.raster);
+      expect(described.summary["grid_masked_cells"]).toBe(
+        listed.summary["grid_masked_cells"],
+      );
+      // The comparison is worth nothing over an empty or unmasked run.
+      expect(described.summary["receiver_count"]).toBeGreaterThan(100);
+      expect(described.summary["grid_masked_cells"]).toBeGreaterThan(0);
     });
   },
 );

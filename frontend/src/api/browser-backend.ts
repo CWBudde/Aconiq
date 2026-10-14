@@ -46,14 +46,16 @@ import type { Point2D } from "@/model/geometry";
 import { buildParkingSources, polygonParts } from "@/model/rls19-parking";
 import { buildRasterBinary } from "@/model/raster-bin";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
+import { gridReceiverAt, materializeGrid } from "@/model/receiver-grid";
 import { type AconiqKernel, cancelKernel, getKernel } from "@/wasm/kernel";
 import { CancelledErrorName } from "@/wasm/kernel-client";
 import type {
+  AnyComputeRequest,
   Barrier,
   Building,
-  ComputeRequest,
   FootprintMaskRequest,
   PointReceiver,
+  ReceiverGrid,
   ReceiverOutput,
   RoadSource,
   SegmentLengthMode,
@@ -800,6 +802,7 @@ function forgetArtifactBytes(storedRuns: readonly StoredRun[]): void {
 export function resetBrowserBackendForTests(): void {
   state = null;
   loadPromise = null;
+  receiverTransport = "grid";
   // "Once per session" is module state like the cache above it, so a test
   // that did not reset it would silently inherit the previous test's sweep.
   sweptOrphanedBytes = false;
@@ -1303,18 +1306,33 @@ type BrowserGridLayout = {
 };
 
 /**
- * The receivers an automatic grid is made of.
+ * How a grid run sends its receivers to the kernel: as the six numbers of a
+ * {@link ReceiverGrid}, which is what every run does, or one object per
+ * receiver, which is what every run did before and what the tests still send
+ * to hold the descriptor to it. Module state rather than a parameter so that
+ * no production caller can choose the reference path by accident.
+ */
+let receiverTransport: "grid" | "json" = "grid";
+
+/** Send grid runs' receivers as a list — the reference path. Tests only. */
+export function setReceiverTransportForTests(transport: "grid" | "json"): void {
+  receiverTransport = transport;
+}
+
+/**
+ * The automatic grid a run computes over, as a descriptor.
  *
  * The shape — how many cells, and where cell (0,0) sits — is
  * `model/grid-estimate`'s, not this function's, because the run dialog quotes
- * it back to the user before the run starts. This is the half that cannot be
- * shared: turning the shape into ids and positions is a run's business, and
- * the preview has no use for 42 000 of them.
+ * it back to the user before the run starts. This only says how far apart the
+ * cells are and how high every receiver stands; `@/model/receiver-grid` and
+ * the kernel name the receivers from it, in the same row-major order the run
+ * always used.
  */
-function buildReceiverGrid(
+function receiverGridDescriptor(
   bbox: GridExtent,
   params: Record<string, string>,
-): { receivers: PointReceiver[] } & BrowserGridLayout {
+): { grid: ReceiverGrid } & BrowserGridLayout {
   const sizing = gridSizingFromParams(params);
   const receiverHeight = parseNumber(params, "receiver_height_m", 4);
 
@@ -1330,29 +1348,21 @@ function buildReceiverGrid(
   const { width, height, originX: minX, originY: minY } = shape;
   const resolution = sizing.resolutionM;
 
-  const receivers: PointReceiver[] = [];
-  let seq = 1;
-  for (let row = 0; row < height; row++) {
-    const y = minY + row * resolution;
-    for (let col = 0; col < width; col++) {
-      const x = minX + col * resolution;
-      receivers.push({
-        id: `R${String(seq).padStart(4, "0")}`,
-        point: { x, y },
-        height_m: receiverHeight,
-      });
-      seq++;
-    }
-  }
-
   return {
-    receivers,
+    grid: {
+      origin_x: minX,
+      origin_y: minY,
+      resolution_m: resolution,
+      width,
+      height,
+      height_m: receiverHeight,
+    },
     width,
     height,
-    // The padded south-west corner is where the loop above starts, so it is
-    // the centre of cell (0,0) — the same convention `buildReceiversFromPoints`
-    // records on the CLI side, and the reason `receivers[0]` and `origin` are
-    // the same coordinate on both targets.
+    // The padded south-west corner is cell (0,0)'s centre — the same
+    // convention `buildReceiversFromPoints` records on the CLI side, and the
+    // reason the grid's first receiver and `origin` are the same coordinate on
+    // both targets.
     georeference: {
       origin_x: minX,
       origin_y: minY,
@@ -1363,7 +1373,7 @@ function buildReceiverGrid(
 }
 
 /**
- * `results.RowOrderSouthUp`. The loop above walks Y ascending, as
+ * `results.RowOrderSouthUp`. A grid is walked Y ascending, as
  * `geo.GridReceiverSet.Generate` does, so row 0 is the southernmost.
  */
 const ROW_ORDER_SOUTH_UP = "south-up";
@@ -1611,8 +1621,7 @@ async function computeRLS19Road(
     maskFootprints: true,
   });
   const { request, layout, maskedCells, projection } = prepared;
-  const { sources, parking, buildings } = prepared;
-  const gridReceivers = prepared.receivers;
+  const { sources, parking, buildings, receiverCount } = prepared;
 
   // The lock spans the compute, not just the persist: the id is minted
   // from the store before the kernel runs, and a second tab that allocated
@@ -1628,7 +1637,7 @@ async function computeRLS19Road(
     // all — releases it with nothing written: the bytes and the document both
     // go in below, and the run id minted above is simply never used. The next
     // run mints it again.
-    const outputs = await kernel.rls19Road(request, onProgress);
+    const outputs = await computeOutputs(kernel, request, onProgress);
 
     // Cancelling once the compute has returned terminates a worker that is
     // already idle, so without this the run would go on to persist itself and
@@ -1782,7 +1791,7 @@ async function computeRLS19Road(
         `${startedAt} rls19_road_sources=${String(sources.length)}`,
         `${startedAt} rls19_parking_sources=${String(parking.sources.length)}`,
         `${startedAt} rls19_buildings=${String(buildings.length)}`,
-        `${startedAt} receivers=${String(gridReceivers.length)}`,
+        `${startedAt} receivers=${String(receiverCount)}`,
         ...(maskedCells.length > 0
           ? [
               `${startedAt} grid_masked_cells=${String(maskedCells.length)} (receivers inside a building footprint; computed, written to the raster as nodata)`,
@@ -1906,7 +1915,10 @@ async function prepareRLS19Request(
   const barriers = buildBarriers(features);
   const buildings = buildBuildings(features);
 
-  let gridReceivers: PointReceiver[];
+  // Exactly one of these: the receivers the user placed, or the grid that
+  // names the automatic ones.
+  let listedReceivers: PointReceiver[] | null = null;
+  let receiverGrid: ReceiverGrid | null = null;
   let layout: BrowserGridLayout;
   // Indices of the grid receivers standing inside a building. They are
   // computed and kept in the receiver table like any other; only the raster
@@ -1925,7 +1937,7 @@ async function prepareRLS19Request(
     // whatever order the model gives it. The receiver table's row order is
     // what `output_hash` is computed over, so sorting here made the same model
     // hash differently in the two targets.
-    gridReceivers = storeReceivers.map((r) => ({
+    listedReceivers = storeReceivers.map((r) => ({
       id: r.id,
       point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
       height_m: r.heightM,
@@ -1946,26 +1958,34 @@ async function prepareRLS19Request(
     if (!bbox) {
       throw new Error("Could not derive source extent from the current model");
     }
-    const receiverGrid = buildReceiverGrid(bbox, spec.params);
-    gridReceivers = receiverGrid.receivers;
+    const descriptor = receiverGridDescriptor(bbox, spec.params);
+    receiverGrid = descriptor.grid;
     // Asked of the kernel, not answered here: `aconiq run` masks through
     // `geo.MaskPointsInFootprints`, and a second point-in-polygon would be a
-    // second rule for a receiver standing exactly on a facade.
+    // second rule for a receiver standing exactly on a facade. The kernel
+    // expands the same descriptor for the mask as for the run.
     const footprints = options.maskFootprints
       ? buildingFootprints(features)
       : [];
     if (footprints.length > 0) {
-      const mask = await kernel.maskFootprints({
-        points: gridReceivers.flatMap((r) => [r.point.x, r.point.y]),
-        footprints,
-      });
+      const maskRequest: FootprintMaskRequest =
+        receiverTransport === "grid"
+          ? { grid: receiverGrid, footprints }
+          : {
+              points: materializeGrid(receiverGrid).flatMap((r) => [
+                r.point.x,
+                r.point.y,
+              ]),
+              footprints,
+            };
+      const mask = await kernel.maskFootprints(maskRequest);
       maskedCells = mask.masked;
     }
     layout = {
-      width: receiverGrid.width,
-      height: receiverGrid.height,
-      ...(receiverGrid.georeference
-        ? { georeference: receiverGrid.georeference }
+      width: descriptor.width,
+      height: descriptor.height,
+      ...(descriptor.georeference
+        ? { georeference: descriptor.georeference }
         : undefined),
     };
   }
@@ -1974,8 +1994,7 @@ async function prepareRLS19Request(
   // unknown mode should fail the request without having minted one first.
   const segmentLengthMode = parseSegmentLengthMode(spec.params);
 
-  const request: ComputeRequest = {
-    receivers: gridReceivers,
+  const scene = {
     sources,
     barriers,
     // The kernel is told which CRS this scene is in; it cannot read one off
@@ -1998,6 +2017,24 @@ async function prepareRLS19Request(
     },
   };
 
+  // A grid travels as its descriptor; the reference path, and custom
+  // receivers, as the list.
+  let request: AnyComputeRequest;
+  let receiverCount: number;
+  if (listedReceivers !== null) {
+    request = { ...scene, receivers: listedReceivers };
+    receiverCount = listedReceivers.length;
+  } else if (receiverGrid !== null && receiverTransport === "grid") {
+    request = { ...scene, grid: receiverGrid };
+    receiverCount = receiverGrid.width * receiverGrid.height;
+  } else if (receiverGrid !== null) {
+    const receivers = materializeGrid(receiverGrid);
+    request = { ...scene, receivers };
+    receiverCount = receivers.length;
+  } else {
+    throw new Error("a run names neither its receivers nor a grid");
+  }
+
   return {
     request,
     layout,
@@ -2006,8 +2043,33 @@ async function prepareRLS19Request(
     sources,
     parking,
     buildings,
-    receivers: gridReceivers,
+    receiverCount,
   };
+}
+
+/**
+ * Compute a run's outputs, whichever way it named its receivers.
+ *
+ * A grid run's kernel answers with indicators alone, and the receivers are
+ * named here from the same descriptor the kernel expanded — so the table, the
+ * raster and `output_hash` below are built from the very objects the
+ * receiver-list path gets back from the kernel, and come out of the same
+ * bytes.
+ */
+async function computeOutputs(
+  kernel: AconiqKernel,
+  request: AnyComputeRequest,
+  onProgress: ((done: number, total: number) => void) | undefined,
+): Promise<ReceiverOutput[]> {
+  if (!("grid" in request)) {
+    return kernel.rls19Road(request, onProgress);
+  }
+
+  const indicators = await kernel.rls19RoadGrid(request, onProgress);
+  return indicators.map((Indicators, index) => ({
+    Receiver: gridReceiverAt(request.grid, index),
+    Indicators,
+  }));
 }
 
 /**

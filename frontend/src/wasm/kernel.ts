@@ -17,20 +17,29 @@ import type { RunEstimate } from "@/model/run-estimate";
 import type { StandardDescriptor } from "@/standards/descriptor";
 import { connectKernel, type KernelClient } from "./kernel-client";
 import { RunDiagnostics, describeRun } from "./kernel-diagnostics";
-import { ShardProgress, mergeChunks, poolSize } from "./kernel-pool";
+import {
+  ShardProgress,
+  mergeChunks,
+  poolSize,
+  type ChunkOutput,
+  type Shard,
+} from "./kernel-pool";
 import type { KernelProgressListener } from "./protocol";
 import { spawnKernelWorker } from "./spawn-worker";
-import type {
-  ComputeRequest,
-  ContourRequest,
-  ContourResult,
-  FootprintMaskRequest,
-  FootprintMaskResponse,
-  PropagationConfig,
-  ReceiverOutput,
-  TerrainInfo,
-  TransformRequest,
-  TransformResponse,
+import {
+  requestReceiverCount,
+  type AnyComputeRequest,
+  type ContourRequest,
+  type ContourResult,
+  type FootprintMaskRequest,
+  type FootprintMaskResponse,
+  type GridComputeRequest,
+  type PropagationConfig,
+  type ReceiverIndicators,
+  type ReceiverOutput,
+  type TerrainInfo,
+  type TransformRequest,
+  type TransformResponse,
 } from "./types";
 
 export type { KernelProgressListener } from "./protocol";
@@ -55,9 +64,20 @@ export interface AconiqKernel {
    * export still takes exactly one argument.
    */
   rls19Road(
-    req: ComputeRequest,
+    req: AnyComputeRequest,
     onProgress?: KernelProgressListener,
   ): Promise<ReceiverOutput[]>;
+  /**
+   * {@link rls19Road} for a run whose receivers are an automatic grid, sent
+   * as six numbers instead of one object per receiver, and answered with the
+   * indicators alone, in receiver order — the caller names every receiver
+   * from the same descriptor (`@/model/receiver-grid`), so the kernel echoes
+   * none back. Same pool, same walk, same numbers.
+   */
+  rls19RoadGrid(
+    req: GridComputeRequest,
+    onProgress?: KernelProgressListener,
+  ): Promise<ReceiverIndicators[]>;
   /**
    * What an {@link rls19Road} run of `req` would cost in time, before it is
    * started: the kernel prepares the scene the run would prepare and times a
@@ -68,7 +88,7 @@ export interface AconiqKernel {
    * over, so the wall time is the one the run would take here.
    */
   estimate(
-    req: ComputeRequest,
+    req: AnyComputeRequest,
     options?: EstimateOptions,
   ): Promise<RunEstimate>;
   /**
@@ -291,13 +311,16 @@ async function loadKernel(): Promise<AconiqKernel> {
  */
 function retainingTerrain(client: KernelClient): AconiqKernel {
   return {
-    rls19Road: (req, onProgress) => runOverPool(client, req, onProgress),
+    rls19Road: (req, onProgress) =>
+      runOverPool(client, req, listedRun(req), onProgress),
+    rls19RoadGrid: (req, onProgress) =>
+      runOverPool(client, req, gridRun(req), onProgress),
     estimate: (req, options) =>
       client.estimate(req, {
         ...options,
         workers:
           options?.workers ??
-          poolSize(navigator.hardwareConcurrency, req.receivers.length),
+          poolSize(navigator.hardwareConcurrency, requestReceiverCount(req)),
       }),
     transform: (req) => client.transform(req),
     maskFootprints: (req) => client.maskFootprints(req),
@@ -333,12 +356,16 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
  * so a failed or cancelled run does not leave workers computing results
  * nobody will read.
  */
-async function runOverPool(
+async function runOverPool<T>(
   client: KernelClient,
-  req: ComputeRequest,
+  req: AnyComputeRequest,
+  run: PoolRun<T>,
   onProgress?: KernelProgressListener,
-): Promise<ReceiverOutput[]> {
-  const size = poolSize(navigator.hardwareConcurrency, req.receivers.length);
+): Promise<T[]> {
+  const size = poolSize(
+    navigator.hardwareConcurrency,
+    requestReceiverCount(req),
+  );
 
   // Started before the pool is, so the elapsed time the console reports is
   // the time the user has actually been waiting — worker startup and scene
@@ -357,7 +384,7 @@ async function runOverPool(
   };
 
   try {
-    const outputs = await computeOverPool(client, req, size, report);
+    const outputs = await computeOverPool(client, req, run, size, report);
     diagnostics.finished();
 
     return outputs;
@@ -368,17 +395,58 @@ async function runOverPool(
   }
 }
 
+/**
+ * How one kind of run is asked of a worker: whole, or one shard of it. The
+ * pool, its fallback and its merge are the same for a receiver list and for a
+ * grid descriptor; only the export each calls, and what its outputs hold,
+ * differ.
+ */
+interface PoolRun<T> {
+  whole(client: KernelClient, report: KernelProgressListener): Promise<T[]>;
+  shard(
+    client: KernelClient,
+    shard: Shard,
+    report: KernelProgressListener,
+  ): Promise<ChunkOutput<T>[]>;
+}
+
+/**
+ * A run answered with its receivers echoed: `rls19Road`, and `rls19RoadShard`
+ * per shard. What a run that lists its receivers takes, and the reference a
+ * grid descriptor is held to.
+ */
+function listedRun(req: AnyComputeRequest): PoolRun<ReceiverOutput> {
+  return {
+    whole: (client, report) => client.rls19Road(req, report),
+    shard: (client, shard, report) => client.rls19RoadShard(req, shard, report),
+  };
+}
+
+/** A grid run: `rls19RoadGrid`, whole or per shard, indicators only. */
+function gridRun(req: GridComputeRequest): PoolRun<ReceiverIndicators> {
+  return {
+    whole: async (client, report) =>
+      mergeChunks(
+        await client.rls19RoadGridChunks(req, undefined, report),
+        requestReceiverCount(req),
+      ),
+    shard: (client, shard, report) =>
+      client.rls19RoadGridChunks(req, shard, report),
+  };
+}
+
 /** {@link runOverPool} without the narration: pick a pool, use it, merge. */
-async function computeOverPool(
+async function computeOverPool<T>(
   client: KernelClient,
-  req: ComputeRequest,
+  req: AnyComputeRequest,
+  run: PoolRun<T>,
   size: number,
   report: KernelProgressListener,
-): Promise<ReceiverOutput[]> {
-  const total = req.receivers.length;
+): Promise<T[]> {
+  const total = requestReceiverCount(req);
 
   if (size <= 1) {
-    return client.rls19Road(req, report);
+    return run.whole(client, report);
   }
 
   // Zero of n once, for the run — not once per shard. Each shard reporting
@@ -396,14 +464,14 @@ async function computeOverPool(
   } catch {
     // A pool that will not spawn is not a failed run. One worker is already
     // there and can do the whole thing, slower.
-    return client.rls19Road(req, report);
+    return run.whole(client, report);
   }
 
   try {
     const settled = await Promise.all(
       clients.map((shardClient, index) =>
-        shardClient.rls19RoadShard(
-          req,
+        run.shard(
+          shardClient,
           { index, count: clients.length },
           progress.forShard(index),
         ),
