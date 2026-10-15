@@ -18,9 +18,11 @@ func TestRunCISafeSuiteProducesPassingReport(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	// The status is the comparison against snapshots that hold amd64's bits;
-	// the run completing and the task count hold on any machine.
-	if report.Status != "passed" && !golden.SkipAMD64Bits(t) {
+	// The snapshots are compared within a tolerance, so they hold on arm64 as
+	// well as on amd64: what is left between the two is rounding, and no
+	// geometric decision in the suite turns on it any more (b5 did, through a
+	// collinear rubber band; see geo.HullCollinearToleranceM).
+	if report.Status != "passed" {
 		t.Errorf("expected status=passed, got %q", report.Status)
 
 		for _, task := range report.Tasks {

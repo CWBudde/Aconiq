@@ -64,6 +64,75 @@ func TestUpperConvexHull(t *testing.T) {
 			want: []int{-1, -1},
 		},
 		{
+			// Schall 03 CI-safe b5: a source at 4 m and barrier tops at 5 m and
+			// 6 m, ten metres apart, stand on one line for every ray. An arm64
+			// build rounded the nearer top a few ulps above it, and the band
+			// rested on it there and nowhere else.
+			name: "a point a rounding above the chord is dropped",
+			given: []geo.HullPoint{
+				{Dist: 0, Height: 4, Index: -1},
+				{Dist: 10, Height: 5.000000000000002, Index: 0},
+				{Dist: 20, Height: 6, Index: 1},
+				{Dist: 40, Height: 3.5, Index: -1},
+			},
+			want: []int{-1, 1, -1},
+		},
+		{
+			name: "a point just beyond the tolerance above the chord is kept",
+			given: []geo.HullPoint{
+				{Dist: 0, Height: 4, Index: -1},
+				{Dist: 10, Height: 5 + 2*geo.HullCollinearToleranceM, Index: 0},
+				{Dist: 20, Height: 6, Index: 1},
+				{Dist: 40, Height: 3.5, Index: -1},
+			},
+			want: []int{-1, 0, 1, -1},
+		},
+		{
+			// The tolerance is vertical, so stretching the distance axis — as
+			// ISO 9613-2 does to measure perpendicular to an edge — does not
+			// move a point across it.
+			name: "the tolerance does not change with the distance scale",
+			given: []geo.HullPoint{
+				{Dist: 0, Height: 4, Index: -1},
+				{Dist: 1000, Height: 5 + 0.5*geo.HullCollinearToleranceM, Index: 0},
+				{Dist: 2000, Height: 6, Index: 1},
+				{Dist: 4000, Height: 3.5, Index: -1},
+			},
+			want: []int{-1, 1, -1},
+		},
+		{
+			// Thinning chord by chord while building the hull dropped the
+			// first point as 0.85 µm above (0,0)→(2,0.9e-6), then the second
+			// as 0.9 µm above (0,0)→(3,0) — and lost a point that stands
+			// 1.3 µm above the band that results.
+			name: "the tolerance is held against the resulting band, not each chord on the way",
+			given: []geo.HullPoint{
+				{Dist: 0, Height: 0, Index: -1},
+				{Dist: 1, Height: 1.3e-6, Index: 0},
+				{Dist: 2, Height: 0.9e-6, Index: 1},
+				{Dist: 3, Height: 0, Index: -1},
+			},
+			want: []int{-1, 0, -1},
+		},
+		{
+			// A shallow arc over a long section: neighbouring points stand
+			// hundredths of a micrometre above one another's chords, but the
+			// middle of the arc stands 3 µm above the band from end to end,
+			// and each half of it no more than 0.75 µm above its own chord.
+			name: "a near-collinear arc keeps the point the band clears by more than the tolerance",
+			given: func() []geo.HullPoint {
+				points := []geo.HullPoint{{Dist: 0, Height: 0, Index: -1}}
+
+				for i := 1; i < 20; i++ {
+					x := float64(i) / 20
+					points = append(points, geo.HullPoint{Dist: 100 * x, Height: 12e-6 * x * (1 - x), Index: i - 1})
+				}
+
+				return append(points, geo.HullPoint{Dist: 100, Height: 0, Index: -1})
+			}(),
+			want: []int{-1, 9, -1},
+		},
+		{
 			name: "the inner of two peaks is hidden by the outer pair",
 			given: []geo.HullPoint{
 				{Dist: 0, Height: 0, Index: -1},

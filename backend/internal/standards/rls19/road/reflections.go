@@ -328,6 +328,32 @@ func (f *reflectorField) exclusion(rp *reflectedPath) reflectorExclusion {
 	}
 }
 
+// reflectionEndToleranceM is how far past either end of a wall a specular
+// point may land and still be a reflection off that wall.
+//
+// A specular point exactly on a wall's end is not a rare coincidence: a
+// symmetric scene on whole metres, with 1 m Teilstücke, puts it on a building
+// corner for the Teilstück whose midpoint is a half metre (CI-safe K3 and K4).
+// Whether the exact test then accepts the path depends on which way the last
+// rounding of the midpoint, the image or the crossing fell — an arm64 build,
+// which fuses multiply-adds, dropped those paths and moved K3 by 0.3 dB. A
+// tenth of a micrometre settles every such rounding at UTM magnitudes, where a
+// coordinate's last place is a nanometre, and moves no acoustic result.
+//
+// The receiver-side wedges still admit every path this accepts (see "Why it is
+// exact" in reflections_receiver.go). Lengthening a wall by δ moves the ray
+// through its end by at most δ at the wall, so the error the wedge margins
+// must cover grows from ε to ε + δ; they were sized for ε = 1e-7 m with a
+// factor of five to spare, and with δ = 1e-7 m a factor of 2.5 remains.
+const reflectionEndToleranceM = 1e-7
+
+// crossing is the reflection search's acceptance test: where the ray
+// from → to crosses w, counting a point within reflectionEndToleranceM past
+// either end as on it, and whether it does.
+func (w *wallSeg) crossing(from, to geo.Point2D) (geo.Point2D, bool) {
+	return geo.SegmentCrossingWithin(w.a, w.b, from, to, reflectionEndToleranceM)
+}
+
 // mirrorPoint mirrors p across the infinite line defined by segment a→b.
 func mirrorPoint(p, a, b geo.Point2D) geo.Point2D {
 	dx := b.X - a.X
@@ -437,7 +463,7 @@ func (f *reflectorField) appendFirstOrder(
 		}
 
 		img := mirrorPoint(source, w.a, w.b)
-		p, _, ok := geo.LineStringIntersectsSegment([]geo.Point2D{w.a, w.b}, img, receiver)
+		p, ok := w.crossing(img, receiver)
 
 		if !ok {
 			continue
@@ -534,15 +560,27 @@ func secondOrderPath(
 	img2 := mirrorPoint(img1, w2.a, w2.b) // image after 2nd bounce
 
 	// Check: S''→R crosses wall 2 (gives 2nd reflection point P2).
-	p2, _, ok2 := geo.LineStringIntersectsSegment([]geo.Point2D{w2.a, w2.b}, img2, receiver)
+	p2, ok2 := w2.crossing(img2, receiver)
 	if !ok2 {
 		return reflectedPath{}, false
 	}
 
 	// Check: P2→S' crosses wall 1 (gives 1st reflection point P1 and
 	// confirms the 1st leg is geometrically valid).
-	p1, _, ok1 := geo.LineStringIntersectsSegment([]geo.Point2D{w1.a, w1.b}, p2, img1)
+	p1, ok1 := w1.crossing(p2, img1)
 	if !ok1 {
+		return reflectedPath{}, false
+	}
+
+	// Two bounces at one point are not a double reflection. A ray through the
+	// corner two walls share passes both tests above, in either wall order,
+	// with P1 and P2 both on the corner — at a building's outer corner, where
+	// no two-bounce path exists at all. Whether each order passed hung on the
+	// last rounding of the corner's crossing parameters, so the same scene
+	// counted none, one or both (CI-safe K3, a Teilstück at x = 7.5). Within
+	// the end tolerance of each other the bounces are one point, and the path
+	// is refused in both orders.
+	if dist2D(p1, p2) <= reflectionEndToleranceM {
 		return reflectedPath{}, false
 	}
 

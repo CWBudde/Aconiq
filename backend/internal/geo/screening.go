@@ -38,8 +38,38 @@ type HullPoint struct {
 	Index  int
 }
 
+// HullCollinearToleranceM is how far above the line between its neighbours a
+// point must stand, measured vertically, for the rubber band to rest on it.
+//
+// A point on the line is a tie the band may resolve either way, and the
+// standards' diffraction terms are not continuous across it: a second edge
+// switches multiple diffraction on, which in Schall 03 Gl. 25/26 and RLS-19
+// raises A_bar by up to 10 lg 3 at once. A cross-section with an edge exactly
+// on the line is not rare — a source and two barrier tops at heights in
+// arithmetic step stand on one line for every ray across them — and the
+// computed cross product of such a triple is zero only as long as every
+// rounding falls the same way. One rounding difference anywhere upstream (a
+// fused multiply-add on arm64, a refactored midpoint) moved it to either side,
+// and A_bar with it. A point within this tolerance of the band is therefore
+// dropped, as an exactly collinear one always was.
+//
+// The tolerance is held against the band that results, not against the chords
+// the hull passes through while it is being built: dropping points one chord
+// at a time would let deviations add up along a near-collinear chain, until a
+// point well clear of the final band went with the rest. See
+// thinUpperConvexHull.
+//
+// It is a vertical distance on purpose: rescaling the distance axis, as
+// ISO 9613-2 does to measure perpendicular to an edge, scales the cross
+// product and the chord's run alike and leaves the selection unchanged. A
+// micrometre is far beyond the rounding of any coordinate the engine computes
+// in, and far below anything a barrier height is surveyed to.
+const HullCollinearToleranceM = 1e-6
+
 // UpperConvexHull returns the upper convex hull of points already sorted by
-// Dist, by Andrew's monotone chain run over the upper side only.
+// Dist, by Andrew's monotone chain run over the upper side only, with every
+// vertex that stands no more than HullCollinearToleranceM above the resulting
+// band thinned out.
 //
 // A point is dropped when it lies on or below the line between its
 // neighbours, which is exactly the rubber band laid over the cross-section:
@@ -53,7 +83,7 @@ func UpperConvexHull(points []HullPoint) []HullPoint {
 }
 
 // appendUpperConvexHull is UpperConvexHull into a caller's buffer: the hull of
-// points, which must number more than two, is appended to hull — pass a
+// points, which must number more than two, is written to hull — pass a
 // zero-length slice — and returned.
 func appendUpperConvexHull(hull, points []HullPoint) []HullPoint {
 	n := len(points)
@@ -78,7 +108,79 @@ func appendUpperConvexHull(hull, points []HullPoint) []HullPoint {
 		hull = append(hull, points[i])
 	}
 
-	return hull
+	return thinUpperConvexHull(hull)
+}
+
+// droppedHullIndex marks a vertex thinUpperConvexHull has dropped. Bookends
+// carry -1 and candidates their index, so no point ever carries it.
+const droppedHullIndex = math.MinInt
+
+// thinUpperConvexHull drops, from an exact upper hull, every vertex that stands
+// no more than HullCollinearToleranceM above the band through the vertices it
+// keeps, and returns the hull compacted in place.
+//
+// It works top-down, as Douglas–Peucker does: between two kept vertices it
+// finds the one that stands highest above their chord, keeps it if it clears
+// the tolerance and splits there, and otherwise drops everything in between.
+// So every dropped vertex is measured against the very chord of the band that
+// passes over it, and nothing accumulates. A kept vertex cleared the chord it
+// was tested against; the neighbours it ends up with stand above that chord,
+// so it may stand closer to theirs, but the band still rests on it — it is a
+// vertex of the exact hull, never a point the band would pass under.
+//
+// A point exactly on a chord is dropped by the exact hull already, and one a
+// rounding above it here; both leave the same band.
+func thinUpperConvexHull(hull []HullPoint) []HullPoint {
+	if len(hull) <= 2 {
+		return hull
+	}
+
+	markDroppedHullVertices(hull, 0, len(hull)-1)
+
+	kept := hull[:0]
+
+	for _, point := range hull {
+		if point.Index != droppedHullIndex {
+			kept = append(kept, point)
+		}
+	}
+
+	return kept
+}
+
+// markDroppedHullVertices marks the vertices strictly between hull[lo] and
+// hull[hi], both kept, that the band between them does not rest on.
+func markDroppedHullVertices(hull []HullPoint, lo, hi int) {
+	if hi-lo < 2 {
+		return
+	}
+
+	a, c := hull[lo], hull[hi]
+
+	// -cross is h·(c.Dist-a.Dist), h the height of a vertex above the chord
+	// a→c at its distance; the run is the same for every vertex here, so the
+	// highest vertex has the largest -cross. The first of equals wins.
+	best, bestRise := -1, 0.0
+
+	for k := lo + 1; k < hi; k++ {
+		b := hull[k]
+
+		rise := (b.Height-a.Height)*(c.Dist-a.Dist) - (b.Dist-a.Dist)*(c.Height-a.Height)
+		if best < 0 || rise > bestRise {
+			best, bestRise = k, rise
+		}
+	}
+
+	if bestRise > HullCollinearToleranceM*(c.Dist-a.Dist) {
+		markDroppedHullVertices(hull, lo, best)
+		markDroppedHullVertices(hull, best, hi)
+
+		return
+	}
+
+	for k := lo + 1; k < hi; k++ {
+		hull[k].Index = droppedHullIndex
+	}
 }
 
 // ObstructsLineOfSight reports whether an obstacle standing topHeightM high at

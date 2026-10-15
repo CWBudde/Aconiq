@@ -256,6 +256,44 @@ func rayEdgeT(dx1, dy1, dx2, dy2, dx3, dy3 float64) (float64, bool) {
 	return t, min(t*(1-t), uScore, math.Abs(denom)-1e-12) >= 0
 }
 
+// SegmentCrossingWithin returns where the segment p1→p2 crosses the edge a→b,
+// counting a crossing up to tolM beyond either end of the edge as on it, and
+// whether there is one.
+//
+// It is SegmentIntersection(p1, p2, a, b) with the edge lengthened by tolM at
+// each end: the same arithmetic, so a crossing both accept comes out with the
+// same bits. The lengthening is for a caller whose geometry puts crossings
+// exactly on an edge's end — a ray through a building corner — where the
+// verdict otherwise hangs on which way the last rounding of an input fell.
+// Unlike SegmentIntersection it rejects a NaN parameter.
+func SegmentCrossingWithin(a, b, p1, p2 Point2D, tolM float64) (Point2D, bool) {
+	dx1 := p2.X - p1.X
+	dy1 := p2.Y - p1.Y
+	dx2 := b.X - a.X
+	dy2 := b.Y - a.Y
+
+	denom := dx1*dy2 - dy1*dx2
+	if math.Abs(denom) < 1e-12 {
+		return Point2D{}, false // parallel or coincident
+	}
+
+	dx3 := a.X - p1.X
+	dy3 := a.Y - p1.Y
+
+	t := (dx3*dy2 - dy3*dx2) / denom
+	u := (dx3*dy1 - dy3*dx1) / denom
+	slack := tolM / math.Hypot(dx2, dy2)
+
+	if !(t >= 0 && t <= 1 && u >= -slack && u <= 1+slack) {
+		return Point2D{}, false
+	}
+
+	return Point2D{
+		X: p1.X + t*dx1,
+		Y: p1.Y + t*dy1,
+	}, true
+}
+
 // BBoxFromPoints computes a bbox from a point slice.
 func BBoxFromPoints(points []Point2D) (BBox, bool) {
 	if len(points) == 0 {

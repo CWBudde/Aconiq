@@ -16,6 +16,12 @@ import (
 // tests in reflections_receiver_test.go compare the two to the bit — so the
 // reference must stay as it was written and must not be "fixed" to agree.
 //
+// What it shares with the production search is the acceptance test of a
+// single bounce — wallSeg.crossing, as it already shared secondOrderPath. That
+// test is the definition of a reflection, not part of the search, and it
+// changed for both at once when it learned to accept a specular point a
+// rounding past a wall's end (reflectionEndToleranceM).
+//
 // One known way the two can legitimately differ, documented in
 // reflections_receiver.go under "The one way it can differ": this reference
 // prunes second bounces with a source-side shadow whose fixed 1 mm margin can
@@ -59,7 +65,7 @@ func (f *reflectorField) referenceFirstOrder(
 		}
 
 		img := mirrorPoint(source, w.a, w.b)
-		p, _, ok := geo.LineStringIntersectsSegment([]geo.Point2D{w.a, w.b}, img, receiver)
+		p, ok := w.crossing(img, receiver)
 
 		if !ok {
 			continue

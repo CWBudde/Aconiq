@@ -47,8 +47,8 @@ import (
 // order shadow is cast from, and for every admissible wall pair the light R''
 // the source must be shadowed from. A Teilstück then only has to ask, per
 // entry, whether it stands in one wedge — a handful of cross products — and
-// runs the unchanged exact search (mirror, LineStringIntersectsSegment,
-// secondOrderPath and Tabelle 8) on the few entries that admit it.
+// runs the unchanged exact search (mirror, wallSeg.crossing, secondOrderPath
+// and Tabelle 8) on the few entries that admit it.
 //
 // # Why it is exact
 //
@@ -61,7 +61,9 @@ import (
 // The old test is computed, not exact: its mirror images and crossing points
 // carry rounding of order ε — a few units in the last place of the coordinates,
 // ~1e-9 m at UTM magnitudes; the constants below assume ε ≤ 1e-7 m, a hundred
-// times that. A crossing found by SegmentIntersection may sit off its exact
+// times that. The test also accepts a crossing up to reflectionEndToleranceM
+// past a wall's end, which adds that much to ε and is covered the same way
+// (see the constant). A crossing found by SegmentIntersection may sit off its exact
 // position along the wall by ε/sin θ, θ the angle between ray and wall, which
 // is unbounded at grazing incidence. But the wedge is bounded by rays from the
 // light through the wall's endpoints, and moving a point along the wall by δ

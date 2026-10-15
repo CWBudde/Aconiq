@@ -30,16 +30,17 @@ func TestRunCISafeSuiteProducesPassingReport(t *testing.T) {
 		t.Fatalf("unexpected task counts: %#v", report)
 	}
 
-	// The status and the pass count are the comparison against snapshots that
-	// hold amd64's bits; everything else here holds on any machine.
-	if !golden.SkipAMD64Bits(t) {
-		if report.Status != "passed" {
-			t.Fatalf("expected passed report, got %#v", report)
-		}
+	// The snapshots are compared within a tolerance, so they hold on arm64 as
+	// well as on amd64: what is left between the two is rounding, and no
+	// geometric decision in the suite turns on it any more (K3 and K4 did,
+	// through specular points on building corners; see
+	// road.reflectionEndToleranceM).
+	if report.Status != "passed" {
+		t.Fatalf("expected passed report, got %#v", report)
+	}
 
-		if report.PassedCount != report.TaskCount {
-			t.Fatalf("unexpected task counts: %#v", report)
-		}
+	if report.PassedCount != report.TaskCount {
+		t.Fatalf("unexpected task counts: %#v", report)
 	}
 
 	if report.ReportPath == "" {

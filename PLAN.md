@@ -2292,23 +2292,24 @@ before the pages they protect are cut apart.
       it lazy would change the stored run format.
 - [x] **FMA fusion is caught in CI** (#107). The `go-arm64` job runs `just test-arm64` on
       `ubuntu-24.04-arm`: the whole suite, with only the comparisons against goldens that hold
-      amd64's bits left out (run digests, `city-levels.golden.json`, the CI-safe acceptance
-      suites) — the two-run agreement and the rest of those tests still run. It is not a required
+      amd64's bits left out (run digests, `city-levels.golden.json`) — the two-run agreement and
+      the rest of those tests still run. It is not a required
       check. Two constraints stay live. **A new golden that holds one machine's bits goes behind
       `golden.SkipAMD64Bits`**, or it fails the job; everything else must state a fact that holds
       on any architecture. **`GOAMD64=v3` is not a substitute**: Go 1.26 fuses only `x*y + z`
       there, where arm64 also fuses the subtracting and negated forms and runs different math
       assembly.
-- [ ] **An arm64 build computes different levels, by up to 0.3 dB.** Measured on darwin/arm64
-      (go1.26.9) against the CI-safe snapshots: RLS-19 test-20 receivers off by up to 0.297 dB
-      (75.749 → 75.452) against a 1e-6 tolerance, Schall 03 `b5_reflective_barrier` off by
-      0.080 dB. That is not ulps: a fused multiply-add flips a discrete decision somewhere (a
-      path admitted or shielded). It is the compiler's fusion in this module's code, not the
-      stdlib — with `-gcflags=all=-d=fmahash=n` both suites and the city levels pass on arm64,
-      and only the digests still differ, by ulps. So a macOS-arm64 `aconiq` and the amd64 one
-      (and browser mode, whose wasm never fuses) can assess the same model differently. Find the
-      flipping comparisons and decide the remedy — `float64(...)`-proofing them, or building
-      release binaries without fusion — before trusting an arm64 build's levels.
+- [x] **An arm64 build computes the same CI-safe levels as amd64** (#108). The 0.3 dB was no
+      rounding drift: fused multiply-adds moved inputs by one ulp across three knife edges that
+      round-coordinate scenes sit on exactly — a collinear rubber band, a specular point on a
+      facade end, and a two-bounce path through an outer corner (which was spurious on amd64 too,
+      +0.317 dB on the parity fixture). Each decision now carries a tolerance:
+      `geo.HullCollinearToleranceM` (1 µm, vertical) and `reflectionEndToleranceM` (0.1 µm),
+      the second also refusing coincident bounce points. Two constraints stay live.
+      **`reflectionEndToleranceM` must stay inside the receiver-side wedge budget**, which it
+      uses half of (see its comment). **A golden that holds amd64's bits is regenerated in a
+      linux/amd64 container**, never on arm64; the container reproduces `main`'s goldens,
+      digests included. Release binaries still fuse on arm64, so the last bits differ there.
 - [x] **Schall 03 writes progress, Schall 03 and ISO 9613-2 stop inside a receiver, and the
       frontend listens to `/api/v1/events`** (#102). Three constraints stay live.
       **Schall 03 logs through `runLog` as it goes**, not into a buffer appended afterwards, so

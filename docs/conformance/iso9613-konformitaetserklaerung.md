@@ -66,7 +66,7 @@ ISO 9613-2:2024 (Second edition) liegt als Vorabansicht vor, ist aber nicht Impl
 - [x] Gl. 18 — Meteorologischer Korrekturfaktor K_met
 - [x] Begrenzung D_z ≤ 20 dB (einfach) bzw. ≤ 25 dB (doppelt)
 - [ ] Gl. 13 — Seitliche Beugung um vertikale Kanten (Abschnitt 7.4.3)
-- [x] Geometrische Barriereerkennung (Strahl-Barriere-Verschneidung); die Beugungskanten werden nach der Gummibandmethode aus der oberen konvexen Hülle des Vertikalschnitts ausgewählt
+- [x] Geometrische Barriereerkennung (Strahl-Barriere-Verschneidung); die Beugungskanten werden nach der Gummibandmethode aus der oberen konvexen Hülle des Vertikalschnitts ausgewählt; eine Kante weniger als 1 µm über der Geraden zwischen ihren Nachbarn gilt als auf ihr liegend und wird nicht gewählt (`geo.HullCollinearToleranceM`)
 
 ### Reflexionen (Abschnitt 7.5)
 
