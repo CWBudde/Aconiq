@@ -21,7 +21,10 @@ What the backend offers today, and what it does not, shaped every decision here:
 
 - The local HTTP API (`api/httpv1`) already owns request validation, body caps, the
   `--experimental` gate, run spawning and supervision, cancellation and the JSON error envelope.
-  `httpv1.NewHandler(store, clock)` (`api/httpv1/handler.go`) returns an ordinary `http.Handler`.
+  `httpv1.NewServeHandler` (`api/httpv1/handler.go`) builds the handler `aconiq serve` mounts: it
+  carries the standards registry and the run supervisor, and its `StopRuns` interrupts and settles
+  the runs it started. The plain `NewHandler` has neither — its `/api/v1/standards` answers 503
+  `standards_unavailable` — so it is not the one to build on.
 - Model editing is **whole-model replace only**: `POST /api/v1/model` (`handleModelSave`,
   `api/httpv1/model.go`) runs `modelgeojson.NormalizeWithCRS` and `modelgeojson.Validate`, then
   `projectfs.Store.SaveModel`. Nothing adds or changes a single feature, and the endpoint takes no
@@ -43,9 +46,12 @@ What the backend offers today, and what it does not, shaped every decision here:
 - **stdout carries JSON-RPC and nothing else; logs go to stderr.** This is the stream contract every
   command already keeps (AGENTS.md "Streams", `app/cli/stdout_contract_test.go`). Here it is
   load-bearing: one stray log line on stdout corrupts the protocol stream.
-- **Each tool is a thin adapter over the `httpv1.Handler`, called in-process.** The adapter builds
-  an `http.Request`, serves it through the handler returned by `httpv1.NewHandler`, and translates
-  the response. It sets the headers the handler's security middleware requires (`Host` on
+- **Each tool is a thin adapter over the `httpv1` handler, called in-process.** The adapter builds
+  an `http.Request`, serves it through the handler `httpv1.NewServeHandler` returns — with the
+  standards registry, so `list_standards` works and the scaffold gate is the API's own — and
+  translates the response. If a serve-only option (CORS origins, listen address, token) gets in the
+  way, a sibling constructor with the same registry and supervisor is added; `NewHandler` is not
+  used. It sets the headers the handler's security middleware requires (`Host` on
   loopback, `X-Aconiq-Client` on writes) itself. That way:
   - request validation (`createRunRequest.validate`), body caps (`api/httpv1/security.go`), the
     scaffold opt-in (`experimentalOptInGate`), run supervision (`runSupervisor`), cancellation and
@@ -56,9 +62,10 @@ What the backend offers today, and what it does not, shaped every decision here:
   `details`, `hint`) onto an MCP tool error. It holds no rule of its own about models, runs or
   standards.
 - **Runs live as long as the `aconiq mcp` process.** Runs it started are its own to cancel, as with
-  `aconiq serve` (409 `run_not_owned` otherwise). At startup it settles runs a previous process
-  left open, with `projectfs.Store.FailInterruptedRuns`, exactly as `serve` does
-  (`app/cli/serve.go`).
+  `aconiq serve` (409 `run_not_owned` otherwise). When stdin reaches EOF or the process receives
+  SIGINT/SIGTERM, it calls `StopRuns` before exiting, so no child outlives it unsettled — the same
+  shutdown order `serve` uses (`shutdownServer`, `app/cli/serve.go`). At startup it settles runs a
+  previous process left open, with `projectfs.Store.FailInterruptedRuns`, exactly as `serve` does.
 
 ### Tool and resource boundaries
 
@@ -90,19 +97,21 @@ because a client is free to ignore annotations.
 
 **Destructive — `--allow-writes` and a matching `confirm` argument:**
 
-| Tool             | Backed by                     | `confirm` must equal                 |
-| ---------------- | ----------------------------- | ------------------------------------ |
-| `save_model`     | `POST /api/v1/model`          | the hash of the model being replaced |
-| `delete_run`     | `DELETE /api/v1/runs/{id}`    | the run id                           |
-| `import_terrain` | `POST /api/v1/import/terrain` | the literal `replace-terrain`        |
+| Tool             | Backed by                     | `confirm` must equal                    |
+| ---------------- | ----------------------------- | --------------------------------------- |
+| `save_model`     | `POST /api/v1/model`          | the hash of the model being replaced    |
+| `delete_run`     | `DELETE /api/v1/runs/{id}`    | the run id                              |
+| `import_terrain` | `POST /api/v1/import/terrain` | the current terrain's digest, or `none` |
 
 - Without `--allow-writes`, the state-changing and destructive tools are **not listed at all**, so an
   agent cannot plan around tools it may not call. A server started read-only says so in its
   instructions.
-- `confirm` is a value the agent must have **read** first, not a boolean it can set blindly. For
-  `save_model` it is the hash `get_model` returned, so it also acts as an optimistic lock: a model
-  that changed since the agent read it is refused, not overwritten. The check has to happen under
-  the manifest lock in the save path; see Consequences.
+- `confirm` is a value the agent must have **read** first, not a boolean or a fixed word it can set
+  blindly, and it binds the call to the state the agent saw. For `save_model` it is the hash
+  `get_model` returned, so it also acts as an optimistic lock: a model that changed since the agent
+  read it is refused, not overwritten. For `import_terrain` it is the SHA-256 of the terrain being
+  replaced, or `none` when the project has none, which `project_status` has to report; see
+  Consequences for both.
 - Feature-level edits (add or move one source, change one receiver height) are composed by the
   agent as `get_model` → change → `save_model`. Validation runs on every save, and the issues
   (`modelgeojson.ValidationIssue`: `code`, `feature_id`, `message`, split into errors and warnings)
@@ -142,9 +151,16 @@ metadata plus a resource reference, never inline in a tool result.
 5. **The evidence-tier gate is unchanged.** A scaffold-tier standard is refused without
    `experimental: true`, by the same `experimentalOptInGate` the API uses, and the refusal reaches the
    agent as a tool error with the API's own message.
-6. **No silent assumptions.** Tool inputs are validated, never defaulted or corrected behind the
-   agent's back. Parameter defaults come from the descriptor and are stated in `list_standards`;
-   anything the backend refuses is returned as an error with its `code` and `hint`.
+6. **No silent assumptions.** Tool inputs are validated, never corrected behind the agent's back,
+   and anything the backend refuses is returned as an error with its `code` and `hint`. The HTTP
+   path leaves an omitted field out of the `aconiq run` argv so the CLI applies its default
+   (`runCommandArgs`, `api/httpv1/run_executor.go`); the MCP layer does not inherit that. Its
+   `start_run` and `estimate_run` schemas **require** `scenario_id`, `standard_id`,
+   `standard_version`, `standard_profile` and `receiver_mode`, so the choices that select a method
+   are always the agent's own. Run parameters may be omitted: their defaults are declared in the
+   descriptor, which `list_standards` returns, and the resolved values — defaults included, as
+   `NormalizeAndValidate` fills them — are recorded in `provenance.json`'s `parameters`, which the
+   agent can read back. The model is always the project's saved model, the one `get_model` shows.
 7. **Audit log.** Every state-changing or destructive call is appended to
    `.noise/logs/mcp-audit.jsonl` as one JSON object: UTC timestamp, tool name, a SHA-256 digest of
    the canonicalised arguments, the outcome (`ok` or the error `code`), and the affected run id or
@@ -157,6 +173,12 @@ Tool results are produced by the existing JSON encoders, with sorted map keys an
 fields beyond those the project already records (`generated_at`, `created_at`, run progress
 timestamps). Two identical calls against an unchanged project return byte-identical results, which
 is what makes the integration tests in SL-1.4 golden-testable.
+
+**`estimate_run` is the exception, by design.** It times a probe of the run's own kernel, so its
+answer carries measured values — the probe's `elapsed_s` and `prepare_s` (`runestimate.ProbeReport`)
+and the wall and CPU bands derived from them — that differ between two calls on an unchanged
+project. Its tests assert the stable fields (counts, receivers probed, budget) and the shape of the
+timing fields, not their values.
 
 ### Exposed fields
 
@@ -225,8 +247,15 @@ The implementation phases inherit these gaps, which the boundaries above make ne
 - **Scenarios** (SL-1.2): listing, creating and updating a scenario needs a `projectfs` path and an
   API route first; the MCP tools then wrap the route like every other.
 - **Optimistic lock on model save** (SL-1.2): `POST /api/v1/model` needs an expected-hash field,
-  checked under `lockManifest`, so the `confirm` hash is compared atomically with the write. A check
-  in the MCP layer alone would race a concurrent `aconiq serve`.
+  and the compare has to be atomic with the write. Today `projectfs.Store.SaveModel` writes the
+  normalized model, the dump and the validation report **before** it takes `LockManifest`, so a
+  check under the lock alone would still let a refused or racing save overwrite the model files.
+  The store has to own the compare-and-write: stage the files, then compare the expected hash and
+  move them into place under the same lock. A check in the MCP layer alone would also race a
+  concurrent `aconiq serve`.
+- **Terrain digest** (SL-1.2): `import_terrain`'s `confirm` needs the current terrain's SHA-256 (or
+  `none`) on `project_status`; nothing reports it today. The replace has the same compare-and-write
+  requirement as the model save.
 - **Provenance over the API** (SL-1.2): `aconiq://runs/{id}/provenance` needs a route that serves
   `provenance.json`; today nothing does.
 - **Build identity in provenance** (SL-1.2): provenance records `tool_version` but not the commit or
