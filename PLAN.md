@@ -2784,10 +2784,9 @@ Distinct from Priority 8, which is correctness. These are genuinely optional.
 - [ ] Define map-layer performance thresholds and tile-fallback triggers.
 - [ ] Define the accessibility baseline for map-heavy interactions.
 
-
 ---
 
-# Gate 5 — SuedLink construction-noise interoperability (proposed)
+# Gate 4 — SuedLink construction-noise interoperability (proposed)
 
 This is a **proposed** workstream, not an assertion that the referenced functionality is complete or that AVV Baulärm conformity has been established. It follows the existing correctness, legal, CRS and interoperability gates. Each phase is tracked by its own GitHub issue and may be implemented independently where dependencies permit. For the Springe–Göttingen pilot, prefer EPSG:25832 for metric geometry and record source provenance. Existing generic GeoPackage, GeoTIFF and LGLN LoD2 import capabilities should be reused, not duplicated.
 
@@ -2798,10 +2797,12 @@ This is a **proposed** workstream, not an assertion that the referenced function
 ### Subphase SL-1.1 — Research and specification
 
 - [ ] Define tool/resource boundaries and security policy
+- [ ] Decide which standards, units, CRS and provenance fields the tools expose to the agent
 
 ### Subphase SL-1.2 — Implementation
 
 - [ ] Expose project, scenario, source and receiver discovery and editing tools
+- [ ] Expose applicable standards, units, CRS and provenance as resources or tool results
 
 ### Subphase SL-1.3 — Integration and validation
 
@@ -2810,6 +2811,8 @@ This is a **proposed** workstream, not an assertion that the referenced function
 ### Subphase SL-1.4 — Evidence and documentation
 
 - [ ] Add stdio transport, deterministic outputs, audit logging and integration tests
+- [ ] Cover tool schemas and input validation with automated tests
+- [ ] Document setup, available tools and example prompts in the README
 
 ## Phase SL-2 — AVV Baulärm assessment ([#112](https://github.com/CWBudde/Aconiq/issues/112))
 
@@ -2930,7 +2933,17 @@ This is a **proposed** workstream, not an assertion that the referenced function
 ### Subphase SL-7.4 — Evidence and documentation
 
 - [ ] Detect lossy/unsupported attributes and validate a round-trip sample
+
 ## Pilot acceptance and dependencies
+
+Phase ordering:
+
+- **No prerequisites:** SL-1 (#111), SL-2 (#112), SL-3 (#113), SL-4 (#114) and SL-5 (#115) can start in parallel.
+- **SL-6 (#116) after SL-3 (#113):** chainage utilities can be developed against any line, but the pilot scenarios need the validated route alignment.
+- **SL-7 (#117) after SL-2 (#112), SL-3 (#113) and SL-6 (#116):** the export carries the route geometry, the phased construction scenarios and their assessment attributes, so its mapping is defined last.
+- **Pilot acceptance after all phases:** the checks below exercise every phase together.
+
+Acceptance checks:
 
 - [ ] Validate a small Springe–Göttingen route segment against an authoritative source (#113).
 - [ ] Load terrain and buildings through the existing import paths; confirm coordinate and elevation references.
