@@ -16,7 +16,14 @@ type ProvenanceManifest struct {
 	GeneratedAt   time.Time         `json:"generated_at"`
 	ToolName      string            `json:"tool_name"`
 	ToolVersion   string            `json:"tool_version"`
-	ManifestPath  string            `json:"-"`
+	// ToolCommit and ToolBuildDate identify the binary beyond its version:
+	// every unstamped development build reports the same version, so the
+	// version alone does not say which code produced a run. They are
+	// buildinfo.Commit and buildinfo.Date, "unknown" when the build carries
+	// neither — never empty.
+	ToolCommit    string `json:"tool_commit"`
+	ToolBuildDate string `json:"tool_build_date"`
+	ManifestPath  string `json:"-"`
 }
 
 // StandardDataRef records which coefficient data the standards module carried

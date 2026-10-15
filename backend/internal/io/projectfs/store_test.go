@@ -443,14 +443,28 @@ func TestCreateRunWritesToolIdentityIntoProvenance(t *testing.T) {
 		t.Fatalf("provenance tool version = %q, want %q", provenance.ToolVersion, buildinfo.Version())
 	}
 
+	// The version alone does not identify a development build: every
+	// unstamped checkout reports the same one. The commit and the build date
+	// do, and buildinfo answers "unknown" rather than nothing when the binary
+	// carries neither.
+	if provenance.ToolCommit != buildinfo.Commit() {
+		t.Fatalf("provenance tool commit = %q, want %q", provenance.ToolCommit, buildinfo.Commit())
+	}
+
+	if provenance.ToolBuildDate != buildinfo.Date() {
+		t.Fatalf("provenance tool build date = %q, want %q", provenance.ToolBuildDate, buildinfo.Date())
+	}
+
 	payload, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(run.ProvenancePath)))
 	if err != nil {
 		t.Fatalf("read provenance file: %v", err)
 	}
 
 	var persisted struct {
-		ToolName    string `json:"tool_name"`
-		ToolVersion string `json:"tool_version"`
+		ToolName      string `json:"tool_name"`
+		ToolVersion   string `json:"tool_version"`
+		ToolCommit    string `json:"tool_commit"`
+		ToolBuildDate string `json:"tool_build_date"`
 	}
 
 	err = json.Unmarshal(payload, &persisted)
@@ -458,7 +472,8 @@ func TestCreateRunWritesToolIdentityIntoProvenance(t *testing.T) {
 		t.Fatalf("decode provenance file: %v", err)
 	}
 
-	if persisted.ToolName != buildinfo.Name || strings.TrimSpace(persisted.ToolVersion) == "" {
+	if persisted.ToolName != buildinfo.Name || strings.TrimSpace(persisted.ToolVersion) == "" ||
+		strings.TrimSpace(persisted.ToolCommit) == "" || strings.TrimSpace(persisted.ToolBuildDate) == "" {
 		t.Fatalf("provenance.json carries no usable tool identity: %+v", persisted)
 	}
 }

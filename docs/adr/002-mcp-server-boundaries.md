@@ -225,7 +225,7 @@ was made and never re-resolved, plus the run summary:
 - `parameters` and `metadata` (including `evidence_tier`, `project_crs`, `compute_crs`);
 - `input_hashes` (input path to SHA-256);
 - `standard_data` (`algorithm`, `digest`, `evidence_tier`, per-table digests);
-- `generated_at`, `tool_name`, `tool_version`;
+- `generated_at`, `tool_name`, `tool_version`, `tool_commit`, `tool_build_date`;
 - from the run summary: `status`, `output_hash`, `source_count`, `receiver_count`, `model_version`,
   and for grid runs `grid_width`, `grid_height`, `grid_masked_cells`.
 

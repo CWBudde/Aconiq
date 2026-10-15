@@ -101,9 +101,9 @@ What the tag drives:
 - `just build` computes `git describe --tags --dirty --always` and stamps it into
   `internal/buildinfo` via `-ldflags -X`, together with the short commit and a UTC build date. The
   release build stamps the same three variables from the tag.
-- `buildinfo` feeds `aconiq --version` and the `tool_version` field of every `provenance.json`. So
-  the first tag is what turns provenance from `v0.0.0-…-gabc123` guesswork into a statement a
-  reader can resolve to a published artifact.
+- `buildinfo` feeds `aconiq --version` and the `tool_version`, `tool_commit` and `tool_build_date`
+  fields of every `provenance.json`. So the first tag is what turns provenance from
+  `v0.0.0-…-gabc123` guesswork into a statement a reader can resolve to a published artifact.
 - Because `git describe --tags` is useless on a shallow clone, any workflow that builds a stamped
   binary checks out with `fetch-depth: 0` and `fetch-tags: true`. Both `go-ci.yml` and
   `release.yml` do.

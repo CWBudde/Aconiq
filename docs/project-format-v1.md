@@ -72,7 +72,9 @@ Core entities in v1:
 - input file hashes
 - the standard-data digest (`standard_data`)
 - the CRS the run computed in (`project_crs`, `compute_crs`)
-- generation timestamp and tool identity
+- generation timestamp and tool identity: `tool_name`, `tool_version`, and the build's
+  `tool_commit` and `tool_build_date` (`unknown` when the binary was not stamped), because every
+  unstamped development build reports the same version
 
 ### `project_crs` and `compute_crs`
 

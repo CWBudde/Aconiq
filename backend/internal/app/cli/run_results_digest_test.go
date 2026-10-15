@@ -47,9 +47,9 @@ import (
 //     raster metadata sidecar, and into nothing else.
 //   - run_id      — run-summary.json takes it from the run directory name, and
 //     projectfs.buildID draws it from crypto/rand.
-//   - generated_at, tool_version — provenance.json only; the clock again, and
-//     the build stamp, which moves with the checkout rather than with the code
-//     under test.
+//   - generated_at, tool_version, tool_commit, tool_build_date —
+//     provenance.json only; the clock again, and the build stamp, which moves
+//     with the checkout rather than with the code under test.
 //
 // Each list is required in full of the file it belongs to, and no file may
 // carry a volatile field that its own list does not name. Normalizing a field
@@ -59,13 +59,13 @@ import (
 var (
 	volatileRasterFields     = []string{"created_at"}
 	volatileRunSummaryFields = []string{"run_id"}
-	volatileProvenanceFields = []string{"run_id", "generated_at", "tool_version"}
+	volatileProvenanceFields = []string{"run_id", "generated_at", "tool_version", "tool_commit", "tool_build_date"}
 )
 
 // knownVolatileFields is the union of the lists above. Any of these turning up
 // in a file whose own list does not name it is a new source of variance that
 // has to be understood before it is normalized away, so it fails instead.
-var knownVolatileFields = []string{"created_at", "run_id", "generated_at", "tool_version"}
+var knownVolatileFields = []string{"created_at", "run_id", "generated_at", "tool_version", "tool_commit", "tool_build_date"}
 
 // runResultsDigest is the snapshot value. It is a struct rather than a bare map
 // so the golden file names what each section is.
