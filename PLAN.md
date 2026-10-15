@@ -2254,7 +2254,8 @@ before the pages they protect are cut apart.
       `LineStringIntersectsSegment`'s nearest-crossing answer, edge index included. Or a NEON/AVX2
       kernel over the `RayEdges` arrays: NEON's two float64 lanes cap it at ~5–8 % of an arm64
       run, so measure what AVX2 buys on amd64 before writing either. It must not fuse
-      multiply-adds, which moves arm64 to amd64's bits and keeps amd64's, and the pure-Go loop
+      multiply-adds, which moves arm64 to amd64's bits and keeps amd64's (what fusion is worth
+      elsewhere is measured under "Decide whether arm64 release binaries fuse"), and the pure-Go loop
       stays as the wasm path and as the reference it is fuzzed against. One
       constraint stays live: the receiver-side search is bit-identical to the source-side one on
       every scene compared, but it can _add_ a second-order path the old search's fixed-margin
@@ -2310,6 +2311,21 @@ before the pages they protect are cut apart.
       uses half of (see its comment). **A golden that holds amd64's bits is regenerated in a
       linux/amd64 container**, never on arm64; the container reproduces `main`'s goldens,
       digests included. Release binaries still fuse on arm64, so the last bits differ there.
+- [ ] **Decide whether arm64 release binaries fuse multiply-adds.** Measured on an M5 Pro with
+      go1.26.9, the same commit built twice, eight clean alternating rounds. **Speed:** fusion
+      is worth 1.5 % geomean on the RLS-19 benchmarks, 3.6 % on the small and 5.4 % on the full
+      synthetic city, and 3.4 % on `acoustics.EnergySum` (all p ≤ 0.01). It is worth 0–3 % on
+      the `geo` queries. `aconiq run` of Schall 03 and ISO 9613-2 shows no difference inside
+      its ±10 % noise. **Bits:** turning fusion off buys less than it seems to. Fused or not,
+      arm64's levels differ from amd64's by at most 4e-14 dB. Unfused arm64 still misses
+      amd64's run digests for 8 of 13 standards (12 when fused), rls19-road and schall03 among
+      them. The likely cause, not isolated, is that `math.Log`, `Hypot` and `Exp` run different
+      code on the two architectures: assembly on amd64. It matches amd64 only on iso9613 and
+      the synthetic city levels. **Switch:** the only whole-build switch is
+      `-gcflags=all=-d=fmahash=qn`, a compiler debug flag with no compatibility promise. It
+      leaves 8 of 710 fused instructions, `math`'s `exp_arm64.s`. Keeping the default is
+      faster. Turning it off is no route to bit-identical binaries across architectures,
+      should that become a requirement.
 - [x] **Schall 03 writes progress, Schall 03 and ISO 9613-2 stop inside a receiver, and the
       frontend listens to `/api/v1/events`** (#102). Three constraints stay live.
       **Schall 03 logs through `runLog` as it goes**, not into a buffer appended afterwards, so
