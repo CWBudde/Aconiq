@@ -2806,26 +2806,21 @@ change to any of them amends the ADR first.
 - [ ] Expose applicable standards, units, CRS and provenance as resources or tool results
 - [ ] List, create and update scenarios. Nothing does today: `projectfs.Store.Init` seeds `default`
       and no CLI or API path appends to `Project.Scenarios`. Needs a `projectfs` path and an API
-      route before an MCP tool can wrap it (ADR-002, Consequences).
-- [ ] Give `POST /api/v1/model` an expected-hash field, and make the compare atomic with the
-      write. `projectfs.Store.SaveModel` writes the model files before it takes `LockManifest`, so
-      the store has to stage them and compare-and-move under one lock; a check under the lock
-      alone still lets a refused save overwrite them. Feature-level edits are `get_model` → change
-      → `save_model`; there is no per-feature route.
-- [ ] Report the current terrain's SHA-256 (or `none`) on `GET /api/v1/project/status`, so
-      `import_terrain`'s `confirm` binds to the terrain it replaces; the replace needs the same
-      compare-and-write as the model save.
-- [ ] Serve `provenance.json` over the API. It is not an artifact, so nothing serves it, and
-      `aconiq://runs/{id}/provenance` needs a route.
-- [ ] Record the build commit and date in provenance. Only `tool_version` is written, although
-      `buildinfo.Commit()` and `buildinfo.Date()` exist; the version alone does not identify a
-      development build.
+      route before an MCP tool can wrap it (ADR-002, Consequences). Open before it starts: what a
+      scenario's `standard` and `parameters` mean for a run (`CreateRun` uses the standard only as
+      a fallback and never reads the parameters), whether a scenario that runs reference may be
+      updated or deleted, and whether scenarios will ever own model variants — today all share the
+      one project model.
 
 ### Subphase SL-1.3 — Integration and validation
 
 - [ ] Expose validation, calculation execution, progress and result retrieval
       A dry-run `validate_model` depends on the open `POST /api/v1/validate` decision (Open
       decisions → Behaviour and API); until it is taken, validation runs on `save_model`.
+- [ ] Make the frontend's model save and terrain replace send `expected_hash` (the receipt it
+      already holds, or `none`). The API compares atomically since SL-1.2, but the UI still saves
+      unconditionally, so a browser save overwrites an edit an MCP agent made meanwhile instead of
+      answering 409.
 
 ### Subphase SL-1.4 — Evidence and documentation
 
