@@ -65,6 +65,8 @@ func openapiRunPathItems() map[string]any {
 		},
 	}
 
+	items["/api/v1/runs/{id}/provenance"] = openapiRunProvenancePathItem()
+
 	maps.Copy(items, openapiRunResourcePathItems())
 	maps.Copy(items, openapiRunContourPathItems())
 	maps.Copy(items, openapiArtifactPathItems())
@@ -400,4 +402,113 @@ func allowedOverpassEndpointURLs() []string {
 	}
 
 	return urls
+}
+
+// openapiRunProvenancePathItem describes GET /api/v1/runs/{id}/provenance.
+func openapiRunProvenancePathItem() map[string]any {
+	return map[string]any{
+		"get": map[string]any{
+			"summary":     "A run's provenance.json",
+			"operationId": "getRunProvenance",
+			"description": "Returns `.noise/runs/<id>/provenance.json` byte for byte, as the run wrote it: the " +
+				"standard it resolved, its parameters, the input hashes, the standard-data digest and the tool " +
+				"that produced it. It is never re-encoded, so a field an older or newer build wrote is served too.",
+			"parameters": []map[string]any{
+				{
+					"name":        "id",
+					"in":          "path",
+					"required":    true,
+					"description": "Run ID",
+					"schema":      map[string]any{"type": "string"},
+				},
+			},
+			"responses": map[string]any{
+				"200": map[string]any{
+					"description": "The run's provenance manifest",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{
+								"$ref": "#/components/schemas/RunProvenance",
+							},
+						},
+					},
+				},
+				"403": openapiErrorResponse("The manifest names a provenance path outside the project root (`" + errorCodeForbiddenPath + "`)"),
+				"404": openapiErrorResponse("Project not initialized, run not found, or its provenance.json is missing"),
+				"405": methodNotAllowedResponse(),
+				"500": openapiErrorResponse("Failed to read the provenance file"),
+			},
+		},
+	}
+}
+
+// openapiRunProvenanceSchemas describes provenance.json. It stays open
+// (additionalProperties) because the route serves the file as written: a run
+// recorded by another build may carry fields this one does not, and
+// tool_commit and tool_build_date are absent from runs older than them.
+func openapiRunProvenanceSchemas() map[string]any {
+	stringMap := map[string]any{
+		"type":                 "object",
+		"additionalProperties": map[string]any{"type": "string"},
+	}
+
+	return map[string]any{
+		"RunProvenance": map[string]any{
+			"type":                 "object",
+			"additionalProperties": true,
+			"required":             []string{"run_id", "scenario_id", "standard", "input_hashes", "generated_at", "tool_name", "tool_version"},
+			"properties": map[string]any{
+				"run_id":      map[string]any{"type": "string"},
+				"scenario_id": map[string]any{"type": "string"},
+				"standard": map[string]any{
+					"type":     "object",
+					"required": []string{"id", "version"},
+					"properties": map[string]any{
+						"context": openapiStandardContextSchema(),
+						"id":      map[string]any{"type": "string"},
+						"version": map[string]any{"type": "string"},
+						"profile": map[string]any{"type": "string"},
+					},
+				},
+				"receiver_mode":   map[string]any{"type": "string"},
+				"receiver_set_id": map[string]any{"type": "string"},
+				"parameters":      stringMap,
+				"metadata": map[string]any{
+					"type":                 "object",
+					"additionalProperties": map[string]any{"type": "string"},
+					"description":          "Module metadata, including `evidence_tier`, `project_crs` and `compute_crs`.",
+				},
+				"input_hashes": map[string]any{
+					"type":                 "object",
+					"additionalProperties": map[string]any{"type": "string"},
+					"description":          "Project-relative input path to its SHA-256, as bare lowercase hex.",
+				},
+				"standard_data": map[string]any{
+					"type":     "object",
+					"required": []string{"algorithm", "digest", "evidence_tier"},
+					"properties": map[string]any{
+						"algorithm":     map[string]any{"type": "string"},
+						"digest":        map[string]any{"type": "string"},
+						"evidence_tier": map[string]any{"type": "string"},
+						"tables": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type":     "object",
+								"required": []string{"name", "digest"},
+								"properties": map[string]any{
+									"name":   map[string]any{"type": "string"},
+									"digest": map[string]any{"type": "string"},
+								},
+							},
+						},
+					},
+				},
+				"generated_at":    map[string]any{"type": "string", "format": "date-time"},
+				"tool_name":       map[string]any{"type": "string"},
+				"tool_version":    map[string]any{"type": "string"},
+				"tool_commit":     map[string]any{"type": "string", "description": "Short source commit of the build, or `unknown`"},
+				"tool_build_date": map[string]any{"type": "string", "description": "RFC 3339 build date, or `unknown`"},
+			},
+		},
+	}
 }

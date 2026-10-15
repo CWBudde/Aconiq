@@ -240,14 +240,15 @@ GET  /api/v1/runs/{id}                 one run, with `progress` while it compute
 POST /api/v1/runs/{id}/cancel          interrupt a run this server started (202; 409 if ended or not ours)
 DELETE /api/v1/runs/{id}               delete a run
 GET  /api/v1/runs/{id}/log
+GET  /api/v1/runs/{id}/provenance      the run's provenance.json, byte for byte
 GET  /api/v1/runs/{id}/contours        contour lines from the run's result raster (`?interval=` dB step, `?crs=`)
 GET  /api/v1/artifacts/{id}/content
 GET  /api/v1/events                    SSE: heartbeat + project status snapshots
 POST /api/v1/import/osm
 POST /api/v1/import/lgln               LGLN LoD2 buildings for a WGS84 box (tiles cached in `.noise/cache/lgln/`)
-POST /api/v1/import/terrain
+POST /api/v1/import/terrain            replace the DTM (`expected_hash` makes it a compare-and-write; 409 on mismatch)
 GET  /api/v1/model                     the saved model, optionally reprojected (`?crs=`)
-POST /api/v1/model                     replace the project model (the `aconiq import` GeoJSON contract)
+POST /api/v1/model                     replace the project model (the `aconiq import` GeoJSON contract; `expected_hash` as above)
 POST /api/v1/transform                 project a coordinate batch between two CRS (`target_crs: "auto"` picks the zone `aconiq run` would)
 GET  /api/v1/openapi.json
 ```

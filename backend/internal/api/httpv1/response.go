@@ -27,6 +27,11 @@ const (
 	// be able to tell "no project" from "no model", and the two want different
 	// hints.
 	errorCodeModelNotFound = "model_not_found"
+	// errorCodeHashMismatch answers a compare-and-write — a model save or a
+	// terrain replace carrying expected_hash — whose precondition failed:
+	// what is on disk is not what the client last saw. details.current_hash
+	// names what is there ("none" for nothing), and nothing was written.
+	errorCodeHashMismatch = "hash_mismatch"
 	// errorCodeRunHasNoRaster answers a contour request for a run that exists but
 	// recorded no result raster. It is deliberately not errorCodeNotFound, for
 	// the reason errorCodeModelNotFound is not: "no such run" and "this run was

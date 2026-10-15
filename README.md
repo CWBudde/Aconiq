@@ -151,6 +151,7 @@ POST /api/v1/runs                  start a run: 202 with its id, computed in the
 GET  /api/v1/runs/{id}             one run, with its progress while it computes
 POST /api/v1/runs/{id}/cancel      stop a run this server started
 GET  /api/v1/runs/{id}/log
+GET  /api/v1/runs/{id}/provenance  the run's provenance.json
 GET  /api/v1/artifacts/{id}/content
 GET  /api/v1/events                server-sent events: heartbeat and project status
 POST /api/v1/import/osm

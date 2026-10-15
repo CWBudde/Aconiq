@@ -2,6 +2,7 @@ package httpv1
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	"github.com/aconiq/backend/internal/io/projectfs"
 )
 
 // modelSaveSourceLabel is the source_path stamped into a model that arrived
@@ -32,6 +34,10 @@ type modelSaveRequest struct {
 	// means the coordinates are already in the project CRS.
 	CRS   string          `json:"crs,omitempty"`
 	Model json.RawMessage `json:"model"`
+	// ExpectedHash makes the save a compare-and-write: the hash of the model
+	// the client last read, or "none" when it expects no model at all. Empty
+	// replaces whatever is there, as the save always has.
+	ExpectedHash string `json:"expected_hash,omitempty"`
 }
 
 type modelSaveResponse struct {
@@ -210,6 +216,11 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validExpectedHash(req.ExpectedHash) {
+		writeInvalidExpectedHash(w)
+		return
+	}
+
 	if isJSONAbsent(req.Model) {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    errorCodeBadRequest,
@@ -261,7 +272,11 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 	// SaveModel returns domain errors whose message names the step, not the
 	// file: the absolute path stays in the wrapped cause on the server side and
 	// never reaches the envelope.
-	err = h.store.SaveModel(&proj, model, report)
+	err = h.store.SaveModelIf(&proj, model, report, req.ExpectedHash)
+	if writeHashMismatch(w, err) {
+		return
+	}
+
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -286,6 +301,61 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 		Hash:                 hash,
 		Warnings:             validationIssuesResponse(report.Warnings),
 	})
+}
+
+// expectedHashField names the precondition in a JSON body and in a multipart
+// form alike.
+const expectedHashField = "expected_hash"
+
+// validExpectedHash accepts what a compare-and-write precondition may say:
+// nothing, "none", or a hash in the one spelling the server issues — bare
+// lowercase hex. Anything else is a client bug, refused rather than compared,
+// because it could never match and would read as a conflict.
+func validExpectedHash(expected string) bool {
+	if expected == "" || expected == projectfs.ExpectNone {
+		return true
+	}
+
+	if len(expected) != sha256.Size*2 {
+		return false
+	}
+
+	for _, c := range expected {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+
+	return true
+}
+
+func writeInvalidExpectedHash(w http.ResponseWriter) {
+	writeAPIError(w, http.StatusBadRequest, apiError{
+		Code:    errorCodeBadRequest,
+		Message: "expected_hash must be a SHA-256 as 64 lowercase hex digits, or \"none\"",
+		Hint:    "Send the hash the server last issued (the save receipt or the project status), unchanged.",
+	})
+}
+
+// writeHashMismatch answers a refused compare-and-write with 409 and the hash
+// that is on disk, and reports whether err was one.
+func writeHashMismatch(w http.ResponseWriter, err error) bool {
+	var mismatch *projectfs.HashMismatchError
+	if !stderrors.As(err, &mismatch) {
+		return false
+	}
+
+	writeAPIError(w, http.StatusConflict, apiError{
+		Code:    errorCodeHashMismatch,
+		Message: fmt.Sprintf("the %s changed since expected_hash was read; nothing was written", mismatch.Subject),
+		Details: map[string]any{
+			expectedHashField: mismatch.Expected,
+			"current_hash":    mismatch.Current,
+		},
+		Hint: "Read the current " + mismatch.Subject + " again, reapply the change and send it with the new hash.",
+	})
+
+	return true
 }
 
 // isJSONAbsent reports whether a raw member was missing or explicitly null,

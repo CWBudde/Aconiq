@@ -38,6 +38,9 @@ func openapiImportPathItems() map[string]any {
 			"post": map[string]any{
 				"summary":     "Import a GeoTIFF terrain model",
 				"operationId": "importTerrain",
+				"description": "Validates the GeoTIFF and replaces `.noise/model/terrain.tif`, registering it as the " +
+					"terrain artifact `aconiq run` reads — the same write `aconiq import --terrain` makes. With " +
+					"`expected_hash` the replace is a compare-and-write, atomic with the write.",
 				"requestBody": map[string]any{
 					"required": true,
 					"content": map[string]any{
@@ -50,6 +53,7 @@ func openapiImportPathItems() map[string]any {
 										"type":   "string",
 										"format": "binary",
 									},
+									"expected_hash": openapiExpectedHashSchema("terrain"),
 								},
 							},
 						},
@@ -66,8 +70,13 @@ func openapiImportPathItems() map[string]any {
 							},
 						},
 					},
-					"400": openapiErrorResponse("Invalid terrain import request"),
+					"400": openapiErrorResponse("Invalid terrain import request, or a malformed `expected_hash`"),
+					"404": openapiErrorResponse("Project not initialized"),
 					"405": methodNotAllowedResponse(),
+					"409": openapiErrorResponse(
+						"`expected_hash` no longer names the stored terrain (`" + errorCodeHashMismatch + "`): " +
+							"details.current_hash is the hash there now, or `none`. Nothing is written.",
+					),
 					"500": openapiErrorResponse("Failed to persist terrain artifact"),
 				},
 			},

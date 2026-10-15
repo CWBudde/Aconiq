@@ -209,25 +209,7 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 
 	useChildProcessExecutors(&handler, store.Root())
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/health", handler.handleHealth)
-	mux.HandleFunc("/api/v1/project/status", handler.handleProjectStatus)
-	mux.HandleFunc("/api/v1/standards", handler.handleStandards)
-	mux.HandleFunc("/api/v1/runs", handler.handleRuns)
-	mux.HandleFunc("/api/v1/runs/estimate", handler.handleRunEstimate)
-	mux.HandleFunc("/api/v1/runs/{id}", handler.handleRun)
-	mux.HandleFunc("/api/v1/runs/{id}/log", handler.handleRunLog)
-	mux.HandleFunc("/api/v1/runs/{id}/cancel", handler.handleRunCancel)
-	mux.HandleFunc("/api/v1/runs/{id}/contours", handler.handleRunContours)
-	mux.HandleFunc("/api/v1/artifacts/{id}/content", handler.handleArtifactContent)
-	mux.HandleFunc("/api/v1/events", handler.handleEvents)
-	mux.HandleFunc("/api/v1/openapi.json", handler.handleOpenAPI)
-	mux.HandleFunc("/api/v1/import/osm", handler.handleImportOSM)
-	mux.HandleFunc("/api/v1/import/lgln", handler.handleImportLGLN)
-	mux.HandleFunc("/api/v1/import/terrain", handler.handleImportTerrain)
-	mux.HandleFunc("/api/v1/model", handler.handleModel)
-	mux.HandleFunc("/api/v1/transform", handler.handleTransform)
-	mux.HandleFunc("/", handler.handleNotFound)
+	mux := handler.routes()
 
 	// The security middleware sits inside CORS so that a refusal still carries
 	// the CORS headers a browser needs in order to read the envelope, and so
@@ -245,6 +227,34 @@ func newHandlerWithOptions(store projectfs.Store, opts handlerOptions) http.Hand
 	return corsMiddleware(opts.corsOrigins)(guarded)
 }
 
+// routes is the route table: every path the API serves, and the 404 envelope
+// for the rest. The OpenAPI document is hand-built, so a route added here needs
+// its openapi_<area>.go section too.
+func (h Handler) routes() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/health", h.handleHealth)
+	mux.HandleFunc("/api/v1/project/status", h.handleProjectStatus)
+	mux.HandleFunc("/api/v1/standards", h.handleStandards)
+	mux.HandleFunc("/api/v1/runs", h.handleRuns)
+	mux.HandleFunc("/api/v1/runs/estimate", h.handleRunEstimate)
+	mux.HandleFunc("/api/v1/runs/{id}", h.handleRun)
+	mux.HandleFunc("/api/v1/runs/{id}/log", h.handleRunLog)
+	mux.HandleFunc("/api/v1/runs/{id}/provenance", h.handleRunProvenance)
+	mux.HandleFunc("/api/v1/runs/{id}/cancel", h.handleRunCancel)
+	mux.HandleFunc("/api/v1/runs/{id}/contours", h.handleRunContours)
+	mux.HandleFunc("/api/v1/artifacts/{id}/content", h.handleArtifactContent)
+	mux.HandleFunc("/api/v1/events", h.handleEvents)
+	mux.HandleFunc("/api/v1/openapi.json", h.handleOpenAPI)
+	mux.HandleFunc("/api/v1/import/osm", h.handleImportOSM)
+	mux.HandleFunc("/api/v1/import/lgln", h.handleImportLGLN)
+	mux.HandleFunc("/api/v1/import/terrain", h.handleImportTerrain)
+	mux.HandleFunc("/api/v1/model", h.handleModel)
+	mux.HandleFunc("/api/v1/transform", h.handleTransform)
+	mux.HandleFunc("/", h.handleNotFound)
+
+	return mux
+}
+
 func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	writeAPIError(w, http.StatusNotFound, apiError{
 		Code:    errorCodeNotFound,
@@ -253,7 +263,7 @@ func (h Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
 			"method": r.Method,
 			"path":   r.URL.Path,
 		},
-		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}, /api/v1/runs/{id}/log, /api/v1/runs/{id}/cancel, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/lgln, /api/v1/import/terrain, or /api/v1/model.",
+		Hint: "Use /api/v1/health, /api/v1/project/status, /api/v1/runs, /api/v1/runs/{id}, /api/v1/runs/{id}/log, /api/v1/runs/{id}/provenance, /api/v1/runs/{id}/cancel, /api/v1/artifacts/{id}/content, /api/v1/standards, /api/v1/events, /api/v1/openapi.json, /api/v1/import/osm, /api/v1/import/lgln, /api/v1/import/terrain, or /api/v1/model.",
 	})
 }
 

@@ -2,12 +2,16 @@ package httpv1
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"io"
 	"math"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,4 +243,148 @@ func createMultipartFile(t *testing.T, fieldName, fileName string, data []byte) 
 	}
 
 	return &b, w.FormDataContentType()
+}
+
+// postTerrain uploads data as the terrain, with expected_hash when it is not
+// empty.
+func postTerrain(t *testing.T, handler http.Handler, data []byte, expected string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var b bytes.Buffer
+
+	w := multipart.NewWriter(&b)
+
+	if expected != "" {
+		err := w.WriteField("expected_hash", expected)
+		if err != nil {
+			t.Fatalf("write expected_hash: %v", err)
+		}
+	}
+
+	part, err := w.CreateFormFile("file", "terrain.tif")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+
+	_, err = part.Write(data)
+	if err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+
+	err = w.Close()
+	if err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	req := newAPIRequest(http.MethodPost, "/api/v1/import/terrain", &b)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	return rec
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+
+	return hex.EncodeToString(sum[:])
+}
+
+// The status names the terrain by hash once there is one, so a client can
+// send that hash back as the precondition of a replace; before an import the
+// member is absent, which is what expected_hash "none" stands for.
+func TestProjectStatusCarriesTheTerrainHash(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Terrain Status"), nil)
+
+	if status := projectStatusOf(t, handler); status.Terrain != nil {
+		t.Fatalf("a project without terrain reports one: %+v", status.Terrain)
+	}
+
+	data := buildTestGeoTIFF(t)
+
+	rec := postTerrain(t, handler, data, "")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	status := projectStatusOf(t, handler)
+	if status.Terrain == nil || status.Terrain.Hash != sha256Hex(data) {
+		t.Fatalf("status terrain = %+v, want hash %s", status.Terrain, sha256Hex(data))
+	}
+}
+
+func TestImportTerrainIsACompareAndWriteUnderExpectedHash(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Terrain Replace")
+	handler := NewHandler(store, nil)
+
+	original := buildTestGeoTIFF(t)
+
+	rec := postTerrain(t, handler, original, "none")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first import expecting none: %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Trailing bytes change the hash without changing what the TIFF says.
+	replacement := append(bytes.Clone(original), 0, 0, 0, 0)
+
+	for _, expected := range []string{"none", strings.Repeat("0", 64)} {
+		rec = postTerrain(t, handler, replacement, expected)
+		assertErrorCode(t, rec, http.StatusConflict, errorCodeHashMismatch)
+	}
+
+	onDisk, err := os.ReadFile(store.TerrainPath())
+	if err != nil || !bytes.Equal(onDisk, original) {
+		t.Fatalf("a refused replace changed terrain.tif (%v)", err)
+	}
+
+	rec = postTerrain(t, handler, replacement, sha256Hex(original))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("replace with the current hash: %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if status := projectStatusOf(t, handler); status.Terrain == nil || status.Terrain.Hash != sha256Hex(replacement) {
+		t.Fatalf("status terrain after replace = %+v", status.Terrain)
+	}
+}
+
+func TestImportTerrainRejectsAMalformedExpectedHash(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Terrain Replace"), nil)
+
+	assertErrorCode(t, postTerrain(t, handler, buildTestGeoTIFF(t), "abc"), http.StatusBadRequest, errorCodeBadRequest)
+}
+
+func TestOpenAPIDocumentsTheTerrainPrecondition(t *testing.T) {
+	t.Parallel()
+
+	spec := BuildOpenAPISpec("")
+
+	paths, _ := spec["paths"].(map[string]any)
+
+	item, ok := paths["/api/v1/import/terrain"].(map[string]any)
+	if !ok {
+		t.Fatal("expected /api/v1/import/terrain path item")
+	}
+
+	assertOperationResponses(t, item, "post", []string{"201", "400", "404", "405", "409"})
+
+	components, _ := spec["components"].(map[string]any)
+	schemas, _ := components["schemas"].(map[string]any)
+
+	if _, ok := schemas["ProjectTerrainStatus"]; !ok {
+		t.Fatal("expected schema ProjectTerrainStatus")
+	}
+
+	status, _ := schemas["ProjectStatusResponse"].(map[string]any)
+	properties, _ := status["properties"].(map[string]any)
+
+	if _, ok := properties["terrain"]; !ok {
+		t.Fatal("ProjectStatusResponse does not document terrain")
+	}
 }

@@ -3,6 +3,7 @@ package httpv1
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -403,7 +404,7 @@ func TestOpenAPIDocumentsModelSave(t *testing.T) {
 		t.Fatal("expected /api/v1/model path item")
 	}
 
-	assertOperationResponses(t, item, "post", []string{"201", "400", "404", "405", "413", "415"})
+	assertOperationResponses(t, item, "post", []string{"201", "400", "404", "405", "409", "413", "415"})
 	assertOperationResponses(t, item, "get", []string{"200", "400", "404", "405"})
 
 	components, ok := spec["components"].(map[string]any)
@@ -427,8 +428,17 @@ func TestOpenAPIDocumentsModelSave(t *testing.T) {
 		t.Fatalf("encode path item: %v", err)
 	}
 
-	if !strings.Contains(string(encoded), errorCodeModelInvalid) {
-		t.Errorf("expected the %s error code to be documented on the operation", errorCodeModelInvalid)
+	for _, code := range []string{errorCodeModelInvalid, errorCodeHashMismatch} {
+		if !strings.Contains(string(encoded), code) {
+			t.Errorf("expected the %s error code to be documented on the operation", code)
+		}
+	}
+
+	request, _ := schemas["ModelSaveRequest"].(map[string]any)
+	properties, _ := request["properties"].(map[string]any)
+
+	if _, ok := properties["expected_hash"]; !ok {
+		t.Error("ModelSaveRequest does not document expected_hash")
 	}
 }
 
@@ -793,5 +803,110 @@ func TestProjectStatusStreamKeyFollowsAResaveOfTheSameModel(t *testing.T) {
 
 	if firstKey == secondKey {
 		t.Errorf("the dedupe key did not move when the model was saved again: %q", secondKey)
+	}
+}
+
+// postModelExpecting posts validModelFeatureCollection, with its receiver
+// moved by shift metres so successive saves differ, under expected_hash.
+func postModelExpecting(t *testing.T, handler http.Handler, shift int, expected string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	model := strings.Replace(validModelFeatureCollection, "[500050, 5700050]",
+		fmt.Sprintf("[%d, 5700050]", 500050+shift), 1)
+
+	body, err := json.Marshal(map[string]any{
+		"model":         json.RawMessage(model),
+		"expected_hash": expected,
+	})
+	if err != nil {
+		t.Fatalf("encode request: %v", err)
+	}
+
+	return postModel(t, handler, string(body))
+}
+
+func savedModelHash(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var response modelSaveResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	return response.Hash
+}
+
+// expected_hash makes the save a compare-and-write: a client that edited an
+// older model is refused with the hash that is there now, and nothing on disk
+// changes.
+func TestModelSaveEndpointRefusesAStaleExpectedHash(t *testing.T) {
+	t.Parallel()
+
+	store := mustStore(t, "Model Save")
+	handler := NewHandler(store, nil)
+
+	current := savedModelHash(t, postModel(t, handler, `{"model": `+validModelFeatureCollection+`}`))
+
+	before, err := os.ReadFile(store.ModelArtifactPaths().Normalized)
+	if err != nil {
+		t.Fatalf("read model: %v", err)
+	}
+
+	rec := postModelExpecting(t, handler, 1, strings.Repeat("0", 64))
+	assertErrorCode(t, rec, http.StatusConflict, errorCodeHashMismatch)
+
+	var response errorResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &response)
+
+	if response.Error.Details["current_hash"] != current {
+		t.Fatalf("details.current_hash = %v, want %s", response.Error.Details["current_hash"], current)
+	}
+
+	after, err := os.ReadFile(store.ModelArtifactPaths().Normalized)
+	if err != nil {
+		t.Fatalf("read model: %v", err)
+	}
+
+	if !bytes.Equal(before, after) {
+		t.Fatal("a refused save changed the stored model")
+	}
+}
+
+func TestModelSaveEndpointAcceptsTheCurrentHash(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model Save"), nil)
+
+	first := savedModelHash(t, postModel(t, handler, `{"model": `+validModelFeatureCollection+`}`))
+	second := savedModelHash(t, postModelExpecting(t, handler, 1, first))
+
+	if second == first {
+		t.Fatal("the save expecting the current hash did not replace the model")
+	}
+
+	savedModelHash(t, postModelExpecting(t, handler, 2, second))
+}
+
+func TestModelSaveEndpointExpectNoneOnlyHoldsWithoutAModel(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model Save"), nil)
+
+	savedModelHash(t, postModelExpecting(t, handler, 0, "none"))
+
+	assertErrorCode(t, postModelExpecting(t, handler, 1, "none"), http.StatusConflict, errorCodeHashMismatch)
+}
+
+func TestModelSaveEndpointRejectsAMalformedExpectedHash(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(mustStore(t, "Model Save"), nil)
+
+	for _, expected := range []string{"abc", strings.Repeat("A", 64), "None"} {
+		assertErrorCode(t, postModelExpecting(t, handler, 0, expected), http.StatusBadRequest, errorCodeBadRequest)
 	}
 }
