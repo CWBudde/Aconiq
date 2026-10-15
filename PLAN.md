@@ -109,6 +109,8 @@ levels breaking, so these belong together, ideally before or with the first tag:
 - Compensate `EnergySum` and take `math.Exp` with it; re-cuts five goldens by 1–2 ulps (P7).
 - Derive the eight hand-maintained provenance key lists from the descriptor; moves digests (P7).
 - Converge or declare the two energy-sum outliers, `bimschv16` and `schall03` (P7).
+- Whether arm64 release binaries keep fusing multiply-adds: unfused costs up to 5 % and does not
+  reach amd64's bits either (P8, Phase F).
 
 **Scope and conformance claims**
 
