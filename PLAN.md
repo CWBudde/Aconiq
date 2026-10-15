@@ -2796,21 +2796,45 @@ This is a **proposed** workstream, not an assertion that the referenced function
 
 ### Subphase SL-1.1 — Research and specification
 
-- [ ] Define tool/resource boundaries and security policy
-- [ ] Decide which standards, units, CRS and provenance fields the tools expose to the agent
+- [x] Define tool/resource boundaries and security policy
+      (2026-10-16) — `docs/adr/002-mcp-server-boundaries.md`. `aconiq mcp` speaks stdio and serves
+      each tool through `httpv1.NewHandler` in-process, so validation, body caps, the experimental
+      gate and run supervision are reused, not re-implemented. Read-only tools are always on;
+      `--allow-writes` lists the state-changing ones; destructive ones also need a `confirm` value
+      the agent has read (the model hash, the run id). Network imports (OSM, LGLN) are out of the
+      first surface. The MCP library is left to SL-1.2.
+- [x] Decide which standards, units, CRS and provenance fields the tools expose to the agent
+      (2026-10-16) — same ADR, "Exposed fields": the `descriptorjson` encoding verbatim (tier
+      included), units only where the backend declares them, `project_crs`/`compute_crs` per run,
+      and the whole as-run `provenance.json` plus the run summary.
 
 ### Subphase SL-1.2 — Implementation
 
 - [ ] Expose project, scenario, source and receiver discovery and editing tools
 - [ ] Expose applicable standards, units, CRS and provenance as resources or tool results
+- [ ] List, create and update scenarios. Nothing does today: `projectfs.Store.Init` seeds `default`
+      and no CLI or API path appends to `Project.Scenarios`. Needs a `projectfs` path and an API
+      route before an MCP tool can wrap it (ADR-002, Consequences).
+- [ ] Give `POST /api/v1/model` an expected-hash field, checked under `lockManifest`, so
+      `save_model`'s `confirm` hash is an atomic optimistic lock rather than a racy pre-check.
+      Feature-level edits are `get_model` → change → `save_model`; there is no per-feature route.
+- [ ] Serve `provenance.json` over the API. It is not an artifact, so nothing serves it, and
+      `aconiq://runs/{id}/provenance` needs a route.
+- [ ] Record the build commit and date in provenance. Only `tool_version` is written, although
+      `buildinfo.Commit()` and `buildinfo.Date()` exist; the version alone does not identify a
+      development build.
 
 ### Subphase SL-1.3 — Integration and validation
 
 - [ ] Expose validation, calculation execution, progress and result retrieval
+      A dry-run `validate_model` depends on the open `POST /api/v1/validate` decision (Open
+      decisions → Behaviour and API); until it is taken, validation runs on `save_model`.
 
 ### Subphase SL-1.4 — Evidence and documentation
 
 - [ ] Add stdio transport, deterministic outputs, audit logging and integration tests
+      The audit log is new: `.noise/logs/mcp-audit.jsonl`, one object per state-changing call
+      (time, tool, argument digest, outcome), as ADR-002 specifies. Nothing audits writes today.
 - [ ] Cover tool schemas and input validation with automated tests
 - [ ] Document setup, available tools and example prompts in the README
 
