@@ -229,16 +229,35 @@ was made and never re-resolved, plus the run summary:
 - from the run summary: `status`, `output_hash`, `source_count`, `receiver_count`, `model_version`,
   and for grid runs `grid_width`, `grid_height`, `grid_masked_cells`.
 
-### MCP library: decided in SL-1.2
+### MCP library: `github.com/modelcontextprotocol/go-sdk`
 
-The library is chosen when code needs one. Candidates are the official
-`github.com/modelcontextprotocol/go-sdk`, `github.com/mark3labs/mcp-go`, and a hand-rolled JSON-RPC
-2.0 loop over stdio. The criteria:
+Decided in SL-1.2 (2026-10-16): the official SDK, from v1.8.0. The candidates were it,
+`github.com/mark3labs/mcp-go`, and a hand-rolled JSON-RPC 2.0 loop over stdio, held to these
+criteria:
 
 - passes `just license-check` (no restricted, forbidden or unknown licences);
 - supports stdio, tool annotations and resources;
 - can derive tool input schemas from Go types, so the schema and the decoder cannot disagree;
 - adds the fewest transitive dependencies for that.
+
+How it measures against them, checked against v1.8.0 in a throwaway module with the pinned
+`go-licenses` and `govulncheck`:
+
+- **Licence.** Its `LICENSE` describes a transition from MIT to Apache-2.0, not a standard licence
+  text. `go-licenses` classifies it as Apache-2.0, and `just license-check`'s own invocation
+  (`--disallowed_types=restricted,forbidden,unknown`) passes over the whole import graph. The licence is still worth re-reading on upgrades: a
+  classifier that stops recognising the transition text reports `unknown` and fails the gate.
+- **Dependencies.** A stdio server pulls in `google/jsonschema-go` (MIT),
+  `segmentio/encoding` and `segmentio/asm` (MIT), `yosida95/uritemplate` (BSD-3-Clause) and
+  `golang.org/x/{oauth2,sync,sys,time}` (BSD-3-Clause). They go into `NOTICE` with the code that
+  imports them.
+- **Go version.** It requires Go 1.25, which the module already declares.
+- **Vulnerabilities.** `govulncheck` reports none that a stdio server calls.
+- **Surface.** `mcp.StdioTransport`, `mcp.ToolAnnotations` (for the read-only and destructive
+  hints the tool classes above map onto), `Server.AddResource` and `Server.AddResourceTemplate`
+  (for `aconiq://runs/{id}`).
+- **Schemas.** `mcp.AddTool[In, Out]` derives a tool's input and output schemas from its Go types
+  through `jsonschema-go`.
 
 ## Consequences
 
