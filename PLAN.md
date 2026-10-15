@@ -2783,3 +2783,159 @@ Distinct from Priority 8, which is correctness. These are genuinely optional.
 - [ ] Define which exports are must-have versus deferred — GeoTIFF, CSV, PNG, report artifacts.
 - [ ] Define map-layer performance thresholds and tile-fallback triggers.
 - [ ] Define the accessibility baseline for map-heavy interactions.
+
+
+---
+
+# Gate 5 — SuedLink construction-noise interoperability (proposed)
+
+This is a **proposed** workstream, not an assertion that the referenced functionality is complete or that AVV Baulärm conformity has been established. It follows the existing correctness, legal, CRS and interoperability gates. Each phase is tracked by its own GitHub issue and may be implemented independently where dependencies permit. For the Springe–Göttingen pilot, prefer EPSG:25832 for metric geometry and record source provenance. Existing generic GeoPackage, GeoTIFF and LGLN LoD2 import capabilities should be reused, not duplicated.
+
+## Phase SL-1 — MCP integration ([#111](https://github.com/CWBudde/Aconiq/issues/111))
+
+**Outcome:** Provide a local MCP interface for AI-assisted modeling.
+
+### Subphase SL-1.1 — Research and specification
+
+- [ ] Define tool/resource boundaries and security policy
+
+### Subphase SL-1.2 — Implementation
+
+- [ ] Expose project, scenario, source and receiver discovery and editing tools
+
+### Subphase SL-1.3 — Integration and validation
+
+- [ ] Expose validation, calculation execution, progress and result retrieval
+
+### Subphase SL-1.4 — Evidence and documentation
+
+- [ ] Add stdio transport, deterministic outputs, audit logging and integration tests
+
+## Phase SL-2 — AVV Baulärm assessment ([#112](https://github.com/CWBudde/Aconiq/issues/112))
+
+**Outcome:** Add a validated construction-noise assessment workflow without overstating normative conformance.
+
+### Subphase SL-2.1 — Research and specification
+
+- [ ] Research authoritative AVV Baulärm requirements and document applicability
+
+### Subphase SL-2.2 — Implementation
+
+- [ ] Define day/night periods, land-use classifications, limits and corrections
+
+### Subphase SL-2.3 — Integration and validation
+
+- [ ] Connect supported propagation methods to the assessment pipeline
+
+### Subphase SL-2.4 — Evidence and documentation
+
+- [ ] Implement assessment outputs, traceability and reference-case tests
+
+## Phase SL-3 — SuedLink route and construction corridor ([#113](https://github.com/CWBudde/Aconiq/issues/113))
+
+**Outcome:** Import traceable official alignment geometry for a Springe–Göttingen pilot.
+
+### Subphase SL-3.1 — Research and specification
+
+- [ ] Identify authoritative route datasets and verify license/version
+
+### Subphase SL-3.2 — Implementation
+
+- [ ] Implement or document reproducible GIS/PDF conversion and CRS handling
+
+### Subphase SL-3.3 — Integration and validation
+
+- [ ] Distinguish cable alignment, work areas, access roads and temporary sites
+
+### Subphase SL-3.4 — Evidence and documentation
+
+- [ ] Validate sample corridor geometry and preserve provenance
+
+## Phase SL-4 — ALKIS land-use and receiver context ([#114](https://github.com/CWBudde/Aconiq/issues/114))
+
+**Outcome:** Map Lower Saxony ALKIS attributes into acoustically useful GIS context.
+
+### Subphase SL-4.1 — Research and specification
+
+- [ ] Identify relevant ALKIS layers and attribute semantics
+
+### Subphase SL-4.2 — Implementation
+
+- [ ] Reuse GeoPackage import with configurable mapping to model features
+
+### Subphase SL-4.3 — Integration and validation
+
+- [ ] Flag potential sensitive receivers and require review of legal area classification
+
+### Subphase SL-4.4 — Evidence and documentation
+
+- [ ] Add EPSG:25832 sample fixture, tests and documentation
+
+## Phase SL-5 — Basis-DLM landscape and transport context ([#115](https://github.com/CWBudde/Aconiq/issues/115))
+
+**Outcome:** Map LGLN Basis-DLM landscape and transport features for corridor studies.
+
+### Subphase SL-5.1 — Research and specification
+
+- [ ] Select relevant road, path, water and landscape classes
+
+### Subphase SL-5.2 — Implementation
+
+- [ ] Implement class filtering and mapping using existing GIS importers
+
+### Subphase SL-5.3 — Integration and validation
+
+- [ ] Preserve geometry, CRS and provenance without assuming acoustic barrier properties
+
+### Subphase SL-5.4 — Evidence and documentation
+
+- [ ] Add corridor-sized fixture and import tests
+
+## Phase SL-6 — Moving construction-site scenarios ([#116](https://github.com/CWBudde/Aconiq/issues/116))
+
+**Outcome:** Generate independently evaluated work phases along a route.
+
+### Subphase SL-6.1 — Research and specification
+
+- [ ] Reuse chainage utilities for configurable spacing (e.g. 100 m)
+
+### Subphase SL-6.2 — Implementation
+
+- [ ] Generate phased source/equipment sets with heights, duty cycles and durations
+
+### Subphase SL-6.3 — Integration and validation
+
+- [ ] Ensure inactive construction positions do not contribute to a scenario
+
+### Subphase SL-6.4 — Evidence and documentation
+
+- [ ] Support receiver comparison, worst-case reporting and deterministic tests
+
+## Phase SL-7 — SoundPLAN-compatible export ([#117](https://github.com/CWBudde/Aconiq/issues/117))
+
+**Outcome:** Transfer Aconiq-prepared models and scenarios into SoundPLAN for calculation.
+
+### Subphase SL-7.1 — Research and specification
+
+- [ ] Research SoundPLANnoise/essential version-specific supported import formats
+
+### Subphase SL-7.2 — Implementation
+
+- [ ] Define explicit geometry, source, receiver, CRS and units mappings
+
+### Subphase SL-7.3 — Integration and validation
+
+- [ ] Export acoustical source parameters and separate construction phases
+
+### Subphase SL-7.4 — Evidence and documentation
+
+- [ ] Detect lossy/unsupported attributes and validate a round-trip sample
+## Pilot acceptance and dependencies
+
+- [ ] Validate a small Springe–Göttingen route segment against an authoritative source (#113).
+- [ ] Load terrain and buildings through the existing import paths; confirm coordinate and elevation references.
+- [ ] Generate separate moving-construction scenarios, e.g. at 100 m chainage (#116).
+- [ ] Classify receivers with reviewable context, not automatic legal assumptions (#114, #115).
+- [ ] Demonstrate a documented SoundPLAN import workflow with a representative scenario (#117).
+- [ ] Treat AVV Baulärm results as non-conformant until normative evidence and tests are complete (#112).
+- [ ] Ensure MCP automation does not bypass validation or provenance checks (#111).
