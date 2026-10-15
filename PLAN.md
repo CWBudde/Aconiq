@@ -2320,8 +2320,9 @@ before the pages they protect are cut apart.
       arm64's levels differ from amd64's by at most 4e-14 dB. Unfused arm64 still misses
       amd64's run digests for 8 of 13 standards (12 when fused), rls19-road and schall03 among
       them. The likely cause, not isolated, is that `math.Log`, `Hypot` and `Exp` run different
-      code on the two architectures: assembly on amd64. It matches amd64 only on iso9613 and
-      the synthetic city levels. **Switch:** the only whole-build switch is
+      code on the two architectures: assembly on amd64. Unfused, five digests match amd64's:
+      iso9613, dummy-freefield, cnossos-industry and bub-industry, plus beb-exposure, which
+      matches fused as well. The small synthetic city's levels match too. **Switch:** the only whole-build switch is
       `-gcflags=all=-d=fmahash=qn`, a compiler debug flag with no compatibility promise. It
       leaves 8 of 710 fused instructions, `math`'s `exp_arm64.s`. Keeping the default is
       faster. Turning it off is no route to bit-identical binaries across architectures,
