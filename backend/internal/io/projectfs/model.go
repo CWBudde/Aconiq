@@ -4,13 +4,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
+	"github.com/aconiq/backend/internal/jsonio"
 )
 
 // The files a model import writes under .noise/model/. `aconiq run` reads the
@@ -155,6 +158,37 @@ func (s Store) SaveModel(
 	report modelgeojson.ValidationReport,
 	extraRefs ...project.ArtifactRef,
 ) error {
+	return s.SaveModelIf(proj, model, report, "", extraRefs...)
+}
+
+// SaveModelIf is SaveModel with a precondition: the model on disk must be the
+// one expected names, or nothing is written.
+//
+// expected is the current model's hash (ModelHash), ExpectNone for "no model
+// may exist yet", or empty for no precondition, which is SaveModel. A refusal
+// is a *HashMismatchError naming the hash that is there.
+//
+// # Why the files are staged
+//
+// The check has to be atomic with the write, or two clients holding the same
+// hash both pass it and the second silently overwrites the first. So the
+// compare happens under LockManifest — the lock `aconiq run` children and
+// every other writer of the project take — and the files are only renamed
+// into place after it. Writing them before the lock would put a refused model
+// on disk before the refusal: the check would hold the manifest and lose the
+// model. The encoding and the writes still happen
+// outside the lock, as staged files beside their destinations; the lock is
+// held for a hash and three renames.
+//
+// The normalized file is renamed last. It is the file the hash describes, so a
+// reader who sees the new hash finds the new dump and report already beside it.
+func (s Store) SaveModelIf(
+	proj *project.Project,
+	model modelgeojson.Model,
+	report modelgeojson.ValidationReport,
+	expected string,
+	extraRefs ...project.ArtifactRef,
+) error {
 	paths := s.ModelArtifactPaths()
 
 	err := os.MkdirAll(s.modelDir(), modelDirMode)
@@ -162,17 +196,45 @@ func (s Store) SaveModel(
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.SaveModel", "create model directory", err)
 	}
 
+	staged := make([]*atomicfile.Staged, 0, 3)
+
+	defer func() {
+		for _, file := range staged {
+			file.Discard()
+		}
+	}()
+
 	for _, file := range []struct {
 		path  string
 		value any
 	}{
-		{paths.Normalized, model.ToFeatureCollection()},
 		{paths.Dump, model.ToDump()},
 		{paths.Validation, report},
+		{paths.Normalized, model.ToFeatureCollection()},
 	} {
-		err = writeJSONFile(file.path, file.value)
+		next, stageErr := stageJSONFile(file.path, file.value)
+		if stageErr != nil {
+			return stageErr
+		}
+
+		staged = append(staged, next)
+	}
+
+	unlock, err := s.LockManifest()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	err = checkExpectedHash("model", paths.Normalized, expected)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range staged {
+		err = file.Commit()
 		if err != nil {
-			return err
+			return domainerrors.New(domainerrors.KindInternal, "projectfs.SaveModel", "replace model file", err)
 		}
 	}
 
@@ -191,12 +253,6 @@ func (s Store) SaveModel(
 		refs = append(refs, ref)
 	}
 
-	unlock, err := s.LockManifest()
-	if err != nil {
-		return err
-	}
-	defer unlock()
-
 	current, err := s.Load()
 	if err != nil {
 		return err
@@ -214,6 +270,63 @@ func (s Store) SaveModel(
 	*proj = current
 
 	return nil
+}
+
+// ExpectNone is the expected hash that holds only while there is no file at
+// all: the precondition of a first save.
+const ExpectNone = "none"
+
+// HashMismatchError is a compare-and-write refused because the file on disk
+// is not the one the caller expected. Nothing was written.
+type HashMismatchError struct {
+	// Subject names what was being replaced: "model" or "terrain".
+	Subject string
+	// Expected is the hash the caller sent.
+	Expected string
+	// Current is the hash on disk, or ExpectNone when there is no file.
+	Current string
+}
+
+func (e *HashMismatchError) Error() string {
+	return fmt.Sprintf("the %s changed: expected %s, found %s", e.Subject, e.Expected, e.Current)
+}
+
+// checkExpectedHash holds a compare-and-write's precondition against the file
+// at path. The caller holds LockManifest, so the answer stays true until its
+// rename.
+func checkExpectedHash(subject, path, expected string) error {
+	if expected == "" {
+		return nil
+	}
+
+	current, err := hashFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		current = ExpectNone
+	} else if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.checkExpectedHash", "hash current "+subject, err)
+	}
+
+	if current == expected {
+		return nil
+	}
+
+	return &HashMismatchError{Subject: subject, Expected: expected, Current: current}
+}
+
+// stageJSONFile is writeJSONFile without the rename: the bytes are written
+// beside path and committed later, by the caller, under its lock.
+func stageJSONFile(path string, v any) (*atomicfile.Staged, error) {
+	data, err := jsonio.Marshal(v)
+	if err != nil {
+		return nil, domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "encode json", err)
+	}
+
+	staged, err := atomicfile.Stage(path, data)
+	if err != nil {
+		return nil, domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "replace "+filepath.Base(path), err)
+	}
+
+	return staged, nil
 }
 
 func (s Store) modelDir() string {

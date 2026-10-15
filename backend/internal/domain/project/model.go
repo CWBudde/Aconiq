@@ -126,6 +126,14 @@ const (
 	ArtifactIDModelValidation = "artifact-model-validation"
 )
 
+// The terrain artifact `aconiq import --terrain` and `POST
+// /api/v1/import/terrain` register, and `aconiq run` looks up. Singleton per
+// project, like the model artifacts.
+const (
+	ArtifactIDTerrain          = "artifact-terrain"
+	ArtifactKindTerrainGeoTIFF = "model.terrain_geotiff"
+)
+
 // MigrationState tracks current and historical schema transitions.
 type MigrationState struct {
 	CurrentVersion         int               `json:"current_version"`

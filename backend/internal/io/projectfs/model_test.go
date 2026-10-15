@@ -609,3 +609,160 @@ func TestSaveModelCarriesExtraArtifactRefsIntoTheSameManifestSave(t *testing.T) 
 		t.Fatalf("extra artifact ref appears %d times, want 1", count)
 	}
 }
+
+// otherModel differs from sampleModel in one coordinate, so the two hash
+// differently.
+func otherModel() modelgeojson.Model {
+	model := sampleModel()
+	model.Features[0].Coordinates = []any{3.0, 4.0}
+
+	return model
+}
+
+// readModelState captures everything a refused save must leave alone: the
+// three model files and the manifest, byte for byte.
+func readModelState(t *testing.T, store Store) map[string][]byte {
+	t.Helper()
+
+	paths := store.ModelArtifactPaths()
+	state := map[string][]byte{}
+
+	for _, path := range []string{paths.Normalized, paths.Dump, paths.Validation, store.ManifestPath()} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", filepath.Base(path), err)
+		}
+
+		state[path] = data
+	}
+
+	return state
+}
+
+// The precondition is checked after the new files are written and before any
+// of them is visible: a refused save must leave every model file and the
+// manifest exactly as they were, and leave no staged file behind.
+func TestSaveModelIfRefusesAStaleHashAndLeavesTheModelUntouched(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	err = store.SaveModel(&proj, sampleModel(), modelgeojson.Validate(sampleModel()))
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	current, err := store.ModelHash()
+	if err != nil {
+		t.Fatalf("model hash: %v", err)
+	}
+
+	before := readModelState(t, store)
+	stale := strings.Repeat("0", 64)
+
+	err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), stale)
+
+	var mismatch *HashMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("expected a HashMismatchError, got %T: %v", err, err)
+	}
+
+	if mismatch.Expected != stale || mismatch.Current != current {
+		t.Fatalf("mismatch = %+v, want expected %s and current %s", mismatch, stale, current)
+	}
+
+	after := readModelState(t, store)
+	for path, data := range before {
+		if !bytes.Equal(after[path], data) {
+			t.Fatalf("a refused save changed %s", filepath.Base(path))
+		}
+	}
+
+	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(store.ModelArtifactPaths().Normalized), "*.tmp"))
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+
+	if len(leftovers) != 0 {
+		t.Fatalf("a refused save left staged files behind: %v", leftovers)
+	}
+}
+
+func TestSaveModelIfReplacesTheModelWhenTheHashMatches(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	err = store.SaveModel(&proj, sampleModel(), modelgeojson.Validate(sampleModel()))
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	current, err := store.ModelHash()
+	if err != nil {
+		t.Fatalf("model hash: %v", err)
+	}
+
+	err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), current)
+	if err != nil {
+		t.Fatalf("save with the current hash: %v", err)
+	}
+
+	replaced, err := store.ModelHash()
+	if err != nil {
+		t.Fatalf("model hash: %v", err)
+	}
+
+	if replaced != hashOfSavedModel(t, otherModel()) {
+		t.Fatalf("the model on disk is not the one saved: %s", replaced)
+	}
+}
+
+// ExpectNone is the precondition for a first save: it holds on a fresh project
+// and fails once any model exists, naming that model's hash.
+func TestSaveModelIfExpectNoneOnlyHoldsWithoutAModel(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	err = store.SaveModelIf(&proj, sampleModel(), modelgeojson.Validate(sampleModel()), ExpectNone)
+	if err != nil {
+		t.Fatalf("first save expecting none: %v", err)
+	}
+
+	current, err := store.ModelHash()
+	if err != nil {
+		t.Fatalf("model hash: %v", err)
+	}
+
+	err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), ExpectNone)
+
+	var mismatch *HashMismatchError
+	if !errors.As(err, &mismatch) || mismatch.Current != current {
+		t.Fatalf("expected a mismatch naming %s, got %v", current, err)
+	}
+}

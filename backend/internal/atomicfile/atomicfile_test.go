@@ -155,3 +155,90 @@ func TestWriteFileFailsWhenTheDirectoryDoesNotExist(t *testing.T) {
 		t.Fatal("expected an error writing into a directory that does not exist")
 	}
 }
+
+// A staged file is the compare-and-write half of WriteFile: the bytes are on
+// disk beside the destination, but the destination is untouched until Commit.
+// Discard must then leave no trace, because a refused write is the common case
+// for a caller that stages before it checks a precondition.
+func TestStageLeavesTheDestinationUntilCommit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model.json")
+
+	err := WriteFile(path, []byte("old"))
+	if err != nil {
+		t.Fatalf("seed the file: %v", err)
+	}
+
+	staged, err := Stage(path, []byte("new"))
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+
+	assertContents(t, path, "old")
+
+	err = staged.Commit()
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	// A deferred Discard after the Commit must be a no-op.
+	staged.Discard()
+
+	assertContents(t, path, "new")
+	assertOnlyEntries(t, dir, "model.json")
+}
+
+func TestDiscardRemovesTheStagedFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model.json")
+
+	err := WriteFile(path, []byte("old"))
+	if err != nil {
+		t.Fatalf("seed the file: %v", err)
+	}
+
+	staged, err := Stage(path, []byte("new"))
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+
+	staged.Discard()
+
+	assertContents(t, path, "old")
+	assertOnlyEntries(t, dir, "model.json")
+}
+
+func assertContents(t *testing.T, path, want string) {
+	t.Helper()
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", filepath.Base(path), err)
+	}
+
+	if string(got) != want {
+		t.Fatalf("%s = %q, want %q", filepath.Base(path), got, want)
+	}
+}
+
+func assertOnlyEntries(t *testing.T, dir string, want ...string) {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+
+	got := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		got = append(got, entry.Name())
+	}
+
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("directory holds %v, want %v", got, want)
+	}
+}
