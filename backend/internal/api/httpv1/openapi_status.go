@@ -134,19 +134,8 @@ func openapiProjectSchemas() map[string]any {
 					"type": "array", "items": map[string]any{"$ref": "#/components/schemas/ActiveRunStatus"},
 					"description": "Every pending or running run, in manifest order; absent while none is open",
 				},
-				"model": map[string]any{"$ref": "#/components/schemas/ProjectModelStatus"},
-			},
-		},
-		"ProjectModelStatus": map[string]any{
-			"type":                 "object",
-			"additionalProperties": false,
-			"required":             []string{"hash", "updated_at"},
-			"description": "The saved model's receipt. Absent until a model has been saved. A client that kept " +
-				"the hash POST /api/v1/model returned compares the two as strings to learn whether its local draft " +
-				"is still the project's model, without fetching anything.",
-			"properties": map[string]any{
-				"hash":       openapiModelHashSchema(),
-				"updated_at": map[string]any{"type": "string", "format": "date-time", "description": "When the model artifact was last written"},
+				"model":   map[string]any{"$ref": "#/components/schemas/ProjectModelStatus"},
+				"terrain": map[string]any{"$ref": "#/components/schemas/ProjectTerrainStatus"},
 			},
 		},
 		"ArtifactRef": map[string]any{
@@ -273,6 +262,41 @@ func openapiStandardSchemas() map[string]any {
 					"type":  "array",
 					"items": map[string]any{"$ref": "#/components/schemas/VersionInfo"},
 				},
+			},
+		},
+	}
+}
+
+// openapiProjectReceiptSchemas describes the receipts the project status
+// carries: the server-issued hashes a client sends back as expected_hash.
+func openapiProjectReceiptSchemas() map[string]any {
+	return map[string]any{
+		"ProjectModelStatus": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"hash", "updated_at"},
+			"description": "The saved model's receipt. Absent until a model has been saved. A client that kept " +
+				"the hash POST /api/v1/model returned compares the two as strings to learn whether its local draft " +
+				"is still the project's model, without fetching anything.",
+			"properties": map[string]any{
+				"hash":       openapiModelHashSchema(),
+				"updated_at": map[string]any{"type": "string", "format": "date-time", "description": "When the model artifact was last written"},
+			},
+		},
+		"ProjectTerrainStatus": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"hash", "updated_at"},
+			"description": "The imported terrain's receipt. Absent until a terrain has been imported. The hash is " +
+				"the `expected_hash` a replace through POST /api/v1/import/terrain sends back; with the member " +
+				"absent, that value is `none`.",
+			"properties": map[string]any{
+				"hash": map[string]any{
+					"type":        "string",
+					"pattern":     "^[0-9a-f]{64}$",
+					"description": "SHA-256 of `.noise/model/terrain.tif`, as bare lowercase hex. A receipt issued by the server: compare it as a string.",
+				},
+				"updated_at": map[string]any{"type": "string", "format": "date-time", "description": "When the terrain artifact was last written"},
 			},
 		},
 	}

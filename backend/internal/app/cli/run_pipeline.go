@@ -385,7 +385,7 @@ func computeRun(ctx context.Context, prepared preparedRun, state commandState, r
 // fails to load is a warning rather than a failure: the run continues without
 // elevation, and says so in both the log and the structured logger.
 func loadRunTerrain(store projectfs.Store, proj project.Project, state commandState, logf func(string, ...any)) terrain.Model {
-	artifactPath := findArtifactPath(proj, "artifact-terrain")
+	artifactPath := findArtifactPath(proj, project.ArtifactIDTerrain)
 	if artifactPath == "" {
 		return nil
 	}

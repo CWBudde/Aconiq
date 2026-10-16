@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
@@ -650,41 +649,20 @@ func runTerrainImport(
 
 	bounds := tm.Bounds()
 
-	// Copy to project model directory.
-	destPath := filepath.Join(store.Root(), defaultTerrainPath)
-
 	srcData, err := os.ReadFile(absoluteTerrain)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "read terrain file", err)
 	}
 
-	err = os.MkdirAll(filepath.Dir(destPath), 0o750)
+	// The store's one terrain write, shared with POST /api/v1/import/terrain:
+	// it replaces the DTM through a rename, because a run - possibly one the
+	// HTTP API started - may be reading the previous one, and registers the
+	// artifact in the same locked manifest save. The CLI replaces
+	// unconditionally; only API clients send a precondition.
+	err = store.SaveTerrain(proj, srcData, "")
 	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.import", "create model directory", err)
+		return fmt.Errorf("persist terrain artifact: %w", err)
 	}
-
-	// Replaced through a rename rather than rewritten in place, because a run
-	// - possibly an `aconiq run` started from the HTTP API - may be reading
-	// the previous DTM at this moment.
-	err = atomicfile.WriteFile(destPath, srcData)
-	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.import", "write terrain file", err)
-	}
-
-	// Register artifact.
-	now := nowUTC()
-
-	saved, err := saveArtifactRefs(store, project.ArtifactRef{
-		ID:        "artifact-terrain",
-		Kind:      "model.terrain_geotiff",
-		Path:      defaultTerrainPath,
-		CreatedAt: now,
-	})
-	if err != nil {
-		return err
-	}
-
-	*proj = saved
 
 	state.Logger.Info(
 		"terrain import completed",

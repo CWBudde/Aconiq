@@ -68,9 +68,38 @@ import (
 // name. io/projectfs has replaced the manifest this way since before this
 // package existed.
 func WriteFile(path string, data []byte) error {
+	staged, err := Stage(path, data)
+	if err != nil {
+		return err
+	}
+
+	return staged.Commit()
+}
+
+// Staged is a temporary file written beside its destination and not yet
+// renamed over it: WriteFile split in two, for a caller that has to check a
+// precondition after the bytes are on disk and before anyone can see them.
+//
+// The case it exists for is a compare-and-write. A writer that stages first,
+// then takes its lock, checks and commits, holds the lock for a rename rather
+// than for the encoding and the write; and a refused write is a Discard that
+// never touched the destination. Checking under the lock while writing the
+// destination outside it does not hold: the refused write has already landed.
+//
+// The temporary file shares the destination's directory, so Commit is a
+// rename on one filesystem and atomic like WriteFile's.
+type Staged struct {
+	tmpPath string
+	path    string
+}
+
+// Stage writes data to a uniquely named temporary file beside path and returns
+// it uncommitted. The destination is not touched. The caller must Commit or
+// Discard it.
+func Stage(path string, data []byte) (*Staged, error) {
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
-		return fmt.Errorf("create temporary file for %s: %w", filepath.Base(path), err)
+		return nil, fmt.Errorf("create temporary file for %s: %w", filepath.Base(path), err)
 	}
 
 	tmpPath := tmp.Name()
@@ -80,22 +109,46 @@ func WriteFile(path string, data []byte) error {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
 
-		return fmt.Errorf("write temporary %s: %w", filepath.Base(path), err)
+		return nil, fmt.Errorf("write temporary %s: %w", filepath.Base(path), err)
 	}
 
 	err = tmp.Close()
 	if err != nil {
 		_ = os.Remove(tmpPath)
 
-		return fmt.Errorf("close temporary %s: %w", filepath.Base(path), err)
+		return nil, fmt.Errorf("close temporary %s: %w", filepath.Base(path), err)
 	}
 
-	err = os.Rename(tmpPath, path)
+	return &Staged{tmpPath: tmpPath, path: path}, nil
+}
+
+// Commit renames the staged file over its destination. On failure the
+// temporary file is removed and the destination keeps its old bytes. Either
+// way the Staged is spent: a later Discard does nothing, so a caller may defer
+// Discard for every staged file and Commit the ones it keeps.
+func (s *Staged) Commit() error {
+	tmpPath := s.tmpPath
+	s.tmpPath = ""
+
+	err := os.Rename(tmpPath, s.path)
 	if err != nil {
 		_ = os.Remove(tmpPath)
 
-		return fmt.Errorf("rename temporary %s: %w", filepath.Base(path), err)
+		return fmt.Errorf("rename temporary %s: %w", filepath.Base(s.path), err)
 	}
 
 	return nil
+}
+
+// Discard removes the staged file without touching the destination. It does
+// nothing on a nil Staged or one already committed or discarded — after a
+// Commit the temporary name is free again, and removing it blind could delete
+// another writer's file.
+func (s *Staged) Discard() {
+	if s == nil || s.tmpPath == "" {
+		return
+	}
+
+	_ = os.Remove(s.tmpPath)
+	s.tmpPath = ""
 }

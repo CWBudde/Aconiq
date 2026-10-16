@@ -125,7 +125,9 @@ func openapiSchemas() map[string]any {
 	for _, group := range []map[string]any{
 		openapiErrorSchemas(),
 		openapiProjectSchemas(),
+		openapiProjectReceiptSchemas(),
 		openapiRunSchemas(),
+		openapiRunProvenanceSchemas(),
 		openapiLGLNSchemas(),
 		openapiRunDeleteSchemas(),
 		openapiRunProgressSchemas(),
@@ -297,6 +299,18 @@ func openapiModelHashSchema() map[string]any {
 			"provenance.json uses for input hashes. It is a receipt issued by the server: keep the value you " +
 			"were handed and compare it as a string. Do not recompute it from a model you hold, because a " +
 			"re-serialised model is not the same bytes.",
+	}
+}
+
+// openapiExpectedHashSchema describes a compare-and-write precondition on the
+// model save and the terrain replace.
+func openapiExpectedHashSchema(subject string) map[string]any {
+	return map[string]any{
+		"type":    "string",
+		"pattern": "^([0-9a-f]{64}|none)$",
+		"description": "Replace the " + subject + " only if the stored one still has this SHA-256 — the hash " +
+			"the project status reports — or, as `none`, only if there is none. A mismatch is answered with 409 " +
+			"`" + errorCodeHashMismatch + "` and nothing is written. Omit it to replace unconditionally.",
 	}
 }
 

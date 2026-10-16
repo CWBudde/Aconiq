@@ -110,7 +110,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import a GeoTIFF terrain model */
+        /**
+         * Import a GeoTIFF terrain model
+         * @description Validates the GeoTIFF and replaces `.noise/model/terrain.tif`, registering it as the terrain artifact `aconiq run` reads — the same write `aconiq import --terrain` makes. With `expected_hash` the replace is a compare-and-write, atomic with the write.
+         */
         post: operations["importTerrain"];
         delete?: never;
         options?: never;
@@ -133,7 +136,7 @@ export interface paths {
         put?: never;
         /**
          * Replace the project model
-         * @description Accepts a GeoJSON FeatureCollection in the v1 input schema — the same document `aconiq import --input` takes — normalises it into the project CRS, validates it and writes `.noise/model/model.normalized.geojson`, the model dump and the validation report, registering the three as project artifacts. The previous model is replaced. `aconiq run` and `POST /api/v1/runs` read the normalized model from there by default.
+         * @description Accepts a GeoJSON FeatureCollection in the v1 input schema — the same document `aconiq import --input` takes — normalises it into the project CRS, validates it and writes `.noise/model/model.normalized.geojson`, the model dump and the validation report, registering the three as project artifacts. The previous model is replaced. `aconiq run` and `POST /api/v1/runs` read the normalized model from there by default. With `expected_hash` the save is a compare-and-write: it replaces the model only if the stored one still has that hash, and the check is atomic with the write.
          */
         post: operations["saveModel"];
         delete?: never;
@@ -287,6 +290,26 @@ export interface paths {
         };
         /** Run log lines */
         get: operations["getRunLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{id}/provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A run's provenance.json
+         * @description Returns `.noise/runs/<id>/provenance.json` byte for byte, as the run wrote it: the standard it resolved, its parameters, the input hashes, the standard-data digest and the tool that produced it. It is never re-encoded, so a field an older or newer build wrote is served too.
+         */
+        get: operations["getRunProvenance"];
         put?: never;
         post?: never;
         delete?: never;
@@ -498,6 +521,8 @@ export interface components {
         ModelSaveRequest: {
             /** @description CRS of the model's coordinates, e.g. `EPSG:4326` for coordinates drawn on a web map. Like `aconiq import --input-crs`: when it differs from the project CRS every coordinate is reprojected; when omitted the coordinates are taken to be in the project CRS already. */
             crs?: string;
+            /** @description Replace the model only if the stored one still has this SHA-256 — the hash the project status reports — or, as `none`, only if there is none. A mismatch is answered with 409 `hash_mismatch` and nothing is written. Omit it to replace unconditionally. */
+            expected_hash?: string;
             /** @description GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver | calc-area | ground-zone. */
             model: Record<string, never>;
         };
@@ -555,6 +580,17 @@ export interface components {
             project_path: string;
             run_count: number;
             scenario_count: number;
+            terrain?: components["schemas"]["ProjectTerrainStatus"];
+        };
+        /** @description The imported terrain's receipt. Absent until a terrain has been imported. The hash is the `expected_hash` a replace through POST /api/v1/import/terrain sends back; with the member absent, that value is `none`. */
+        ProjectTerrainStatus: {
+            /** @description SHA-256 of `.noise/model/terrain.tif`, as bare lowercase hex. A receipt issued by the server: compare it as a string. */
+            hash: string;
+            /**
+             * Format: date-time
+             * @description When the terrain artifact was last written
+             */
+            updated_at: string;
         };
         /** @description What a run will cost in time. The same JSON `aconiq run --estimate --json` prints under `estimate` and the WASM kernel's `estimate` answers with. */
         RunEstimate: {
@@ -640,6 +676,52 @@ export interface components {
              * @description When this report was written
              */
             updated_at: string;
+        };
+        RunProvenance: {
+            /** Format: date-time */
+            generated_at: string;
+            /** @description Project-relative input path to its SHA-256, as bare lowercase hex. */
+            input_hashes: {
+                [key: string]: string;
+            };
+            /** @description Module metadata, including `evidence_tier`, `project_crs` and `compute_crs`. */
+            metadata?: {
+                [key: string]: string;
+            };
+            parameters?: {
+                [key: string]: string;
+            };
+            receiver_mode?: string;
+            receiver_set_id?: string;
+            run_id: string;
+            scenario_id: string;
+            standard: {
+                /**
+                 * @description Which assessment question the standard answers: `planning` for an individual project's approval case, `mapping` for area-wide strategic noise mapping. The two are not interchangeable, so a result carries the context it was produced under.
+                 * @enum {string}
+                 */
+                context?: "planning" | "mapping";
+                id: string;
+                profile?: string;
+                version: string;
+            };
+            standard_data?: {
+                algorithm: string;
+                digest: string;
+                evidence_tier: string;
+                tables?: {
+                    digest: string;
+                    name: string;
+                }[];
+            };
+            /** @description RFC 3339 build date, or `unknown` */
+            tool_build_date?: string;
+            /** @description Short source commit of the build, or `unknown` */
+            tool_commit?: string;
+            tool_name: string;
+            tool_version: string;
+        } & {
+            [key: string]: unknown;
         };
         RunSummary: {
             artifacts: components["schemas"]["ArtifactRef"][];
@@ -1099,6 +1181,8 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": {
+                    /** @description Replace the terrain only if the stored one still has this SHA-256 — the hash the project status reports — or, as `none`, only if there is none. A mismatch is answered with 409 `hash_mismatch` and nothing is written. Omit it to replace unconditionally. */
+                    expected_hash?: string;
                     /** Format: binary */
                     file: string;
                 };
@@ -1114,7 +1198,7 @@ export interface operations {
                     "application/json": components["schemas"]["TerrainInfo"];
                 };
             };
-            /** @description Invalid terrain import request */
+            /** @description Invalid terrain import request, or a malformed `expected_hash` */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1141,8 +1225,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Project not initialized */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Method not allowed */
             405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `expected_hash` no longer names the stored terrain (`hash_mismatch`): details.current_hash is the hash there now, or `none`. Nothing is written. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1319,6 +1421,15 @@ export interface operations {
             };
             /** @description Method not allowed */
             405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `expected_hash` no longer names the stored model (`hash_mismatch`): details.current_hash is the hash there now, or `none`. Nothing is written. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2163,6 +2274,74 @@ export interface operations {
                 };
             };
             /** @description Failed to read log */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getRunProvenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run's provenance manifest */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunProvenance"];
+                };
+            };
+            /** @description Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing request arrived without the X-Aconiq-Client header (`client_header_required`), or the project manifest named a path outside the project root (`forbidden_path`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not initialized, run not found, or its provenance.json is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Failed to read the provenance file */
             500: {
                 headers: {
                     [name: string]: unknown;

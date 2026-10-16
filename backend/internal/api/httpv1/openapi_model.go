@@ -50,7 +50,9 @@ func openapiModelPathItems() map[string]any {
 					"`aconiq import --input` takes — normalises it into the project CRS, validates it and " +
 					"writes `.noise/model/model.normalized.geojson`, the model dump and the validation report, " +
 					"registering the three as project artifacts. The previous model is replaced. " +
-					"`aconiq run` and `POST /api/v1/runs` read the normalized model from there by default.",
+					"`aconiq run` and `POST /api/v1/runs` read the normalized model from there by default. " +
+					"With `expected_hash` the save is a compare-and-write: it replaces the model only if the stored " +
+					"one still has that hash, and the check is atomic with the write.",
 				"requestBody": map[string]any{
 					"required": true,
 					"content": map[string]any{
@@ -79,6 +81,10 @@ func openapiModelPathItems() map[string]any {
 					),
 					"404": openapiErrorResponse("Project not initialized"),
 					"405": methodNotAllowedResponse(),
+					"409": openapiErrorResponse(
+						"`expected_hash` no longer names the stored model (`" + errorCodeHashMismatch + "`): " +
+							"details.current_hash is the hash there now, or `none`. Nothing is written.",
+					),
 					"500": openapiErrorResponse("Failed to persist the model"),
 				},
 			},
@@ -104,6 +110,7 @@ func openapiModelSchemas() map[string]any {
 					"type":        "object",
 					"description": "GeoJSON FeatureCollection in the v1 input schema (docs/geojson-schema-v1.md): features carry `kind` = source | building | barrier | receiver | calc-area | ground-zone.",
 				},
+				"expected_hash": openapiExpectedHashSchema("model"),
 			},
 		},
 		"ModelSaveResponse": map[string]any{

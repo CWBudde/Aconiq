@@ -40,12 +40,23 @@ type projectStatusResponse struct {
 	ActiveRuns []activeRunStatus `json:"active_runs,omitempty"`
 	// Model is absent until a model has been saved.
 	Model *projectModelStatus `json:"model,omitempty"`
+	// Terrain is absent until a terrain has been imported. Its hash is the
+	// expected_hash a replace sends back; with the member absent, that is
+	// "none".
+	Terrain *projectTerrainStatus `json:"terrain,omitempty"`
 }
 
 // projectModelStatus lets a client decide whether its local draft still matches
 // the project without fetching the model. The hash is the same receipt
 // POST /api/v1/model returned; the client compares strings and never hashes.
 type projectModelStatus struct {
+	Hash      string    `json:"hash"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// projectTerrainStatus is the terrain's receipt, on the model's terms: a
+// server-issued hash a client compares as a string and never recomputes.
+type projectTerrainStatus struct {
 	Hash      string    `json:"hash"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -146,6 +157,7 @@ func (h Handler) projectStatus(proj project.Project) projectStatusResponse {
 	}
 
 	status.Model = h.modelStatus(proj)
+	status.Terrain = h.terrainStatus(proj)
 
 	return status
 }
@@ -177,6 +189,34 @@ func (h Handler) modelStatus(proj project.Project) *projectModelStatus {
 	}
 
 	return &projectModelStatus{
+		Hash:      hash,
+		UpdatedAt: ref.CreatedAt,
+	}
+}
+
+// terrainStatus reports the imported terrain's receipt, or nil when there is
+// none, by modelStatus's rules: no file is opened without a terrain artifact
+// ref, and a hash that fails reads as absence rather than failing the status.
+func (h Handler) terrainStatus(proj project.Project) *projectTerrainStatus {
+	var ref project.ArtifactRef
+
+	for _, a := range proj.Artifacts {
+		if a.ID == project.ArtifactIDTerrain {
+			ref = a
+			break
+		}
+	}
+
+	if ref.ID == "" {
+		return nil
+	}
+
+	hash, err := h.store.TerrainHash()
+	if err != nil {
+		return nil
+	}
+
+	return &projectTerrainStatus{
 		Hash:      hash,
 		UpdatedAt: ref.CreatedAt,
 	}

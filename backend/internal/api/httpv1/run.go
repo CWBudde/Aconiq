@@ -3,6 +3,7 @@ package httpv1
 import (
 	stderrors "errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"slices"
 	"strings"
@@ -401,6 +402,66 @@ func (h Handler) handleRunLog(w http.ResponseWriter, r *http.Request) {
 		RunID: runID,
 		Lines: lines,
 	})
+}
+
+// handleRunProvenance serves a run's provenance.json byte for byte. It is not
+// re-encoded through project.ProvenanceManifest: the file is the record a
+// reader checks a run against, and a re-marshal would answer with the struct of
+// today rather than with what the run wrote.
+//
+// It is not an artifact, so the artifact-content route cannot reach it; the
+// path comes from the run row and is read through readProjectFile, the same
+// containment the run log has.
+func (h Handler) handleRunProvenance(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+
+	runID := r.PathValue("id")
+
+	proj, err := h.store.Load()
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	var provenancePath string
+
+	for _, run := range proj.Runs {
+		if run.ID == runID {
+			provenancePath = run.ProvenancePath
+			break
+		}
+	}
+
+	if provenancePath == "" {
+		writeAPIError(w, http.StatusNotFound, apiError{
+			Code:    errorCodeNotFound,
+			Message: fmt.Sprintf("run %q not found", runID),
+		})
+
+		return
+	}
+
+	raw, readErr := readProjectFile(h.store.Root(), provenancePath)
+	if stderrors.Is(readErr, fs.ErrNotExist) {
+		writeAPIError(w, http.StatusNotFound, apiError{
+			Code:    errorCodeNotFound,
+			Message: fmt.Sprintf("run %q has no provenance.json", runID),
+			Hint:    "The run row names a file that is not on disk; the project folder is incomplete.",
+		})
+
+		return
+	}
+
+	if readErr != nil {
+		writeProjectFileError(w, readErr, "failed to read run provenance")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
 }
 
 func splitLogLines(text string) []string {

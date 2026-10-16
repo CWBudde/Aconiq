@@ -382,6 +382,8 @@ func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID s
 		GeneratedAt:   now,
 		ToolName:      buildinfo.Name,
 		ToolVersion:   buildinfo.Version(),
+		ToolCommit:    buildinfo.Commit(),
+		ToolBuildDate: buildinfo.Date(),
 	}
 
 	err = writeJSONFile(filepath.Join(s.root, filepath.FromSlash(provRelPath)), provenance)
