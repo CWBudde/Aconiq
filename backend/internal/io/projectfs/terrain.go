@@ -1,6 +1,8 @@
 package projectfs
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -35,9 +37,15 @@ func (s Store) TerrainPath() string {
 // The file is replaced through a rename, not rewritten, because an `aconiq run`
 // may be reading the previous DTM and takes no lock of ours. *proj is replaced
 // with the manifest as saved. The lock is taken here, so a caller must not hold
-// it.
+// it. An uninitialised folder is refused before anything is written, for the
+// reason SaveModelIf gives.
 func (s Store) SaveTerrain(proj *project.Project, data []byte, expected string) error {
-	err := os.MkdirAll(s.modelDir(), modelDirMode)
+	_, err := s.Load()
+	if err != nil {
+		return err
+	}
+
+	err = os.MkdirAll(s.modelDir(), modelDirMode)
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.SaveTerrain", "create model directory", err)
 	}
@@ -56,6 +64,13 @@ func (s Store) SaveTerrain(proj *project.Project, data []byte, expected string) 
 	}
 	defer unlock()
 
+	// Loaded before the commit, so a manifest that cannot be read fails the
+	// replace with the previous terrain still in place.
+	current, err := s.Load()
+	if err != nil {
+		return err
+	}
+
 	err = checkExpectedHash("terrain", path, expected)
 	if err != nil {
 		return err
@@ -66,9 +81,12 @@ func (s Store) SaveTerrain(proj *project.Project, data []byte, expected string) 
 		return domainerrors.New(domainerrors.KindInternal, "projectfs.SaveTerrain", "replace terrain file", err)
 	}
 
-	current, err := s.Load()
-	if err != nil {
-		return err
+	// The digest of what was just committed is known, so the status reports
+	// it from the next read on rather than rehashing 50 MB to find it.
+	info, err := os.Stat(path)
+	if err == nil {
+		sum := sha256.Sum256(data)
+		terrainHashes.remember(path, info, hex.EncodeToString(sum[:]))
 	}
 
 	current.Artifacts = upsertArtifactRef(current.Artifacts, project.ArtifactRef{
@@ -94,10 +112,13 @@ func (s Store) SaveTerrain(proj *project.Project, data []byte, expected string) 
 // It is what the project status reports, and the status is rebuilt every two
 // seconds for every open event stream: rehashing a DTM of up to 50 MB on each
 // of those is work with the same answer every time. So the hash is remembered
-// per file, keyed on its size and modification time, which a SaveTerrain
-// rename always changes. A stale answer could only make a client's
-// expected_hash fail to match — SaveTerrain's own check always hashes the file
-// itself — so a miss costs a 409, never a wrong overwrite.
+// per file. Size and modification time alone do not identify one — two
+// same-sized terrains saved within one timestamp tick share both — so the
+// remembered entry must also be the same file (os.SameFile), which a
+// SaveTerrain rename never is: the staged file was created while the old one
+// still existed. A stale answer could only make a client's expected_hash fail
+// to match — SaveTerrain's own check always hashes the file itself — so a miss
+// costs a 409, never a wrong overwrite.
 func (s Store) TerrainHash() (string, error) {
 	path := s.TerrainPath()
 
@@ -110,9 +131,7 @@ func (s Store) TerrainHash() (string, error) {
 		return "", domainerrors.New(domainerrors.KindInternal, "projectfs.TerrainHash", "stat terrain", err)
 	}
 
-	key := fileHashKey{size: info.Size(), modTime: info.ModTime().UnixNano()}
-
-	if sum, ok := terrainHashes.lookup(path, key); ok {
+	if sum, ok := terrainHashes.lookup(path, info); ok {
 		return sum, nil
 	}
 
@@ -125,15 +144,22 @@ func (s Store) TerrainHash() (string, error) {
 		return "", domainerrors.New(domainerrors.KindInternal, "projectfs.TerrainHash", "hash terrain", err)
 	}
 
-	terrainHashes.remember(path, key, sum)
+	// Remembered only if the file was not replaced while it was hashed:
+	// otherwise the bytes read may be the new file's under the old one's
+	// identity, or the reverse.
+	after, err := os.Stat(path)
+	if err == nil && sameFileVersion(info, after) {
+		terrainHashes.remember(path, info, sum)
+	}
 
 	return sum, nil
 }
 
-// fileHashKey identifies one version of a file well enough to reuse its hash.
-type fileHashKey struct {
-	size    int64
-	modTime int64
+// sameFileVersion reports whether two stats describe the same version of the
+// same file: the same file, not merely the same name, and unchanged in size and
+// modification time.
+func sameFileVersion(a, b os.FileInfo) bool {
+	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
 }
 
 // fileHashCache holds the last hash computed per path: one entry per project
@@ -144,27 +170,27 @@ type fileHashCache struct {
 }
 
 type fileHashEntry struct {
-	key fileHashKey
-	sum string
+	info os.FileInfo
+	sum  string
 }
 
 var terrainHashes = &fileHashCache{entries: map[string]fileHashEntry{}}
 
-func (c *fileHashCache) lookup(path string, key fileHashKey) (string, bool) {
+func (c *fileHashCache) lookup(path string, info os.FileInfo) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	entry, ok := c.entries[path]
-	if !ok || entry.key != key {
+	if !ok || !sameFileVersion(entry.info, info) {
 		return "", false
 	}
 
 	return entry.sum, true
 }
 
-func (c *fileHashCache) remember(path string, key fileHashKey, sum string) {
+func (c *fileHashCache) remember(path string, info os.FileInfo, sum string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.entries[path] = fileHashEntry{key: key, sum: sum}
+	c.entries[path] = fileHashEntry{info: info, sum: sum}
 }

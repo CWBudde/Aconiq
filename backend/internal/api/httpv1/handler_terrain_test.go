@@ -388,3 +388,21 @@ func TestOpenAPIDocumentsTheTerrainPrecondition(t *testing.T) {
 		t.Fatal("ProjectStatusResponse does not document terrain")
 	}
 }
+
+func TestImportTerrainIntoAnUninitialisedProjectWritesNothing(t *testing.T) {
+	t.Parallel()
+
+	store, err := projectfs.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	handler := NewHandler(store, nil)
+
+	assertErrorCode(t, postTerrain(t, handler, buildTestGeoTIFF(t), "none"), http.StatusNotFound, errorCodeNotFound)
+
+	_, err = os.Stat(store.TerrainPath())
+	if !os.IsNotExist(err) {
+		t.Fatalf("a refused import left terrain.tif behind: %v", err)
+	}
+}

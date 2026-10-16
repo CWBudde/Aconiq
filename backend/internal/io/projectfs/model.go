@@ -158,7 +158,9 @@ func (s Store) SaveModel(
 	report modelgeojson.ValidationReport,
 	extraRefs ...project.ArtifactRef,
 ) error {
-	return s.SaveModelIf(proj, model, report, "", extraRefs...)
+	_, err := s.SaveModelIf(proj, model, report, "", extraRefs...)
+
+	return err
 }
 
 // SaveModelIf is SaveModel with a precondition: the model on disk must be the
@@ -167,6 +169,17 @@ func (s Store) SaveModel(
 // expected is the current model's hash (ModelHash), ExpectNone for "no model
 // may exist yet", or empty for no precondition, which is SaveModel. A refusal
 // is a *HashMismatchError naming the hash that is there.
+//
+// It returns the saved model's receipt: the SHA-256 of the normalized bytes it
+// committed, which is what ModelHash reads back off the file. It is computed
+// from those bytes rather than re-read after the save, because by then the lock
+// is released and another writer may already have replaced the file — a
+// receipt for their model would let the client overwrite it under the belief
+// that it was guarding its own.
+//
+// An uninitialised folder is refused before anything is written: creating
+// .noise/model would give LockManifest a directory to lock in, and the files
+// would land before the manifest load failed.
 //
 // # Why the files are staged
 //
@@ -188,15 +201,20 @@ func (s Store) SaveModelIf(
 	report modelgeojson.ValidationReport,
 	expected string,
 	extraRefs ...project.ArtifactRef,
-) error {
+) (string, error) {
 	paths := s.ModelArtifactPaths()
 
-	err := os.MkdirAll(s.modelDir(), modelDirMode)
+	_, err := s.Load()
 	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "projectfs.SaveModel", "create model directory", err)
+		return "", err
 	}
 
-	staged := make([]*atomicfile.Staged, 0, 3)
+	err = os.MkdirAll(s.modelDir(), modelDirMode)
+	if err != nil {
+		return "", domainerrors.New(domainerrors.KindInternal, "projectfs.SaveModel", "create model directory", err)
+	}
+
+	staged, receipt, err := stageModelFiles(paths, model, report)
 
 	defer func() {
 		for _, file := range staged {
@@ -204,37 +222,32 @@ func (s Store) SaveModelIf(
 		}
 	}()
 
-	for _, file := range []struct {
-		path  string
-		value any
-	}{
-		{paths.Dump, model.ToDump()},
-		{paths.Validation, report},
-		{paths.Normalized, model.ToFeatureCollection()},
-	} {
-		next, stageErr := stageJSONFile(file.path, file.value)
-		if stageErr != nil {
-			return stageErr
-		}
-
-		staged = append(staged, next)
+	if err != nil {
+		return "", err
 	}
 
 	unlock, err := s.LockManifest()
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer unlock()
 
+	// Loaded before anything is committed, so a manifest that cannot be read
+	// fails the save with the model files untouched.
+	current, err := s.Load()
+	if err != nil {
+		return "", err
+	}
+
 	err = checkExpectedHash("model", paths.Normalized, expected)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	for _, file := range staged {
 		err = file.Commit()
 		if err != nil {
-			return domainerrors.New(domainerrors.KindInternal, "projectfs.SaveModel", "replace model file", err)
+			return "", domainerrors.New(domainerrors.KindInternal, "projectfs.SaveModel", "replace model file", err)
 		}
 	}
 
@@ -253,23 +266,55 @@ func (s Store) SaveModelIf(
 		refs = append(refs, ref)
 	}
 
-	current, err := s.Load()
-	if err != nil {
-		return err
-	}
-
 	for _, ref := range refs {
 		current.Artifacts = upsertArtifactRef(current.Artifacts, ref)
 	}
 
 	err = s.Save(current)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	*proj = current
 
-	return nil
+	return receipt, nil
+}
+
+// stageModelFiles writes the dump, the validation report and the normalized
+// model beside their destinations, in the order SaveModelIf commits them, and
+// returns the receipt of the normalized bytes. On failure it returns what it
+// staged so far, for the caller to discard.
+func stageModelFiles(
+	paths ModelArtifactPaths,
+	model modelgeojson.Model,
+	report modelgeojson.ValidationReport,
+) ([]*atomicfile.Staged, string, error) {
+	staged := make([]*atomicfile.Staged, 0, 3)
+
+	var receipt string
+
+	for _, file := range []struct {
+		path  string
+		value any
+	}{
+		{paths.Dump, model.ToDump()},
+		{paths.Validation, report},
+		{paths.Normalized, model.ToFeatureCollection()},
+	} {
+		next, data, err := stageJSONFile(file.path, file.value)
+		if err != nil {
+			return staged, "", err
+		}
+
+		staged = append(staged, next)
+
+		if file.path == paths.Normalized {
+			sum := sha256.Sum256(data)
+			receipt = hex.EncodeToString(sum[:])
+		}
+	}
+
+	return staged, receipt, nil
 }
 
 // ExpectNone is the expected hash that holds only while there is no file at
@@ -314,19 +359,20 @@ func checkExpectedHash(subject, path, expected string) error {
 }
 
 // stageJSONFile is writeJSONFile without the rename: the bytes are written
-// beside path and committed later, by the caller, under its lock.
-func stageJSONFile(path string, v any) (*atomicfile.Staged, error) {
+// beside path and committed later, by the caller, under its lock. It returns
+// the bytes too, so the caller can hash exactly what it will commit.
+func stageJSONFile(path string, v any) (*atomicfile.Staged, []byte, error) {
 	data, err := jsonio.Marshal(v)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "encode json", err)
+		return nil, nil, domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "encode json", err)
 	}
 
 	staged, err := atomicfile.Stage(path, data)
 	if err != nil {
-		return nil, domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "replace "+filepath.Base(path), err)
+		return nil, nil, domainerrors.New(domainerrors.KindInternal, "projectfs.writeJSONFile", "replace "+filepath.Base(path), err)
 	}
 
-	return staged, nil
+	return staged, data, nil
 }
 
 func (s Store) modelDir() string {

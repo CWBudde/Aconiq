@@ -668,7 +668,7 @@ func TestSaveModelIfRefusesAStaleHashAndLeavesTheModelUntouched(t *testing.T) {
 	before := readModelState(t, store)
 	stale := strings.Repeat("0", 64)
 
-	err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), stale)
+	_, err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), stale)
 
 	var mismatch *HashMismatchError
 	if !errors.As(err, &mismatch) {
@@ -719,7 +719,7 @@ func TestSaveModelIfReplacesTheModelWhenTheHashMatches(t *testing.T) {
 		t.Fatalf("model hash: %v", err)
 	}
 
-	err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), current)
+	_, err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), current)
 	if err != nil {
 		t.Fatalf("save with the current hash: %v", err)
 	}
@@ -749,7 +749,7 @@ func TestSaveModelIfExpectNoneOnlyHoldsWithoutAModel(t *testing.T) {
 		t.Fatalf("init project: %v", err)
 	}
 
-	err = store.SaveModelIf(&proj, sampleModel(), modelgeojson.Validate(sampleModel()), ExpectNone)
+	_, err = store.SaveModelIf(&proj, sampleModel(), modelgeojson.Validate(sampleModel()), ExpectNone)
 	if err != nil {
 		t.Fatalf("first save expecting none: %v", err)
 	}
@@ -759,10 +759,63 @@ func TestSaveModelIfExpectNoneOnlyHoldsWithoutAModel(t *testing.T) {
 		t.Fatalf("model hash: %v", err)
 	}
 
-	err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), ExpectNone)
+	_, err = store.SaveModelIf(&proj, otherModel(), modelgeojson.Validate(otherModel()), ExpectNone)
 
 	var mismatch *HashMismatchError
 	if !errors.As(err, &mismatch) || mismatch.Current != current {
 		t.Fatalf("expected a mismatch naming %s, got %v", current, err)
+	}
+}
+
+func TestSaveModelIfWritesNothingIntoAnUninitialisedProject(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	var proj project.Project
+
+	_, err = store.SaveModelIf(&proj, sampleModel(), modelgeojson.Validate(sampleModel()), ExpectNone)
+
+	var appErr *domainerrors.AppError
+	if !errors.As(err, &appErr) || appErr.Kind != domainerrors.KindNotFound {
+		t.Fatalf("expected a NotFound error, got %v", err)
+	}
+
+	_, statErr := os.Stat(filepath.Join(store.Root(), ".noise"))
+	if !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("a refused save created .noise/: %v", statErr)
+	}
+}
+
+// The receipt SaveModelIf returns names the bytes it committed: the hash a
+// later read of the file gives, not one taken after the lock is gone.
+func TestSaveModelIfReturnsTheReceiptOfWhatItCommitted(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	proj, err := store.Init("Model", "EPSG:25832")
+	if err != nil {
+		t.Fatalf("init project: %v", err)
+	}
+
+	receipt, err := store.SaveModelIf(&proj, sampleModel(), modelgeojson.Validate(sampleModel()), "")
+	if err != nil {
+		t.Fatalf("save model: %v", err)
+	}
+
+	onDisk, err := store.ModelHash()
+	if err != nil {
+		t.Fatalf("model hash: %v", err)
+	}
+
+	if receipt != onDisk {
+		t.Fatalf("receipt %s, file hashes to %s", receipt, onDisk)
 	}
 }

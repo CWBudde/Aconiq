@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/aconiq/backend/internal/atomicfile"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 )
@@ -132,5 +133,114 @@ func TestSaveTerrainRefusesAStaleHashAndLeavesTheTerrainUntouched(t *testing.T) 
 	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(store.TerrainPath()), "*.tmp"))
 	if err != nil || len(leftovers) != 0 {
 		t.Fatalf("a refused save left staged files behind: %v, %v", leftovers, err)
+	}
+}
+
+// An uninitialised folder is refused before anything is written: no
+// .noise/model directory and no terrain.tif may appear for a request that
+// answers "project is not initialized".
+func TestSaveTerrainWritesNothingIntoAnUninitialisedProject(t *testing.T) {
+	t.Parallel()
+
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	var proj project.Project
+
+	err = store.SaveTerrain(&proj, []byte("terrain"), ExpectNone)
+
+	var appErr *domainerrors.AppError
+	if !errors.As(err, &appErr) || appErr.Kind != domainerrors.KindNotFound {
+		t.Fatalf("expected a NotFound error, got %v", err)
+	}
+
+	_, statErr := os.Stat(filepath.Join(store.Root(), ".noise"))
+	if !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("a refused save created .noise/: %v", statErr)
+	}
+}
+
+// Two terrains of one size written within one timestamp tick share a size
+// and an mtime; the remembered hash must still follow the file. The test
+// forces the collision by giving the replacement the original's mtime.
+func TestTerrainHashFollowsAReplacementWithTheSameSizeAndMTime(t *testing.T) {
+	t.Parallel()
+
+	store, proj := newTerrainStore(t)
+
+	first := []byte("terrain A")
+	second := []byte("terrain B")
+
+	err := store.SaveTerrain(&proj, first, "")
+	if err != nil {
+		t.Fatalf("save terrain: %v", err)
+	}
+
+	info, err := os.Stat(store.TerrainPath())
+	if err != nil {
+		t.Fatalf("stat terrain: %v", err)
+	}
+
+	_, err = store.TerrainHash()
+	if err != nil {
+		t.Fatalf("terrain hash: %v", err)
+	}
+
+	err = store.SaveTerrain(&proj, second, sha256Hex(first))
+	if err != nil {
+		t.Fatalf("replace terrain: %v", err)
+	}
+
+	err = os.Chtimes(store.TerrainPath(), info.ModTime(), info.ModTime())
+	if err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	sum, err := store.TerrainHash()
+	if err != nil || sum != sha256Hex(second) {
+		t.Fatalf("terrain hash = %q, %v; want the replacement's %s", sum, err, sha256Hex(second))
+	}
+}
+
+// The same collision through a writer that does not tell the cache — any
+// rename over the path. Only the file's identity tells the two apart.
+func TestTerrainHashTellsARenamedReplacementApartFromTheOriginal(t *testing.T) {
+	t.Parallel()
+
+	store, proj := newTerrainStore(t)
+
+	first := []byte("terrain A")
+	second := []byte("terrain B")
+
+	err := store.SaveTerrain(&proj, first, "")
+	if err != nil {
+		t.Fatalf("save terrain: %v", err)
+	}
+
+	info, err := os.Stat(store.TerrainPath())
+	if err != nil {
+		t.Fatalf("stat terrain: %v", err)
+	}
+
+	_, err = store.TerrainHash()
+	if err != nil {
+		t.Fatalf("terrain hash: %v", err)
+	}
+
+	err = atomicfile.WriteFile(store.TerrainPath(), second)
+	if err != nil {
+		t.Fatalf("replace terrain: %v", err)
+	}
+
+	err = os.Chtimes(store.TerrainPath(), info.ModTime(), info.ModTime())
+	if err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	sum, err := store.TerrainHash()
+	if err != nil || sum != sha256Hex(second) {
+		t.Fatalf("terrain hash = %q, %v; want the replacement's %s", sum, err, sha256Hex(second))
 	}
 }

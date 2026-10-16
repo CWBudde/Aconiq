@@ -272,20 +272,15 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 	// SaveModel returns domain errors whose message names the step, not the
 	// file: the absolute path stays in the wrapped cause on the server side and
 	// never reaches the envelope.
-	err = h.store.SaveModelIf(&proj, model, report, req.ExpectedHash)
+	// The receipt comes from the save itself: SaveModelIf hashes the bytes it
+	// committed while it holds the project lock. Hashing the file after it
+	// returns would race any writer that replaces the model in between, and
+	// hand this client a receipt for someone else's model.
+	hash, err := h.store.SaveModelIf(&proj, model, report, req.ExpectedHash)
 	if writeHashMismatch(w, err) {
 		return
 	}
 
-	if err != nil {
-		writeDomainError(w, err)
-		return
-	}
-
-	// The hash is read back off the file that was just written rather than
-	// computed from the value that was marshalled: it is a receipt for what a
-	// later GET will serve, so it has to come from the same place that GET does.
-	hash, err := h.store.ModelHash()
 	if err != nil {
 		writeDomainError(w, err)
 		return
