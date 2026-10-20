@@ -190,6 +190,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `io/osmimport/`             | OpenStreetMap import via the Overpass API                                                                          |
 | `io/projectfs/`             | Project folder store (JSON manifest in `.noise/project.json`)                                                      |
 | `io/soundplanimport/`       | SoundPLAN project bundle import (geometry, terrain, rail ops, grids, absolute results)                             |
+| `mcpserver/`                | MCP tools as thin adapters over the `httpv1` handler, in process; the write gate, `confirm` and the audit log      |
 | `qa/acceptance/`            | Acceptance fixture catalog and hook registry, with per-standard runners (`rls19_test20/`, `schall03/`)             |
 | `qa/golden/`                | Golden snapshot helper                                                                                             |
 | `report/contour/`           | Marching squares and contour reprojection — below the CLI, the kernel and `httpv1`, which all call it              |
@@ -205,7 +206,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 
 ### CLI Surface
 
-`backend/internal/app/cli/root.go` registers exactly eleven commands:
+`backend/internal/app/cli/root.go` registers exactly twelve commands:
 
 | Command             | Purpose                                                                                                   |
 | ------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -218,6 +219,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `aconiq status`     | Report project, scenario and run state                                                                    |
 | `aconiq export`     | Export a run bundle, generate reports, and emit GIS formats (`--format`)                                  |
 | `aconiq serve`      | Start the local HTTP API (default `127.0.0.1:8080`)                                                       |
+| `aconiq mcp`        | Serve the project to an AI agent over MCP (stdio); writes only with `--allow-writes`, audited             |
 | `aconiq openapi`    | Export the OpenAPI contract (default `.noise/api/openapi.v1.json`)                                        |
 | `aconiq bench`      | Run synthetic benchmark scenarios (runtime, memory, cache IO, numeric drift)                              |
 
@@ -226,6 +228,8 @@ go to stderr, text by default and JSON under `--json`. Under `--json` stdout is 
 document; only `--help` and `--version` print text regardless. The `httpv1` handlers that spawn `aconiq run` depend on this: they decode the estimate
 from stdout and read a refusal from the last ERROR record on stderr. Never log to stdout, and
 log a command's failure at ERROR — a WARN with an `error` attribute is not read as one.
+`aconiq mcp` makes the rule load-bearing: its stdout is the MCP JSON-RPC stream, and one stray line
+corrupts the protocol.
 
 ### Local HTTP API (`internal/api/httpv1`)
 

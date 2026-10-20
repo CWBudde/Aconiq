@@ -97,11 +97,11 @@ because a client is free to ignore annotations.
 
 **Destructive — `--allow-writes` and a matching `confirm` argument:**
 
-| Tool             | Backed by                     | `confirm` must equal                    |
-| ---------------- | ----------------------------- | --------------------------------------- |
-| `save_model`     | `POST /api/v1/model`          | the hash of the model being replaced    |
-| `delete_run`     | `DELETE /api/v1/runs/{id}`    | the run id                              |
-| `import_terrain` | `POST /api/v1/import/terrain` | the current terrain's digest, or `none` |
+| Tool             | Backed by                     | `confirm` must equal                            |
+| ---------------- | ----------------------------- | ----------------------------------------------- |
+| `save_model`     | `POST /api/v1/model`          | the hash of the model being replaced, or `none` |
+| `delete_run`     | `DELETE /api/v1/runs/{id}`    | the run id                                      |
+| `import_terrain` | `POST /api/v1/import/terrain` | the current terrain's digest, or `none`         |
 
 - Without `--allow-writes`, the state-changing and destructive tools are **not listed at all**, so an
   agent cannot plan around tools it may not call. A server started read-only says so in its
@@ -109,7 +109,9 @@ because a client is free to ignore annotations.
 - `confirm` is a value the agent must have **read** first, not a boolean or a fixed word it can set
   blindly, and it binds the call to the state the agent saw. For `save_model` it is the hash
   `get_model` returned, so it also acts as an optimistic lock: a model that changed since the agent
-  read it is refused, not overwritten. For `import_terrain` it is the SHA-256 of the terrain being
+  read it is refused, not overwritten; on a project with no model yet it is `none`, the API's
+  `expected_hash` for that case. An empty `confirm` is refused by the MCP layer itself
+  (`confirm_required`), because it is the one value that would make the save unconditional. For `import_terrain` it is the SHA-256 of the terrain being
   replaced, or `none` when the project has none, which `project_status` has to report; see
   Consequences for both.
 - Feature-level edits (add or move one source, change one receiver height) are composed by the
@@ -166,6 +168,11 @@ metadata plus a resource reference, never inline in a tool result.
    the canonicalised arguments, the outcome (`ok` or the error `code`), and the affected run id or
    model hash. Argument values are not logged, only their digest: model payloads can be large and
    can carry customer geometry.
+   The log is opened before the call is served: if it cannot be (a read-only disk, a permission),
+   the call is refused with `audit_unavailable` and nothing is written, so no write happens
+   unaudited. A call whose arguments the input schema refuses is audited as `invalid_arguments`:
+   the tool validates them itself rather than letting the SDK refuse them before the audit log
+   sees the call.
 
 ### Deterministic outputs
 
@@ -283,7 +290,7 @@ The implementation phases inherit these gaps, which the boundaries above make ne
 - **Dry-run validation** (SL-1.3): a `validate_model` tool that checks without saving depends on the
   open decision about `POST /api/v1/validate` (`PLAN.md`, Open decisions → Behaviour and API). Until
   it is decided, validation happens on `save_model`.
-- **Audit log** (SL-1.4): `.noise/logs/mcp-audit.jsonl` does not exist yet, and nothing else in the
-  project audits writes.
+- **Audit log**: written since SL-1.2 for `save_model`, the first write tool, so no build offers an
+  unaudited write (`internal/mcpserver/audit.go`). SL-1.4 extends it to the run tools as they land.
 - **Network imports** stay outside the first surface; adding them is a new decision, not a flag
   flip.

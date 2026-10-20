@@ -50,11 +50,13 @@ Note that `just check-formatted` runs `treefmt --fail-on-change`, which formats 
 | `aconiq export`   | Export a run bundle, generate offline reports, and emit GIS formats                       |
 | `aconiq bench`    | Run synthetic benchmark scenarios and measure runtime, memory, cache IO and numeric drift |
 | `aconiq serve`    | Start the local HTTP API                                                                  |
+| `aconiq mcp`      | Serve the project to an AI agent over the Model Context Protocol (stdio)                  |
 | `aconiq openapi`  | Export the OpenAPI contract for the local API (default `.noise/api/openapi.v1.json`)      |
 
 All commands accept `--project`, `--cache-dir`, `--verbose` and `--json`. A command's result goes
 to stdout and its log records to stderr; `--json` makes both JSON, and stdout then carries exactly
-one JSON document. `--help` and `--version` are the exceptions: they print text either way.
+one JSON document. `--help` and `--version` are the exceptions: they print text either way, and
+`aconiq mcp`'s stdout is the protocol stream.
 
 ## Supported Input Formats
 
