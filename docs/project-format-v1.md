@@ -31,7 +31,10 @@ Rationale:
   standards that count receivers as they go (`rls19-road`, `iso9613`) write it
 - `.noise/runs/<run-id>/provenance.json` : run provenance manifest
 - `.noise/artifacts/` : generated artifacts (reserved)
-- `.noise/logs/` : shared logs (reserved)
+- `.noise/logs/` : shared logs
+  - `mcp-audit.jsonl` : one JSON object per state-changing `aconiq mcp` tool call (`time`, `tool`,
+    `args_sha256`, `outcome`, and `model_hash` after a successful `save_model`); argument values are
+    recorded only as the SHA-256 of their canonical JSON
 
 ## Manifest Schema (`.noise/project.json`)
 

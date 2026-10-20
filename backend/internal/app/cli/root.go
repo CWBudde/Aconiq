@@ -143,6 +143,7 @@ func newRootCommand() *cobra.Command {
 		newDeleteRunCommand(),
 		newExportCommand(),
 		newServeCommand(),
+		newMCPCommand(),
 		newOpenAPICommand(),
 		newBenchCommand(),
 	)

@@ -341,6 +341,13 @@ func (s Store) MergeRunProvenanceMetadata(runID string, extra map[string]string)
 	return writeJSONFile(provPath, provenance)
 }
 
+// MCPAuditLogPath is where `aconiq mcp` appends one line per state-changing
+// tool call. The store only names the path, so the file sits with the
+// project's other logs and moves with the project.
+func (s Store) MCPAuditLogPath() string {
+	return filepath.Join(s.logsDir(), "mcp-audit.jsonl")
+}
+
 func (s Store) persistRun(proj project.Project, spec CreateRunSpec, scenarioID string, std project.StandardRef) (project.Run, project.ProvenanceManifest, error) {
 	now := time.Now().UTC()
 	runID := spec.RunID
