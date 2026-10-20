@@ -544,3 +544,66 @@ func TestAuditDigestIgnoresArgumentSpelling(t *testing.T) {
 		t.Fatalf("audit digests differ: %v", lines)
 	}
 }
+
+// A call the input schema refuses is still a destructive attempt: it is
+// refused in the API's envelope and audited like any other, not dropped
+// before the audit log sees it.
+func TestSaveModelAuditsArgumentsTheSchemaRefuses(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, true)
+	before := f.modelFiles(t)
+
+	for _, args := range []map[string]any{
+		{"model": json.RawMessage(validModel)},
+		{"model": "not an object", "confirm": "none"},
+		{"model": json.RawMessage(validModel), "confirm": "none", "force": true},
+	} {
+		apiErr := apiErrorOf(t, f.call(t, "save_model", args))
+		if apiErr["code"] != "invalid_arguments" {
+			t.Fatalf("arguments %v: envelope = %v", args, apiErr)
+		}
+	}
+
+	f.assertUnchanged(t, before)
+
+	lines := auditLines(t, f.store)
+	if len(lines) != 3 {
+		t.Fatalf("audit = %v", lines)
+	}
+
+	for _, line := range lines {
+		if line["outcome"] != "invalid_arguments" || line["tool"] != "save_model" {
+			t.Fatalf("audit entry = %v", line)
+		}
+	}
+}
+
+// The audit log is opened before the save is attempted, so a project whose
+// log cannot be written refuses the write instead of making it unaudited.
+func TestSaveModelRefusesWhenTheAuditLogCannotBeOpened(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, true)
+
+	logs := filepath.Dir(f.store.MCPAuditLogPath())
+
+	err := os.RemoveAll(logs)
+	if err != nil {
+		t.Fatalf("remove logs: %v", err)
+	}
+
+	err = os.WriteFile(logs, []byte("a file where the log directory belongs"), 0o600)
+	if err != nil {
+		t.Fatalf("block logs: %v", err)
+	}
+
+	before := f.modelFiles(t)
+
+	apiErr := apiErrorOf(t, f.call(t, "save_model", saveArgs(validModel, "none")))
+	if apiErr["code"] != "audit_unavailable" {
+		t.Fatalf("envelope = %v", apiErr)
+	}
+
+	f.assertUnchanged(t, before)
+}

@@ -168,6 +168,11 @@ metadata plus a resource reference, never inline in a tool result.
    the canonicalised arguments, the outcome (`ok` or the error `code`), and the affected run id or
    model hash. Argument values are not logged, only their digest: model payloads can be large and
    can carry customer geometry.
+   The log is opened before the call is served: if it cannot be (a read-only disk, a permission),
+   the call is refused with `audit_unavailable` and nothing is written, so no write happens
+   unaudited. A call whose arguments the input schema refuses is audited as `invalid_arguments`:
+   the tool validates them itself rather than letting the SDK refuse them before the audit log
+   sees the call.
 
 ### Deterministic outputs
 
