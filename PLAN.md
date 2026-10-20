@@ -2802,7 +2802,10 @@ change to any of them amends the ADR first.
 
 ### Subphase SL-1.2 — Implementation
 
-- [ ] Expose project, scenario, source and receiver discovery and editing tools
+- [ ] Expose scenario discovery and editing tools. Project, source and receiver discovery and
+      editing exist: `aconiq mcp` serves `project_status`, `get_model` and, under `--allow-writes`,
+      the audited `save_model`. The scenario tools wrap the routes the item below adds; until
+      then an agent sees only `scenario_count`.
 - [ ] Expose applicable standards, units, CRS and provenance as resources or tool results
 - [ ] List, create and update scenarios. Nothing does today: `projectfs.Store.Init` seeds `default`
       and no CLI or API path appends to `Project.Scenarios`. Needs a `projectfs` path and an API
@@ -2824,9 +2827,10 @@ change to any of them amends the ADR first.
 
 ### Subphase SL-1.4 — Evidence and documentation
 
-- [ ] Add stdio transport, deterministic outputs, audit logging and integration tests
-      The audit log is new: `.noise/logs/mcp-audit.jsonl`, one object per state-changing call
-      (time, tool, argument digest, outcome), as ADR-002 specifies. Nothing audits writes today.
+- [ ] Add deterministic outputs, audit logging for the run tools, and integration tests
+      `aconiq mcp` already speaks stdio, and `.noise/logs/mcp-audit.jsonl` already records
+      `save_model` (`internal/mcpserver/audit.go`); `start_run`, `cancel_run`, `delete_run` and
+      `import_terrain` must record into it as they land (ADR-002, Security policy 7).
 - [ ] Cover tool schemas and input validation with automated tests
 - [ ] Document setup, available tools and example prompts in the README
 
