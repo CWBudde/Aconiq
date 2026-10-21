@@ -41,6 +41,14 @@ External references:
     population inputs.
 - `milestone-e-rounding-tolerances.md`
   - Current rounding, tolerance, threshold, and reporting-boundary rules for the online standards modules.
+- `facade-evidence-sources.md`
+  - Imagery and document sources for placing facade Immissionsorte (Priority 18 A1): what each
+    shows, coverage of the Linden-Mitte pilot area, licence, attribution, and whether derived
+    features may be stored.
+- `facade-receivers.md`
+  - Where RLS-19, TA Lärm and Schall 03 put an Immissionsort at a building, the proposed
+    `placement_rule` identifiers, the storey-slab height options, and the facade frame and
+    receiver data model (Priority 18 A2, A3).
 
 Milestone D source index:
 
