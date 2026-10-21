@@ -1,6 +1,6 @@
 # Facade Evidence Sources
 
-Status date: 2026-10-21
+Status date: 2026-10-22
 
 ## Purpose
 
@@ -26,9 +26,11 @@ Two constraints from Priority 18 frame every row:
 
 ## How to read this note
 
-- **Verified** means the statement was read on 2026-10-21 from a page, metadata record or API
-  response published by the rights holder or operator itself. The URL is given in
-  [Sources fetched](#sources-fetched).
+- **Verified** means the statement was read on 2026-10-21 (or, where marked, on 2026-10-22) from a
+  page, metadata record or API response published by the rights holder or operator itself. The URL
+  is given in [Sources fetched](#sources-fetched).
+- **Verified, archived copy** means the rights holder's own page was unreachable live, and the
+  statement was read from an Internet Archive copy of that page. The snapshot date is given.
 - **Secondary** means a community wiki, forum or encyclopaedia reported it. Secondary claims are
   kept where they explain a conflict, never as the basis of a row.
 - **Not verified** means the claim could not be checked on that date, and says why.
@@ -42,16 +44,16 @@ Two constraints from Priority 18 frame every row:
 "Project" means a project folder outside the tree (`.noise/`), held under the engagement. "Repo"
 means tracked source, including `testdata/`.
 
-| Source                                          | Shows                                                         | Resolution                                                         | Coverage of the pilot area                                                                                       | Licence                                                                                                                                | Required attribution                                                                                                    | Derived features: project                                  | Derived features: repo                                                                                              |
-| ----------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| LGLN DOP20 / DOP10 (orthophoto)                 | Roofs, courtyards, roads, parking, rooftop plant. No facades. | 20 cm; 10 cm for the 2025 flight here                              | Full. Five DOP20 vintages (2013, 2016, 2019, 2022, 2025) and DOP10 of 2025-03-06 (verified, STAC)                | **CC BY 4.0** (verified, metadata record and STAC). AGNB text not retrievable on that date.                                            | `LGLN (<year of retrieval>) Creative Commons Namensnennung – 4.0 International (CC BY 4.0)` (verified, metadata record) | Yes, with attribution in the evidence record               | Licence would permit it with attribution; project policy: no (synthetic fixture, and no `data-handling.md` row yet) |
-| Stadt Hannover DOP20 (city flight)              | As above                                                      | Not stated for current vintages                                    | Whole city area, flown every second spring; 2025 latest listed (verified)                                        | **CC BY 4.0** "soweit nicht anders gekennzeichnet" (verified, Open GeoData terms)                                                      | `Datenquelle: CC-BY-4.0 – Bereich Geoinformation – LH Hannover` (verified)                                              | Yes, with attribution                                      | As LGLN DOP                                                                                                         |
-| Oblique aerial imagery (Hannover 3D)            | **Facades and roofs**, four view directions                   | 20 cm (2017, 2020, 2024) in the public viewer                      | The 2024 collection's declared extent contains the box (verified, viewer config). Per-tile coverage not checked. | Viewer config attributes `LH Hannover - Geoinformation, CC-BY-4.0`. No licence document names oblique imagery; no download is offered. | `LH Hannover - Geoinformation, CC-BY-4.0` (viewer string, verified); formal wording to be confirmed                     | Open: confirm licence and access path with the city first  | No                                                                                                                  |
-| Mapillary                                       | Street-level: street facades, ground floor detail             | Device-dependent                                                   | **Not verified**: the API needs an access token                                                                  | **CC BY-SA 4.0** for user content (verified, terms §3.2), plus Mapillary's own terms (§5, §11, §12)                                    | Mapillary logo plus link (terms §11), and CC BY-SA 4.0 §3(a)(1) creator, licence notice and URI                         | Open: the share-alike question                             | No                                                                                                                  |
-| Panoramax                                       | Street-level, here 360° panoramas: street facades             | 5760×2880 equirectangular, 16 px/° (pictures here)                 | 130 pictures in the box on the meta-catalogue, all captured August 2026 (verified, API)                          | **CC-BY-SA-4.0** for every picture in the box (verified, API); licence is per instance, one instance is `etalab-2.0`                   | Producer name, licence and link, per CC BY-SA 4.0 §3(a)(1)                                                              | Open: the share-alike question                             | No                                                                                                                  |
-| Own site photos                                 | Whatever was photographed: street facade, courtyard if access | Device-dependent, typically mm-scale at street distance (estimate) | Only what someone photographs                                                                                    | Rights held by the photographer / employer. **Personal data** (GDPR Art. 4(1)).                                                        | None owed to a third party; record the photographer                                                                     | Yes: features, hash and reference. Never the image itself. | No. Images and derived features from a real site never; a synthetic fixture only                                    |
-| Client plans (Bauantrag, Ansichten, Grundrisse) | Facades with window positions, floor heights, room use        | Drawing scale (not verified per plan)                              | Only where the client supplies them                                                                              | Architect's copyright (§2(1) Nr. 4 and Nr. 7 UrhG); use right comes from the engagement. Customer data under `data-handling.md`.       | Per engagement; none in public output by default                                                                        | Yes, within the engagement                                 | **Nothing** (`data-handling.md`, customer rows)                                                                     |
-| Google Maps, Street View, Earth, 45° imagery    | Roofs and facades                                             | —                                                                  | —                                                                                                                | **Excluded.** Google Maps Platform Terms §3.2.3 (a) and (c), section number unchanged on 2026-10-21; Google Maps consumer terms §2.    | —                                                                                                                       | **No**                                                     | **No**                                                                                                              |
+| Source                                          | Shows                                                         | Resolution                                                         | Coverage of the pilot area                                                                                       | Licence                                                                                                                                                                                                                                                | Required attribution                                                                                                     | Derived features: project                                  | Derived features: repo                                                                                                |
+| ----------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| LGLN DOP20 / DOP10 (orthophoto)                 | Roofs, courtyards, roads, parking, rooftop plant. No facades. | 20 cm; 10 cm for the 2025 flight here                              | Full. Five DOP20 vintages (2013, 2016, 2019, 2022, 2025) and DOP10 of 2025-03-06 (verified, STAC)                | **CC BY 4.0** (verified: AGNB §7.1, archived copy; metadata record; STAC)                                                                                                                                                                              | `© GeoBasis-DE/LGLN <year of download>, Daten geändert` (AGNB §7.2; "Daten geändert" only if modified), plus `CC BY 4.0` | Yes, with attribution in the evidence record               | Licence would permit it with attribution; project policy: no (`data-handling.md` row; the pilot fixture is synthetic) |
+| Stadt Hannover DOP20 (city flight)              | As above                                                      | Not stated for current vintages                                    | Whole city area, flown every second spring; 2025 latest listed (verified)                                        | **CC BY 4.0** "soweit nicht anders gekennzeichnet" (verified, Open GeoData terms)                                                                                                                                                                      | `Datenquelle: CC-BY-4.0 – Bereich Geoinformation – LH Hannover` (verified)                                               | Yes, with attribution                                      | As LGLN DOP                                                                                                           |
+| Oblique aerial imagery (Hannover 3D)            | **Facades and roofs**, four view directions                   | 20 cm (2017, 2020, 2024) in the public viewer                      | The 2024 collection's declared extent contains the box (verified, viewer config). Per-tile coverage not checked. | **Unknown — ask Stadt Hannover, Servicecenter Geoinformation** (Fachbereich Planen und Stadtentwicklung). Viewer only: no licence document, no download, no catalogue record (verified, 2026-10-22). The viewer config's string is the only statement. | `LH Hannover - Geoinformation, CC-BY-4.0` (viewer string, verified); formal wording to be confirmed                      | Open: confirm licence and access path with the city first  | No                                                                                                                    |
+| Mapillary                                       | Street-level: street facades, ground floor detail             | Device-dependent                                                   | Not researched: nothing from the source may be recorded under the interim rule                                   | **CC BY-SA 4.0** for user content (verified, terms §3.2), plus Mapillary's own terms (§5, §11, §12)                                                                                                                                                    | Mapillary logo plus link (terms §11), and CC BY-SA 4.0 §3(a)(1) creator, licence notice and URI                          | **No: look only, nothing recorded** (interim rule)         | No                                                                                                                    |
+| Panoramax                                       | Street-level, here 360° panoramas: street facades             | 5760×2880 equirectangular, 16 px/° (pictures here)                 | 130 pictures in the box on the meta-catalogue, all captured August 2026 (verified, API)                          | **CC-BY-SA-4.0** for every picture in the box (verified, API); licence is per instance, one instance is `etalab-2.0`                                                                                                                                   | Producer name, licence and link, per CC BY-SA 4.0 §3(a)(1)                                                               | **No: look only, nothing recorded** (interim rule)         | No                                                                                                                    |
+| Own site photos                                 | Whatever was photographed: street facade, courtyard if access | Device-dependent, typically mm-scale at street distance (estimate) | Only what someone photographs                                                                                    | Rights held by the photographer / employer. **Personal data** (GDPR Art. 4(1)).                                                                                                                                                                        | None owed to a third party; record the photographer                                                                      | Yes: features, hash and reference. Never the image itself. | No. Images and derived features from a real site never; a synthetic fixture only                                      |
+| Client plans (Bauantrag, Ansichten, Grundrisse) | Facades with window positions, floor heights, room use        | Drawing scale (not verified per plan)                              | Only where the client supplies them                                                                              | Architect's copyright (§2(1) Nr. 4 and Nr. 7 UrhG); use right comes from the engagement. Customer data under `data-handling.md`.                                                                                                                       | Per engagement; none in public output by default                                                                         | Yes, within the engagement                                 | **Nothing** (`data-handling.md`, customer rows)                                                                       |
+| Google Maps, Street View, Earth, 45° imagery    | Roofs and facades                                             | —                                                                  | —                                                                                                                | **Excluded.** Google Maps Platform Terms §3.2.3 (a) and (c), section number unchanged on 2026-10-21; Google Maps consumer terms §2.                                                                                                                    | —                                                                                                                        | **No**                                                     | **No**                                                                                                                |
 
 The rest of this note gives the evidence behind each row.
 
@@ -87,29 +89,47 @@ a WMS, and Cloud Optimized GeoTIFF assets per tile.
 - _Verified, but only a pointer:_ the LGLN OpenGeoData hub item says the data "können gemäß den
   Allgemeinen Geschäfts- und Nutzungsbedingungen (AGBN) genutzt werden", naming §7 „Nutzung von
   offenen Geodaten".
-- _Not verified:_ the AGNB themselves. Every `lgln.niedersachsen.de` URL tried on 2026-10-21 (the
-  AGNB page, the AGNB PDF, two product documents) answered with a maintenance notice
-  („Aufgrund planmäßiger Wartungsarbeiten ist diese Seite zurzeit nicht zu erreichen").
+- _Verified, archived copy:_ the AGNB themselves, „Stand: 01.10.2024". The live
+  `lgln.niedersachsen.de` site still answered every URL with a maintenance notice on 2026-10-22
+  („Aufgrund planmäßiger Wartungsarbeiten ist diese Seite zurzeit nicht zu erreichen"), as on
+  2026-10-21. The AGNB page was therefore read from the Internet Archive snapshot of 2026-09-03, and
+  the AGNB PDF from the snapshot of 2025-07-09; both carry the same date and the same §7. §7.1
+  reads: „Die auf der Homepage des LGLN unter: https://ni-lgln-opengeodata.hub.arcgis.com
+  aufgeführten Geodaten (offene Geodaten) können unter den Bedingungen der Lizenz „Creative Commons"
+  (CC-BY 4.0)" kostenfrei intern und extern genutzt werden." The DOP is listed on that hub, so §7
+  governs it.
 - _Secondary:_ the OSM wiki page on the Niedersachsen geoportal (last edited 2025-09-12) says the
   DOP were provided under „Datenlizenz Deutschland 2.0 Namensnennung", and that the AGNB as of
   2024-10-01 put open geodata under CC BY 4.0. The OSM community thread dates the move to CC BY 4.0
   to June 2024. That is the likely source of the two licences in circulation: **dl-de/by-2-0 is the
   earlier state, CC BY 4.0 the current one.** The current state is verified from LGLN's own
-  metadata; the history is secondary.
+  metadata and AGNB; the history is secondary, though the AGNB date (2024-10-01) matches it.
 
-**Required attribution.** The metadata record asks for „LGLN" as rights holder and provider and
-„das Jahr des Datenbezugs in Klammern", with the example „LGLN (2024) Creative Commons
-Namensnennung – 4.0 International (CC BY 4.0)"; the structured field reads „Quelle: LGLN 2024 (Jahr
-des letzten Datenbezugs)" (verified). The OSM wiki quotes the AGNB with a different form,
-„© GeoBasis-DE/LGLN Jahr, Daten geändert" (secondary, and possibly the older AGNB). Until the AGNB
-can be read, use the metadata form. Note that the year is the year of **retrieval**, not of the
-flight.
+**Required attribution.** AGNB §7.2 (verified, archived copy) requires, for every public
+reproduction, distribution or presentation, and for every publication or external use of an
+adaptation, a clearly visible source note of the form
+
+`© GeoBasis-DE/LGLN <Jahr>, Daten geändert`
+
+where the year is „Jahr des Downloads der Geodaten durch die Lizenznehmerin oder den
+Lizenznehmer", and „Daten geändert" is added only „falls Daten verändert wurden". So the year is the
+year of **download**, not of the flight and not of LGLN's provision (the latter is the rule for
+non-open geodata, §4.3). Below DIN A5 the LGLN logo mark suffices. A note that is not placed next to
+the display is permitted on the web only in narrow cases, and then „ist die Nutzung der Geodaten dem
+LGLN anzuzeigen" (§7.2): notification is owed whenever the note is not shown with the image or map.
+
+The DOP metadata record gives a different form, „LGLN (2024) Creative Commons Namensnennung – 4.0
+International (CC BY 4.0)", with „das Jahr des Datenbezugs in Klammern" (verified). Both agree on
+the year of retrieval. The AGNB govern (the hub item points to them), so use the AGNB form, and add
+the licence name: CC BY 4.0 §3(a)(1)(C) asks for a notice that the material is under that licence
+and its URI. For a feature traced from a DOP, the evidence record and any report that shows it
+therefore carry `© GeoBasis-DE/LGLN <year of download>, Daten geändert, CC BY 4.0` (composed from the
+AGNB and the licence, not quoted). The OSM wiki quoted the AGNB form correctly.
 
 **Derived features.** CC BY 4.0 permits adaptation and commercial use with attribution, so lane
 geometry or a parking polygon traced from a DOP may be stored in a project with the attribution in
-its evidence record. In the repository the licence would permit it too, but `data-handling.md` has
-no row for LGLN imagery ("add a row before using it, not after"), and the pilot fixture is
-synthetic regardless.
+its evidence record. In the repository the licence would permit it too, but `data-handling.md`'s
+row for LGLN imagery keeps it out, because the pilot fixture is synthetic.
 
 The **Stadt Hannover DOP20** is a separate product from the city's own biennial spring flight
 (listed vintages back to 1981, the latest 2025), covering the whole city area. The city's Open
@@ -133,19 +153,34 @@ pilot box. Whether every tile over the pilot area exists was not checked. The co
 names a 6 cm 2024 collection on a host that does not resolve publicly (NXDOMAIN on 2026-10-21),
 presumably the city's internal service.
 
-**Licence.** The only licence statement found is the viewer's own attribution string, CC BY 4.0.
-That is a statement by the rights holder (verified), but it is not a licence document, and the
-imagery is offered only as viewer tiles, not as a dataset. Reading a window position off the viewer
-by eye is the use the viewer is built for. Fetching the tiles behind it, or hashing them as
-evidence, is an access path the city has not offered.
+**Licence: unknown — ask Stadt Hannover, Servicecenter Geoinformation** (Fachbereich Planen und
+Stadtentwicklung; contact details on the city's Hannover 3D page). Re-checked on 2026-10-22:
+
+- The Hannover 3D page describes the oblique imagery and offers the 3D city model for download, but
+  says nothing about a licence, terms of use or download for the oblique imagery (verified).
+- The Open GeoData product list names city maps, DOP20, 3D city and terrain models, thematic maps,
+  survey data and the street index, and no oblique imagery (verified).
+- The city's metadata catalogue (GeoNetwork, 28 public records) has no record matching „schräg",
+  „Schrägaufnahme", „Schraeg" or "oblique"; the records matching „Luftbild" are orthophotos and one
+  city map (verified, CSW query).
+- `opendata.hannover.de` does not resolve, and `opendata-hannover.de` timed out (2026-10-22). A web
+  search found no licence statement for the city's oblique imagery.
+
+The only licence statement found is the viewer's own attribution string,
+`LH Hannover - Geoinformation, CC-BY-4.0`. That is a statement by the rights holder (verified), but
+it is not a licence document. **Form:** viewer only. Behind the viewer sit per-collection
+`image.json` files with camera parameters and 1024×1024 px image tiles, so there are files that
+could be hashed, but they are the viewer's internals, not an offered dataset. Reading a window
+position off the viewer by eye is the use the viewer is built for. Fetching the tiles behind it, or
+hashing them as evidence, is an access path the city has not offered.
 
 Regional oblique imagery from **Region Hannover** was not found. An LGLN oblique-imagery project
 exists by title in a search result ("Ausblick Projekt Schraegluftbilder im LGLN"), with a test area
 outside Hannover according to the search summary. Its PDF could not be read (LGLN site maintenance),
 so its status is not verified.
 
-**Derived features.** In a project: plausible under CC BY 4.0, but confirm with the city's
-Servicecenter Geoinformation first (licence scope and whether a sanctioned access path exists).
+**Derived features.** In a project: plausible if the viewer's CC BY 4.0 string holds, but not before
+the city's Servicecenter Geoinformation has confirmed the licence scope and a sanctioned access path.
 Repo: no.
 
 ## Mapillary
@@ -153,8 +188,10 @@ Repo: no.
 **Shows.** Street-level photographs: street facades, ground-floor detail, signage. Courtyards only
 where someone walked in.
 
-**Coverage of the pilot area.** Not verified. The Graph API answered „Invalid OAuth 2.0 Access
-Token" without a token, and no token was used for this note.
+**Coverage of the pilot area.** Not researched, because nothing from this source can be recorded
+under the interim rule (see [the share-alike question](#the-share-alike-question)), so coverage
+decides nothing. Revisit it together with the share-alike question. (The Graph API needs an access
+token; none was used.)
 
 **Licence.** Verified from the Mapillary Terms of Use (effective 2024-02-15):
 
@@ -174,10 +211,12 @@ Token" without a token, and no token was used for this note.
 **Required attribution.** §11: for images served from one's own servers, and for data Mapillary
 extracts and serves through the API, "visibly displaying the Mapillary logo" and linking back. In
 addition, CC BY-SA 4.0 §3(a)(1) asks for the creator's identification, a licence notice and a URI
-where reasonably practicable. A record would therefore carry the contributor's username, the image
-id and URL, and `CC BY-SA 4.0` (composed from both, not quoted from Mapillary).
+where reasonably practicable. If the interim rule is ever lifted, a record would therefore carry the
+contributor's username, the image id and URL, and `CC BY-SA 4.0` (composed from both, not quoted
+from Mapillary).
 
-**Derived features.** Open: see [the share-alike question](#the-share-alike-question). Repo: no.
+**Derived features.** None: look only, nothing recorded (the interim rule, see
+[the share-alike question](#the-share-alike-question)). Repo: no.
 
 ## Panoramax
 
@@ -202,7 +241,7 @@ were not fetched.
 **Required attribution.** CC BY-SA 4.0 §3(a)(1): the producer's name as given in the item, the
 licence, and the picture's URL. No Panoramax-specific attribution rule was found.
 
-**Derived features.** Open, as for Mapillary. Repo: no.
+**Derived features.** None: look only, nothing recorded, as for Mapillary. Repo: no.
 
 ## The share-alike question
 
@@ -256,10 +295,13 @@ The text, verified from the CC BY-SA 4.0 legal code and the Creative Commons FAQ
 5. The facts-versus-expression line is national law. Whether an extraction is a reproduction is
    decided under UrhG, not under the licence's wording.
 
-**This note draws no conclusion.** Until the question is answered, CC BY-SA street-level imagery is
-evidence a person may _look at_, but Aconiq should not record it as the derived-from source of a
-feature in a client project. Own site photos and client plans carry the same information without
-the question. See [Open questions](#open-questions), item 3.
+**This note draws no legal conclusion, but the interim rule is decided: look only, nothing
+recorded.** Until the share-alike question is answered, CC BY-SA street-level imagery (Mapillary,
+Panoramax) is treated like Google Street View. A person may look at it, for instance to decide where
+to photograph. Nothing from it is recorded: no evidence record, no derived-from reference, no image
+id, no hash, no copy. A feature that could only have been placed from such an image is not created.
+Own site photos and client plans carry the same information without the question. See
+[Open questions](#open-questions), item 2.
 
 ## Own site photos
 
@@ -359,7 +401,7 @@ Google Earth Additional Terms of Service** instead (last modified 2026-01-27, ve
 content" and "use Google Maps to create or augment any other mapping-related dataset". The plan's
 live constraint calls a desk-study look at Street View the engineer's "own business". The consumer
 terms make that narrower than it sounds: looking is fine, but a receiver table built from what was
-seen is arguably a "mapping-related dataset". See [Open questions](#open-questions), item 6.
+seen is arguably a "mapping-related dataset". See [Open questions](#open-questions), item 4.
 
 ## What the evidence record should carry
 
@@ -369,12 +411,15 @@ which terms applied. The six fields the plan names, filled per source kind:
 
 | Kind (`kind`)              | Source id                                                                        | Content hash                                                                                          | Capture date                     | Licence                                                       | Attribution                                               |
 | -------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------- |
-| `orthophoto` (LGLN, city)  | STAC item id and asset key (`dop20_rgb`, …), or the WMS request URL              | SHA-256 of the asset as downloaded. For a WMS, of the response, with the request URL that produced it | STAC `datetime` (flight date)    | SPDX `CC-BY-4.0`, plus the terms URL                          | The metadata form, with the year of retrieval             |
+| `orthophoto` (LGLN, city)  | STAC item id and asset key (`dop20_rgb`, …), or the WMS request URL              | SHA-256 of the asset as downloaded. For a WMS, of the response, with the request URL that produced it | STAC `datetime` (flight date)    | SPDX `CC-BY-4.0`, plus the terms URL                          | LGLN: the AGNB §7.2 form, with the year of download       |
 | `oblique` (Hannover 3D)    | Collection name and image id, if the city offers a way to address one            | Open: the viewer offers no stable bytes to hash                                                       | Collection year                  | Per the city's answer (open)                                  | `LH Hannover - Geoinformation, CC-BY-4.0` until confirmed |
 | `street-level` (Mapillary) | Image id and URL                                                                 | SHA-256 of the image variant used, with its size named (variants differ)                              | The platform's capture timestamp | `CC-BY-SA-4.0`, plus the Mapillary terms version (2024-02-15) | Contributor username, Mapillary, licence, URL             |
 | `street-level` (Panoramax) | Item id, collection id, originating instance (`via` link)                        | SHA-256 of the picture as downloaded                                                                  | Item `datetime`                  | The item's `license` link (SPDX id)                           | Producer name, licence, URL                               |
 | `site-photo`               | Opaque reference into the engagement's store, never a path that names the client | SHA-256 of the original file, before any EXIF stripping or resizing                                   | EXIF `DateTimeOriginal`          | `own` (photographer, employer)                                | Photographer                                              |
 | `plan`                     | Drawing number, revision, sheet                                                  | SHA-256 of the file as received                                                                       | Plan date or revision date       | `client-engagement`                                           | Plan author, date, drawing number                         |
+
+The two `street-level` rows describe what a record would need if the share-alike question is ever
+answered in favour. Under the interim rule (look only, nothing recorded) neither kind is written.
 
 Three things follow for A3:
 
@@ -388,40 +433,29 @@ Three things follow for A3:
 
 ## Open questions
 
-1. **LGLN AGNB §7.** The current licence is verified from LGLN metadata, but the AGNB text, which
-   governs, could not be read (site maintenance on 2026-10-21). Re-read it and settle two things:
-   the attribution form („LGLN (Jahr)" from the metadata versus „© GeoBasis-DE/LGLN Jahr, Daten
-   geändert" quoted secondarily), and the reported duty to notify LGLN when the source note is not
-   shown next to an online display.
-2. **Attribution year in `lglnimport`.** `lglnimport.Attribution` uses the latest tile `Updated`
-   year. The DOP metadata asks for the year of **retrieval** („Jahr des Datenbezugs"). Check whether
-   the LoD2 metadata says the same. If it does, the LoD2 attribution needs correcting. That is
-   outside A1's scope; it is recorded here because it was found here.
-3. **CC BY-SA and derived features.** Is a window or Immissionsort placed by a person looking at a
+1. **Attribution in `lglnimport`.** `lglnimport.Attribution` writes
+   `Quelle: LGLN (<year>), CC BY 4.0` with the latest tile `Updated` year. AGNB §7.2 governs every
+   dataset listed on the LGLN open geodata hub, and the LoD2 building model is listed there
+   (verified, hub search), so the LoD2 note should be `© GeoBasis-DE/LGLN <year of download>` (plus „Daten geändert" where the
+   buildings are clipped or otherwise changed). Both the form and the year differ from what the
+   code writes. Fixing it is outside A1's scope; it is recorded here because it was found here.
+2. **CC BY-SA and derived features.** Is a window or Immissionsort placed by a person looking at a
    CC BY-SA 4.0 photograph Adapted Material, and does Mapillary's §5.1/§12 contract reach it
    independently of copyright? Needs legal review, or a written statement from Mapillary and from
-   the Panoramax instance concerned. Until then: look, but do not record it as derived-from.
-4. **Hannover 3D oblique imagery.** Ask the Servicecenter Geoinformation whether the oblique
-   collections are CC BY 4.0 as the viewer says, whether a sanctioned access path exists (an image
-   id to cite, a file to hash), and whether the 6 cm 2024 collection can be licensed.
-5. **Mapillary coverage of the pilot area.** Not checked: it needs an API token. Only worth doing
-   if question 3 comes out in favour.
-6. **The Street View desk-study wording in `PLAN.md`.** The Google Maps consumer terms forbid using
-   Google Maps "to create or augment any other mapping-related dataset". The plan's "their own
-   business" reads more permissive than that. Whether the plan should say that a desk-study look at
-   Street View may inform where someone goes to photograph, but not what is recorded, is a call for
-   the plan's owner.
-7. **Site photos and hosted vision models.** The legal basis for sending a residential facade photo
+   the Panoramax instance concerned. The interim rule is decided (look only, nothing recorded).
+   Mapillary coverage of the pilot area is revisited together with this question.
+3. **Hannover 3D oblique imagery.** Ask Stadt Hannover, Servicecenter Geoinformation (Fachbereich
+   Planen und Stadtentwicklung), whether the oblique collections are CC BY 4.0 as the viewer says,
+   whether a sanctioned access path exists (an image id to cite, a file to hash), and whether the
+   6 cm 2024 collection can be licensed. Nothing published by the city answers this (re-checked
+   2026-10-22).
+4. **Site photos and hosted vision models.** The legal basis for sending a residential facade photo
    to a hosted model (D2) is decided per engagement. A3 or D2 should define where that decision is
    recorded.
-8. **A `data-handling.md` row** for each source here, before any of it is used, as that policy
-   requires. At least LGLN/city DOP (CC BY 4.0, may enter with attribution, but not from the pilot
-   area), CC BY-SA street-level imagery (pending question 3), site photos (nothing) and client plans
-   (nothing, already covered by the customer rows).
 
 ## Sources fetched
 
-All fetched on 2026-10-21. "Verified" claims in this note rest on these.
+All fetched on 2026-10-21 unless marked 2026-10-22. "Verified" claims in this note rest on these.
 
 Primary (rights holder or operator):
 
@@ -438,24 +472,41 @@ Primary (rights holder or operator):
   size): https://dop.stac.lgln.niedersachsen.de,
   https://dop.stac.lgln.niedersachsen.de/collections/DOP,
   https://dop.stac.lgln.niedersachsen.de/search?bbox=9.7049,52.3616,9.7233,52.3757&limit=50
-- LGLN AGNB page, AGNB PDF and two product PDFs: all answered with a maintenance page.
+- LGLN AGNB page, AGNB PDF and two product PDFs: all answered with a maintenance page, on
+  2026-10-21 and again (AGNB page and PDF, also `opengeodata.lgln.niedersachsen.de`, which
+  redirects to the hub) on 2026-10-22.
   https://www.lgln.niedersachsen.de/startseite/wir_uber_uns_amp_organisation/allgemeine_geschafts_und_nutzungsbedingungen_agnb/allgemeine-geschafts-und-nutzungsbedingungen-agnb-97401.html,
   https://www.lgln.niedersachsen.de/download/59483/Allgemeine_Geschaefts-_und_Nutzungsbedingungen_AGNB_.pdf,
   https://lgln.niedersachsen.de/download/126452,
   https://www.lgln.niedersachsen.de/download/143770/Ausblick_Projekt_Schraegluftbilder_im_LGLN.pdf,
   https://www.lgln.niedersachsen.de/download/147825/Schraegluftbilder.pdf
+- LGLN AGNB, „Stand: 01.10.2024", archived copies (§7.1 licence, §7.2 source note, year of
+  download, notification; §4.3 for comparison), fetched 2026-10-22: page snapshot of 2026-09-03,
+  http://web.archive.org/web/20260903231149/https://www.lgln.niedersachsen.de/startseite/wir_uber_uns_amp_organisation/allgemeine_geschafts_und_nutzungsbedingungen_agnb/allgemeine-geschafts-und-nutzungsbedingungen-agnb-97401.html,
+  and PDF snapshot of 2025-07-09,
+  http://web.archive.org/web/20250709231417/https://www.lgln.niedersachsen.de/download/59483/Allgemeine_Geschaefts-_und_Nutzungsbedingungen_AGNB_.pdf
+- LGLN OpenGeoData hub search for LoD2 (LoD2 listed, with the AGNB pointer), fetched 2026-10-22:
+  https://ni-lgln-opengeodata.hub.arcgis.com/api/search/v1/collections/all/items?q=LoD2&limit=10
 - Stadt Hannover, Open GeoData overview (reached by redirect from https://www.opengeodata-hannover.de):
   https://www.hannover.de/Leben-in-der-Region-Hannover/Verwaltungen-Kommunen/Die-Verwaltung-der-Landeshauptstadt-Hannover/Dezernate-und-Fachbereiche-der-LHH/Baudezernat/Fachbereich-Planen-und-Stadtentwicklung/Geoinformation/Open-GeoData
 - Stadt Hannover, Open GeoData terms (CC BY 4.0, attribution):
   https://www.hannover.de/Leben-in-der-Region-Hannover/Verwaltungen-Kommunen/Die-Verwaltung-der-Landeshauptstadt-Hannover/Dezernate-und-Fachbereiche-der-LHH/Stadtentwicklung-und-Bauen/Fachbereich-Planen-und-Stadtentwicklung/Geoinformation/Open-GeoData/Nutzungsbedingungen
 - Stadt Hannover, DOP20 page (vintages, coverage):
   https://www.hannover.de/Leben-in-der-Region-Hannover/Verwaltungen-Kommunen/Die-Verwaltung-der-Landeshauptstadt-Hannover/Dezernate-und-Fachbereiche-der-LHH/Stadtentwicklung-und-Bauen/Fachbereich-Planen-und-Stadtentwicklung/Geoinformation/Open-GeoData/Digitale-Orthophotos-DOP20
-- Stadt Hannover, Hannover 3D page:
+- Stadt Hannover, Hannover 3D page (re-read 2026-10-22: no licence, terms or download for oblique
+  imagery; contact unit Servicecenter Geoinformation):
   https://www.hannover.de/Leben-in-der-Region-Hannover/Verwaltungen-Kommunen/Die-Verwaltung-der-Landeshauptstadt-Hannover/Dezernate-und-Fachbereiche-der-LHH/Stadtentwicklung-und-Bauen/Fachbereich-Planen-und-Stadtentwicklung/Geoinformation/Hannover-3D
+- Stadt Hannover metadata catalogue (GeoNetwork CSW), queried 2026-10-22 with `AnyText like` for
+  „schräg", „Schrägaufnahme", „Schraeg", "oblique" (no match), „Luftbild" (orthophotos and one city
+  map) and the total (28 records):
+  https://e-government.hannover-stadt.de/geonetwork/srv/eng/csw?service=CSW&version=2.0.2&request=GetRecords&typeNames=csw:Record&resultType=hits&constraintLanguage=CQL_TEXT&constraint_language_version=1.1.0&constraint=AnyText%20like%20%27%25schr%C3%A4g%25%27
+  (the other queries differ only in the search term). `https://opendata.hannover.de` did not
+  resolve and `https://opendata-hannover.de` timed out on 2026-10-22.
 - Hannover 3D viewer configuration (oblique collections, attribution, extent):
   https://stadtmodell-prod4.hannover-stadt.de/HostingMap-extern/app.config.json, the module
   configurations it lists under `configs/`, and
   https://stadtmodell-prod3.hannover-stadt.de/HostingMap-extern/datasource-data/5a9fc5b4-029a-4adb-bfa7-bd6c1c6b87a6/image.json
+  (re-read 2026-10-22: camera parameters, 1024×1024 px tiles)
 - Mapillary Terms of Use (§3.2, §5.1, §11, §12, §13): https://www.mapillary.com/terms. The help
   article https://help.mapillary.com/hc/en-us/articles/115001770409-CC-BY-SA-license-for-open-data
   answered 403. The Graph API (https://graph.mapillary.com/images) refused without a token.
@@ -464,6 +515,8 @@ Primary (rights holder or operator):
   …/api/collections?bbox=…. The OSM France instance API (https://panoramax.openstreetmap.fr/api/)
   answered 403.
 - Creative Commons BY-SA 4.0 legal code: https://creativecommons.org/licenses/by-sa/4.0/legalcode.en
+- Creative Commons BY 4.0 legal code (§3(a)(1)(C), licence notice), fetched 2026-10-22:
+  https://creativecommons.org/licenses/by/4.0/legalcode.en
 - Creative Commons FAQ (adaptation, facts and databases): https://creativecommons.org/faq/
 - Google Maps Platform Terms of Service (§3.2.3, definitions, version list):
   https://cloud.google.com/maps-platform/terms
