@@ -3012,7 +3012,7 @@ change to any of them amends the ADR first.
 - [ ] Expose dry-run validation as `validate_model`. Execution, progress and result retrieval
       exist: `aconiq mcp` serves `list_runs`, `get_run`, `get_run_log`, `get_run_results`,
       `get_contours`, `estimate_run` and `aconiq://artifacts/{id}`, and under `--allow-writes`
-      the audited `start_run` and `cancel_run` (#NN). `validate_model` depends on the open
+      the audited `start_run` and `cancel_run` (#124). `validate_model` depends on the open
       `POST /api/v1/validate` decision (Open decisions → Behaviour and API); until it is taken,
       validation runs on `save_model`.
 - [ ] Make the frontend's model save and terrain replace send `expected_hash` (the receipt it
