@@ -275,6 +275,19 @@ put both on one chain.
   absolute elevations. That was the C11 datum defect rather than a convention:
   the two agree only where the ground sits at Z = 0. The deviation itself — no
   terrain-following term, no terrain edges on a mirrored leg — is unchanged.
+- **The own facade's reflection is counted at a facade Immissionsort.** Section 1
+  (Immissionsort, Anmerkung) excludes a path whose last reflection lies on the
+  facade the Immissionsort belongs to. Nothing links a receiver to a facade, so
+  no path is excluded. Measured 2026-10-22 on a receiver 0.05 m in front of a
+  10 m high facade, 20 m from the road: **+3.29 dB** over free field when the
+  facade is a building, as every CLI run models it, of which +2.75 dB is the own
+  facade's image and the rest the back wall's image reaching the receiver through
+  the building (the per-reflector exclusion above). The direction is
+  over-prediction. In a closed block perimeter a coplanar neighbour facade adds
+  +0.15 dB within 0.1 m of the party wall and nothing at 1 m, while a neighbour
+  building lowers the level by 0.68 dB, because shielding is tested along the
+  whole unfolded image path. The measurement is pinned by
+  `own_facade_reflection_test.go`; the fix is `PLAN.md` Priority 1 §1.9.
 
 ### Not reachable from the CLI
 
