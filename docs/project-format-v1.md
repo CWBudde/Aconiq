@@ -33,7 +33,8 @@ Rationale:
 - `.noise/artifacts/` : generated artifacts (reserved)
 - `.noise/logs/` : shared logs
   - `mcp-audit.jsonl` : one JSON object per state-changing `aconiq mcp` tool call (`time`, `tool`,
-    `args_sha256`, `outcome`, and `model_hash` after a successful `save_model`); argument values are
+    `args_sha256`, `outcome`, `model_hash` after a successful `save_model`, and `run_id` for
+    `start_run` and `cancel_run`); argument values are
     recorded only as the SHA-256 of their canonical JSON
 
 ## Manifest Schema (`.noise/project.json`)

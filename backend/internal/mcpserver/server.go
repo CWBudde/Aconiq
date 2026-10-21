@@ -29,6 +29,14 @@ const (
 	toolGetModel      = "get_model"
 	toolTransform     = "transform"
 	toolSaveModel     = "save_model"
+	toolListRuns      = "list_runs"
+	toolGetRun        = "get_run"
+	toolGetRunLog     = "get_run_log"
+	toolGetRunResults = "get_run_results"
+	toolGetContours   = "get_contours"
+	toolEstimateRun   = "estimate_run"
+	toolStartRun      = "start_run"
+	toolCancelRun     = "cancel_run"
 )
 
 // The MCP layer's own refusals, beside the API's codes.
@@ -120,27 +128,41 @@ func New(handler http.Handler, opts Options) (*mcp.Server, error) {
 		Annotations: readOnly,
 	}, t.transform)
 
+	err := t.addRunReadTools(server, readOnly)
+	if err != nil {
+		return nil, err
+	}
+
 	addResources(server, t.api)
 
-	if opts.AllowWrites {
-		schema, resolved, err := saveModelSchema()
-		if err != nil {
-			return nil, err
-		}
+	if !opts.AllowWrites {
+		return server, nil
+	}
 
-		// The low-level AddTool, not the generic one: mcp.AddTool validates the
-		// arguments and refuses a bad call before any handler runs, and that
-		// refusal of a destructive call would never reach the audit log.
-		// saveModel validates against the same schema itself.
-		server.AddTool(&mcp.Tool{
-			Name: toolSaveModel,
-			Description: "Replace the whole project model. To change one feature, read the model with get_model, change it, and save it back. " +
-				"The model is validated against the GeoJSON schema v1 and refused with the validation issues if it does not pass; nothing is corrected. " +
-				"confirm binds the save to the model you read: the hash get_model or project_status returned, or \"none\" when the project has no model yet. " +
-				"A model that changed since is refused with hash_mismatch and the current hash, not overwritten.",
-			InputSchema: schema,
-			Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(true), OpenWorldHint: boolPtr(false)},
-		}, t.saveModel(resolved))
+	schema, resolved, err := inputSchema[saveModelInput](rawModelAsObject())
+	if err != nil {
+		return nil, err
+	}
+
+	// The low-level AddTool, not the generic one: mcp.AddTool validates the
+	// arguments and refuses a bad call before any handler runs, and that
+	// refusal of a destructive call would never reach the audit log.
+	// serveSaveModel validates against the same schema itself.
+	server.AddTool(&mcp.Tool{
+		Name: toolSaveModel,
+		Description: "Replace the whole project model. To change one feature, read the model with get_model, change it, and save it back. " +
+			"The model is validated against the GeoJSON schema v1 and refused with the validation issues if it does not pass; nothing is corrected. " +
+			"confirm binds the save to the model you read: the hash get_model or project_status returned, or \"none\" when the project has no model yet. " +
+			"A model that changed since is refused with hash_mismatch and the current hash, not overwritten.",
+		InputSchema: schema,
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(true), OpenWorldHint: boolPtr(false)},
+	}, t.audited(toolSaveModel, func(ctx context.Context, arguments json.RawMessage) served {
+		return t.serveSaveModel(ctx, resolved, arguments)
+	}))
+
+	err = t.addRunWriteTools(server)
+	if err != nil {
+		return nil, err
 	}
 
 	return server, nil
@@ -150,15 +172,17 @@ func instructions(allowWrites bool) string {
 	const common = "Aconiq environmental noise modelling, for the one project this server was started on. " +
 		"Tool results are the local API's JSON answers, verbatim; a refused call returns the API's error envelope (code, message, details, hint). " +
 		"Coordinates are in the CRS named beside them. " +
+		"Runs: list_runs, get_run (poll it for progress; there is no stream), get_run_log, get_run_results (the receiver table, with its units), get_contours, and estimate_run, which prices a run without starting it. " +
 		"Resources: aconiq://project (status), aconiq://standards (the catalogue, with evidence tiers and parameter units), " +
-		"aconiq://runs/{id} (a run's summary and progress) and aconiq://runs/{id}/provenance (its provenance.json, as recorded)."
+		"aconiq://runs/{id} (a run's summary and progress), aconiq://runs/{id}/provenance (its provenance.json, as recorded) " +
+		"and aconiq://artifacts/{id} (an artifact's content, by the id a run's artifacts list names)."
 
 	if !allowWrites {
 		return common + " This server was started read-only (without --allow-writes): no tool changes the project, and none is listed."
 	}
 
-	return common + " Writes are enabled (--allow-writes). Every state-changing call is recorded in the project's MCP audit log. " +
-		"Destructive tools require confirm, a value you must have read first."
+	return common + " Writes are enabled (--allow-writes): start_run and cancel_run, and save_model. Every state-changing call is recorded in the project's MCP audit log. " +
+		"Destructive tools require confirm, a value you must have read first. Runs this server started are stopped when it exits."
 }
 
 type tools struct {
@@ -190,24 +214,43 @@ type saveModelInput struct {
 	Confirm string          `json:"confirm"       jsonschema:"The hash of the model being replaced, as get_model or project_status returned it, or none when the project has no model yet."`
 }
 
-// saveModelSchema derives save_model's input schema from saveModelInput, with
-// one correction: the model is held as json.RawMessage so it reaches the API
-// byte for byte, and inference would type those bytes as an array. It returns
-// the schema the tool advertises and its resolved form, which the handler
-// validates against.
-func saveModelSchema() (*jsonschema.Schema, *jsonschema.Resolved, error) {
-	schema, err := jsonschema.For[saveModelInput](&jsonschema.ForOptions{
-		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
-			reflect.TypeFor[json.RawMessage](): {Type: "object"},
-		},
-	})
+// rawModelAsObject types save_model's model as the object it is. It is held
+// as json.RawMessage so it reaches the API byte for byte, and inference would
+// type those bytes as an array. A fresh map per call: the schema it holds ends
+// up inside the tool's schema, and every server resolves its own.
+func rawModelAsObject() map[reflect.Type]*jsonschema.Schema {
+	return map[reflect.Type]*jsonschema.Schema{
+		reflect.TypeFor[json.RawMessage](): {Type: "object"},
+	}
+}
+
+// inputSchema derives a tool's input schema from In, with typeSchemas
+// overriding inference for the types it names and each nonEmpty property held
+// to at least one character: required only says a property is present, and
+// an empty identifier would read as an omitted one. It returns the schema the
+// tool advertises and its resolved form, which a low-level handler validates
+// against.
+func inputSchema[In any](typeSchemas map[reflect.Type]*jsonschema.Schema, nonEmpty ...string) (*jsonschema.Schema, *jsonschema.Resolved, error) {
+	name := reflect.TypeFor[In]().Name()
+
+	schema, err := jsonschema.For[In](&jsonschema.ForOptions{TypeSchemas: typeSchemas})
 	if err != nil {
-		return nil, nil, fmt.Errorf("mcpserver: save_model input schema: %w", err)
+		return nil, nil, fmt.Errorf("mcpserver: %s schema: %w", name, err)
+	}
+
+	for _, property := range nonEmpty {
+		field, ok := schema.Properties[property]
+		if !ok {
+			return nil, nil, fmt.Errorf("mcpserver: %s has no property %q", name, property)
+		}
+
+		minLength := 1
+		field.MinLength = &minLength
 	}
 
 	resolved, err := schema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
 	if err != nil {
-		return nil, nil, fmt.Errorf("mcpserver: resolve save_model input schema: %w", err)
+		return nil, nil, fmt.Errorf("mcpserver: resolve %s schema: %w", name, err)
 	}
 
 	return schema, resolved, nil
@@ -267,42 +310,57 @@ type modelSaveBody struct {
 	ExpectedHash string          `json:"expected_hash"`
 }
 
-// saveModel returns save_model's handler. Every call it receives is
-// audited, whatever its outcome — refused arguments included — and none is
-// served unless its audit entry could be opened first.
-func (t tools) saveModel(schema *jsonschema.Resolved) mcp.ToolHandler {
+// served is a state-changing call's result, with what its audit entry
+// records of it.
+type served struct {
+	result  *mcp.CallToolResult
+	outcome string
+	touched affected
+}
+
+// audited returns the handler of a state-changing tool. Every call it
+// receives is audited, whatever its outcome — refused arguments included —
+// and none is served unless its audit entry could be opened first.
+func (t tools) audited(tool string, serve func(context.Context, json.RawMessage) served) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		arguments := req.Params.Arguments
 
 		entry, err := t.audit.open()
 		if err != nil {
-			t.logger.Error("mcp audit log unavailable; write refused", "tool", toolSaveModel, "error", err)
+			t.logger.Error("mcp audit log unavailable; write refused", "tool", tool, "error", err)
 
 			return toolError{
 				Code:    errorCodeAuditUnavailable,
-				Message: "the MCP audit log cannot be written, so the save was not attempted: " + err.Error(),
+				Message: "the MCP audit log cannot be written, so " + tool + " was not attempted: " + err.Error(),
 				Hint:    "Make .noise/logs/ in the project writable; every write through this server is recorded there.",
 			}.result(), nil
 		}
 
-		result, outcome, modelHash := t.serveSaveModel(ctx, schema, arguments)
-
-		return t.recorded(entry, arguments, result, outcome, modelHash), nil
+		return t.recorded(tool, entry, arguments, serve(ctx, arguments)), nil
 	}
 }
 
-// serveSaveModel validates and serves one save_model call, and returns its
-// result with what the audit log records of it.
-func (t tools) serveSaveModel(ctx context.Context, schema *jsonschema.Resolved, arguments json.RawMessage) (*mcp.CallToolResult, string, string) {
-	in, err := decodeSaveModel(schema, arguments)
-	if err != nil {
-		refusal := toolError{
-			Code:    errorCodeInvalidArguments,
-			Message: "save_model arguments do not match its input schema: " + err.Error(),
-			Hint:    "Pass model (a GeoJSON FeatureCollection object) and confirm, and optionally crs; nothing else.",
-		}
+// invalidArguments refuses arguments the tool's input schema does not accept.
+func invalidArguments(tool string, err error, hint string) served {
+	refusal := toolError{
+		Code:    errorCodeInvalidArguments,
+		Message: tool + " arguments do not match its input schema: " + err.Error(),
+		Hint:    hint,
+	}
 
-		return refusal.result(), errorCodeInvalidArguments, ""
+	return served{result: refusal.result(), outcome: errorCodeInvalidArguments}
+}
+
+// internalError is a call this layer could not serve at all.
+func internalError(err error) served {
+	return served{result: toolError{Code: "internal_error", Message: err.Error()}.result(), outcome: "internal_error"}
+}
+
+// serveSaveModel validates and serves one save_model call.
+func (t tools) serveSaveModel(ctx context.Context, schema *jsonschema.Resolved, arguments json.RawMessage) served {
+	in, err := decodeArguments[saveModelInput](schema, arguments)
+	if err != nil {
+		return invalidArguments(toolSaveModel, err, "Pass model (a GeoJSON FeatureCollection object) and confirm, and optionally crs; nothing else.")
 	}
 
 	// An empty confirm is the one value that would turn the API's
@@ -316,28 +374,29 @@ func (t tools) serveSaveModel(ctx context.Context, schema *jsonschema.Resolved, 
 			Hint:    "Pass the hash get_model or project_status returned for the current model, or \"none\" if the project has no model yet.",
 		}
 
-		return refusal.result(), errorCodeConfirmRequired, ""
+		return served{result: refusal.result(), outcome: errorCodeConfirmRequired}
 	}
 
 	body, err := json.Marshal(modelSaveBody{CRS: in.CRS, Model: in.Model, ExpectedHash: in.Confirm})
 	if err != nil {
-		return toolError{Code: errorCodeInvalidArguments, Message: "encode model save: " + err.Error()}.result(), errorCodeInvalidArguments, ""
+		return internalError(fmt.Errorf("encode model save: %w", err))
 	}
 
 	resp, err := t.api.postJSON(ctx, "/api/v1/model", body)
 	if err != nil {
-		return toolError{Code: "internal_error", Message: err.Error()}.result(), "internal_error", ""
+		return internalError(err)
 	}
 
 	outcome, modelHash := saveOutcome(resp)
 
-	return resp.toolResult(), outcome, modelHash
+	return served{result: resp.toolResult(), outcome: outcome, touched: affected{modelHash: modelHash}}
 }
 
-// decodeSaveModel validates the arguments against the tool's input schema —
-// the check mcp.AddTool would have made before the handler — and decodes them.
-func decodeSaveModel(schema *jsonschema.Resolved, arguments json.RawMessage) (saveModelInput, error) {
-	var in saveModelInput
+// decodeArguments validates the arguments against the tool's input schema —
+// the check mcp.AddTool would have made before the handler — and decodes
+// them.
+func decodeArguments[In any](schema *jsonschema.Resolved, arguments json.RawMessage) (In, error) {
+	var in In
 
 	raw := arguments
 	if len(raw) == 0 {
@@ -396,23 +455,23 @@ func errorCode(resp apiResponse) string {
 	return fmt.Sprintf("http_%d", resp.status)
 }
 
-// recorded writes a save_model call's audit entry and returns its result.
-// The call has already been served by then, so an entry that fails to write
-// neither undoes nor hides it: it is logged at ERROR, and the agent is told
-// beside the result.
-func (t tools) recorded(entry *pendingEntry, arguments json.RawMessage, result *mcp.CallToolResult, outcome string, modelHash string) *mcp.CallToolResult {
-	err := entry.finish(toolSaveModel, arguments, outcome, modelHash)
+// recorded writes a state-changing call's audit entry and returns its
+// result. The call has already been served by then, so an entry that fails to
+// write neither undoes nor hides it: it is logged at ERROR, and the agent is
+// told beside the result.
+func (t tools) recorded(tool string, entry *pendingEntry, arguments json.RawMessage, out served) *mcp.CallToolResult {
+	err := entry.finish(tool, arguments, out.outcome, out.touched)
 	if err == nil {
-		return result
+		return out.result
 	}
 
-	t.logger.Error("mcp audit entry not written", "tool", toolSaveModel, "outcome", outcome, "error", err)
+	t.logger.Error("mcp audit entry not written", "tool", tool, "outcome", out.outcome, "error", err)
 
-	result.Content = append(result.Content, &mcp.TextContent{
+	out.result.Content = append(out.result.Content, &mcp.TextContent{
 		Text: "warning: this call was not recorded in the MCP audit log: " + err.Error(),
 	})
 
-	return result
+	return out.result
 }
 
 // boolPtr is for the annotation hints MCP leaves tri-state, where an absent

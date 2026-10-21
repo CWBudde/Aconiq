@@ -29,11 +29,12 @@ type apiClient struct {
 	handler http.Handler
 }
 
-// apiResponse is what the handler wrote: the status and the body, byte for
-// byte.
+// apiResponse is what the handler wrote: the status, the media type it
+// declared, and the body, byte for byte.
 type apiResponse struct {
-	status int
-	body   []byte
+	status      int
+	contentType string
+	body        []byte
 }
 
 func (r apiResponse) ok() bool {
@@ -83,7 +84,11 @@ func (c apiClient) do(ctx context.Context, method string, path string, body []by
 	recorder := &responseRecorder{header: http.Header{}}
 	c.handler.ServeHTTP(recorder, req)
 
-	return apiResponse{status: recorder.statusOrOK(), body: recorder.body.Bytes()}, nil
+	return apiResponse{
+		status:      recorder.statusOrOK(),
+		contentType: recorder.header.Get("Content-Type"),
+		body:        recorder.body.Bytes(),
+	}, nil
 }
 
 // responseRecorder is the http.ResponseWriter an in-process request writes

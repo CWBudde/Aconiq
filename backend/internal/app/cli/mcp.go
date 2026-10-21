@@ -34,17 +34,25 @@ tool accepts and refuses exactly what the API does and answers with the API's
 own JSON.
 
 The read tools are always offered: project_status, list_standards (with each
-standard's evidence tier and parameter units), get_model and transform. So are
-the resources aconiq://project, aconiq://standards, aconiq://runs/{id} and
-aconiq://runs/{id}/provenance (the run's provenance.json, as recorded).
+standard's evidence tier and parameter units), get_model, transform, and the
+run tools list_runs, get_run (polled for progress), get_run_log,
+get_run_results (the receiver table; one over 256 KiB as a link), get_contours
+and estimate_run, which prices a run without starting it. So are the resources
+aconiq://project, aconiq://standards, aconiq://runs/{id},
+aconiq://runs/{id}/provenance (the run's provenance.json, as recorded) and
+aconiq://artifacts/{id}.
 
 Without --allow-writes the server is read-only and lists no tool that changes
-the project. With it, save_model is offered: it replaces the whole model, and
-its confirm argument must be the hash of the model being replaced (or "none"),
-so a model that changed since the agent read it is refused, not overwritten.
-Every state-changing call is appended to .noise/logs/mcp-audit.jsonl.
+the project. With it, start_run and cancel_run are offered, and save_model: it
+replaces the whole model, and its confirm argument must be the hash of the
+model being replaced (or "none"), so a model that changed since the agent read
+it is refused, not overwritten. start_run takes the scenario, standard,
+version, profile and receiver mode explicitly, never a default, and computes
+the saved model. Every state-changing call is appended to
+.noise/logs/mcp-audit.jsonl.
 
-The server stops when stdin closes or on SIGINT/SIGTERM.`,
+The server stops when stdin closes or on SIGINT/SIGTERM, and stops the runs it
+started first.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runMCP(cmd, allowWrites)
@@ -52,7 +60,7 @@ The server stops when stdin closes or on SIGINT/SIGTERM.`,
 	}
 
 	cmd.Flags().BoolVar(&allowWrites, "allow-writes", false,
-		"Offer the tools that change the project (save_model); every such call is audited")
+		"Offer the tools that change the project (start_run, cancel_run, save_model); every such call is audited")
 
 	return cmd
 }

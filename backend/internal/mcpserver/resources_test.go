@@ -145,7 +145,7 @@ func TestReadSurfaceIsListedWithAndWithoutWrites(t *testing.T) {
 			patterns = append(patterns, template.URITemplate)
 		}
 
-		if slices.Sort(patterns); !slices.Equal(patterns, []string{"aconiq://runs/{id}", "aconiq://runs/{id}/provenance"}) {
+		if slices.Sort(patterns); !slices.Equal(patterns, []string{"aconiq://artifacts/{id}", "aconiq://runs/{id}", "aconiq://runs/{id}/provenance"}) {
 			t.Fatalf("allow_writes=%v: resource templates %v", allowWrites, patterns)
 		}
 	}
