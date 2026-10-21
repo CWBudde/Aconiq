@@ -3009,19 +3009,24 @@ change to any of them amends the ADR first.
 
 ### Subphase SL-1.3 — Integration and validation
 
-- [ ] Expose validation, calculation execution, progress and result retrieval
-      A dry-run `validate_model` depends on the open `POST /api/v1/validate` decision (Open
-      decisions → Behaviour and API); until it is taken, validation runs on `save_model`.
+- [ ] Expose dry-run validation as `validate_model`. Execution, progress and result retrieval
+      exist: `aconiq mcp` serves `list_runs`, `get_run`, `get_run_log`, `get_run_results`,
+      `get_contours`, `estimate_run` and `aconiq://artifacts/{id}`, and under `--allow-writes`
+      the audited `start_run` and `cancel_run` (#NN). `validate_model` depends on the open
+      `POST /api/v1/validate` decision (Open decisions → Behaviour and API); until it is taken,
+      validation runs on `save_model`.
 - [ ] Make the frontend's model save and terrain replace send `expected_hash` (the receipt it
       already holds, or `none`). The API compares atomically since SL-1.2, but the UI still saves
       unconditionally, so a browser save overwrites an edit an MCP agent made meanwhile instead of
-      answering 409.
+      answering 409. Open before it starts: what a save does on 409 `hash_mismatch` (reload the
+      project's model, overwrite it, or offer both). No UI path replaces terrain yet
+      (`frontend/src/api/client.ts`), so the terrain half waits for one.
 
 ### Subphase SL-1.4 — Evidence and documentation
 
 - [ ] Add deterministic outputs, audit logging for the run tools, and integration tests
       `aconiq mcp` already speaks stdio, and `.noise/logs/mcp-audit.jsonl` already records
-      `save_model` (`internal/mcpserver/audit.go`); `start_run`, `cancel_run`, `delete_run` and
+      `save_model`, `start_run` and `cancel_run` (`internal/mcpserver/audit.go`); `delete_run` and
       `import_terrain` must record into it as they land (ADR-002, Security policy 7).
 - [ ] Cover tool schemas and input validation with automated tests
 - [ ] Document setup, available tools and example prompts in the README
