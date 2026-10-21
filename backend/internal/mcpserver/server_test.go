@@ -54,6 +54,14 @@ type fixture struct {
 func newFixture(t *testing.T, allowWrites bool) fixture {
 	t.Helper()
 
+	return newFixtureWrapped(t, allowWrites, nil)
+}
+
+// newFixtureWrapped is newFixture with the server's handler wrapped by wrap,
+// for a test that must answer one route itself; nil wraps nothing.
+func newFixtureWrapped(t *testing.T, allowWrites bool, wrap func(http.Handler) http.Handler) fixture {
+	t.Helper()
+
 	store, err := projectfs.New(t.TempDir())
 	if err != nil {
 		t.Fatalf("new store: %v", err)
@@ -71,7 +79,12 @@ func newFixture(t *testing.T, allowWrites bool) fixture {
 
 	handler := httpv1.NewServeHandler(store, func() time.Time { return fixedNow }, registry, httpv1.ServeOptions{})
 
-	server, err := mcpserver.New(handler, mcpserver.Options{
+	served := http.Handler(handler)
+	if wrap != nil {
+		served = wrap(handler)
+	}
+
+	server, err := mcpserver.New(served, mcpserver.Options{
 		AllowWrites: allowWrites,
 		Version:     "test",
 		AuditPath:   store.MCPAuditLogPath(),

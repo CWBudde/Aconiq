@@ -360,7 +360,11 @@ func (t tools) serveStartRun(ctx context.Context, schema *jsonschema.Resolved, a
 		return internalError(fmt.Errorf("encode run request: %w", err))
 	}
 
-	resp, err := t.api.postJSON(ctx, "/api/v1/runs", body)
+	// The run belongs to the server, not to this call. An agent that goes
+	// away while the API waits for the run's row would leave the API without
+	// an answer to write, and the audit without the id of a run that computes
+	// anyway; the API bounds that wait itself.
+	resp, err := t.api.postJSON(context.WithoutCancel(ctx), "/api/v1/runs", body)
 	if err != nil {
 		return internalError(err)
 	}
@@ -373,7 +377,10 @@ func (t tools) serveStartRun(ctx context.Context, schema *jsonschema.Resolved, a
 		ID string `json:"id"`
 	}
 
-	_ = json.Unmarshal(resp.body, &started)
+	err = json.Unmarshal(resp.body, &started)
+	if err != nil || started.ID == "" {
+		return internalError(fmt.Errorf("the API accepted the run request but named no run (HTTP %d, %d-byte body)", resp.status, len(resp.body)))
+	}
 
 	return served{result: resp.toolResult(), outcome: auditOutcomeOK, touched: affected{runID: started.ID}}
 }

@@ -413,6 +413,76 @@ func TestStartRunRefusalsAreAudited(t *testing.T) {
 	}
 }
 
+// startRunAnswering wraps the API so that POST /api/v1/runs is answered by
+// answer; every other route is the API's.
+func startRunAnswering(answer http.HandlerFunc) func(http.Handler) http.Handler {
+	return func(api http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/api/v1/runs" {
+				answer(w, r)
+
+				return
+			}
+
+			api.ServeHTTP(w, r)
+		})
+	}
+}
+
+// The API writes nothing to a start request whose caller has gone away before
+// the run's row exists, and the run computes regardless. So the request must
+// not be one the call's cancellation can abandon: this stand-in abandons any
+// request that could be, as the API would if the agent went away.
+func TestStartRunCannotBeAbandonedByItsCaller(t *testing.T) {
+	t.Parallel()
+
+	f := newFixtureWrapped(t, true, startRunAnswering(func(w http.ResponseWriter, r *http.Request) {
+		if r.Context().Done() != nil {
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":"run-1","status":"pending"}`))
+	}))
+
+	result := f.call(t, "start_run", runRequestArgs("dummy-freefield"))
+	if result.IsError {
+		t.Fatalf("start_run = %s", resultText(t, result))
+	}
+
+	lines := auditLines(t, f.store)
+	if len(lines) != 1 || lines[0]["outcome"] != "ok" || lines[0]["run_id"] != "run-1" {
+		t.Fatalf("audit = %v", lines)
+	}
+}
+
+// A success that names no run is not recorded as one.
+func TestStartRunWithoutARunIDIsNotASuccess(t *testing.T) {
+	t.Parallel()
+
+	for name, body := range map[string]string{"empty": "", "no id": `{"status":"pending"}`} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newFixtureWrapped(t, true, startRunAnswering(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = w.Write([]byte(body))
+			}))
+
+			apiErr := apiErrorOf(t, f.call(t, "start_run", runRequestArgs("dummy-freefield")))
+			if apiErr["code"] != "internal_error" {
+				t.Fatalf("envelope = %v", apiErr)
+			}
+
+			lines := auditLines(t, f.store)
+			if len(lines) != 1 || lines[0]["outcome"] != "internal_error" || lines[0]["run_id"] != nil {
+				t.Fatalf("audit = %v", lines)
+			}
+		})
+	}
+}
+
 // A run this server did not start is someone else's to stop; the refusal is
 // the API's, and the audit line names the run.
 func TestCancelRunOfAForeignRunIsRefusedAndAudited(t *testing.T) {
