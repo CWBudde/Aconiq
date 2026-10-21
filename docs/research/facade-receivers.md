@@ -228,12 +228,12 @@ The geometry of a point is a pure function of (rule, building, facade edge, stat
 storey) and the slab-height inputs of Section 5. Two runs with the same inputs place the same
 points. That is the determinism B2 needs.
 
-## 5. Open decision: "Höhe der Geschossdecke" in metres
+## 5. "Höhe der Geschossdecke" in metres
 
 Neither the RLS-19 nor Schall 03 gives a storey height. Schall 03 gives a window relation instead
 (0.2 m above the window head). An OSM model carries `building:levels` and at best a `height`. This
-section sets out the choice. **It is not decided here.** The listing in `PLAN.md` under Open
-decisions stands until review.
+section sets out the options and the decision taken in review (2026-10-22): **option C**, see
+[Decision](#decision).
 
 ### Which slab
 
@@ -290,9 +290,9 @@ Supporting evidence:
   both place every upper-floor point too low, and the error grows with `n`. F1 should measure it
   from the site photos (D1 gives storey lines in the facade frame).
 
-### Recommendation
+### Decision
 
-**C, with the inputs recorded.**
+**C, with the inputs recorded** (decided in review, 2026-10-22).
 
 - `z(n) = h_EG + (n + 1) · s`.
 - `s` is taken per building from a height the model did not derive from `building:levels`, and
@@ -302,10 +302,22 @@ Supporting evidence:
 - A window, once known (C1), overrides the storey arithmetic where its standard allows it:
   Schall 03 takes `window_head + 0.2 m` directly. For RLS-19, the same relation is the most
   defensible slab estimate, but it is borrowed from Schall 03 and must be recorded as borrowed.
-- Every placed point records where `s` and `h_EG` came from (`measured`, `levels`, `assumed`), as
-  `osmimport` already does with `height_source`. A normative run over points whose slab height
-  is assumed is flagged, never silently accepted. This is the same principle as the review state
-  of a proposed window.
+- Every placed point records where `s` came from in `slab_height_source`: `measured` (a height
+  not derived from levels, or a window), `levels` (the 3.0 m fallback on a known storey
+  count) or `assumed` (no storey count either). A point whose `slab_height_source` is `assumed`
+  counts as unconfirmed under the rule in
+  [what the run does with `proposed`](#decision-what-the-run-does-with-proposed).
+
+**The importer does not yet say which case it is in.** `osmimport` writes `height_source` only
+for the fallback (`internal/io/osmimport/osmimport.go:31-37`, value `assumed`); a height read from
+the `height` tag and one derived as `building:levels × 3.0` (`buildingHeight`, `osmimport.go:288`)
+both leave it absent, and `building:levels` is kept as a property in both cases
+(`osmimport.go:246`). So `H / levels` cannot tell a tagged 15 m from a derived 15 m, and in the
+derived case it returns exactly 3.0 m, the fallback, only by coincidence. B2 therefore needs
+`osmimport` to record the derived case as its own `height_source` value (`levels`), extending the
+schema's [Height provenance](../geojson-schema-v1.md#height-provenance) section. Until then a
+building with `building:levels` and no `height_source` must be read as `levels`, never as
+`measured`. LoD2 and CityGML heights are `measured`.
 
 ## 6. Consequences for Aconiq
 
@@ -376,8 +388,8 @@ a conformance defect in a normative module, not a modelling preference.
 
 ## 7. Open questions
 
-1. **Slab height** (Section 5): A, B, C or D. Whether `h_EG` gets a default other than 0 for
-   buildings known to have a raised ground floor.
+1. **Raised ground floor** (Section 5 decided `s`, not `h_EG`): whether `h_EG` gets a default
+   other than 0 for buildings known to have a _Hochparterre_, and which evidence sets it.
 2. **RLS-19 balcony, reference line:** the outer facade or the parapet, and who decides per
    balcony. Does the 5 cm offset apply, and from which surface?
 3. **RLS-19 balcony, own facade:** is it the wall behind the balcony, the parapet, or both? A
@@ -398,8 +410,11 @@ a conformance defect in a normative module, not a modelling preference.
    them to a rule when their facade distance and floor heights match one. A mapping would let them
    take part in the own-facade exclusion. Without it, B1's fix does not reach them unless they
    also get a facade link.
-9. **Proposed points in a normative run** (the existing open decision in `PLAN.md`): it applies to
-   assumed slab heights as much as to unconfirmed windows. One rule should govern both.
+
+Decided in review (2026-10-22) and no longer open: the storey height `s` (Section 5) and whether
+unconfirmed points may enter a normative run
+([Data model](#decision-what-the-run-does-with-proposed)). One rule governs both unconfirmed
+windows and assumed slab heights.
 
 ## Sources
 
@@ -439,8 +454,9 @@ Secondary (practice; not rules):
 
 ## Data model (A3)
 
-This section is item A3. It proposes the facade frame and the receiver properties. Two parts of it
-are open decisions (marked), and nothing here is implemented.
+This section is item A3. It specifies the facade frame and the receiver properties. The two
+decisions it needed, what keys a building and what a run does with unconfirmed points, were taken
+in review (2026-10-22). Nothing here is implemented.
 
 ### Schema v1 takes it additively
 
@@ -456,11 +472,18 @@ Three things are not free, and each belongs to the item that first reads the pro
 
 - **Validation.** Once a run reads `placement_rule` or `facade`, a malformed value must be a
   validation error with its own code, not a silently ignored key. B2 and B3 add those codes.
-- **Coordinates in properties must be registered for reprojection.** The facade key below stores
-  the edge's endpoints. `propertyGeometries` (`internal/geo/modelgeojson/reproject.go:92`) lists
-  the properties whose coordinates move with the model, and its comment warns that a property
-  missing from it ends up "in the wrong hemisphere". The endpoints go on that list in the same
-  change that first writes them.
+- **Coordinates in properties must be reprojected, and the registry cannot hold this shape
+  yet.** The facade key below stores the edge's endpoints. `propertyGeometries`
+  (`internal/geo/modelgeojson/reproject.go:92`) lists the properties whose coordinates move with
+  the model, and its comment warns that a property missing from it ends up "in the wrong
+  hemisphere". Adding `facade` to that list is not enough: every entry names a container that
+  must be an **array of objects** (`reproject.go:83-84`), and `reprojectProperties` skips any
+  container that is not a `[]any` without a word (`reproject.go:109-112`). `facade` is a single
+  object holding two `[x, y]` members. The change that first writes it therefore extends
+  `propertyGeometry` with a singleton-object form (or a `[x, y]`-member form inside it), adds the
+  entry, and tests that a reprojected model moves `from` / `to` with the point. A silent skip
+  would leave the check endpoints in the old CRS and turn every re-import into a
+  `receiver.facade.moved` finding.
 - **The receiver table has no per-row attributes.** `results.ReceiverRecord`
   (`internal/results/receiver_table.go:11`) holds id, x, y, `height_m` and the values. Naming a
   row's building, facade and storey (B3) adds optional fields to result container v1
@@ -513,17 +536,35 @@ Synthetic values:
 }
 ```
 
-- `part`: the polygon within a `MultiPolygon` (0 for a `Polygon`).
-- `ring`: 0 for the exterior, 1… for courtyard holes, in source order.
-- `edge`: the index after **canonicalisation**: orientation normalised as above, then the ring
-  rotated to start at its lexicographically smallest vertex (x, then y). The same geometry then
-  yields the same index however the source ordered or oriented the ring.
+- `part`: the polygon within a `MultiPolygon` (0 for a `Polygon`), in canonical order.
+- `ring`: 0 for the exterior, 1… for courtyard holes, in canonical order.
+- `edge`: the index within the canonical ring.
+
+**Canonicalisation** makes all three indices independent of how the source wrote the geometry.
+GeoJSON fixes neither the order of a `MultiPolygon`'s parts nor the order of a polygon's holes,
+so canonicalising the vertices alone would not survive a re-import. In order:
+
+1. Each ring: orientation normalised as above, then rotated to start at its lexicographically
+   smallest vertex (x, then y).
+2. The holes of each part: sorted by their canonical vertex sequence, compared lexicographically
+   pair by pair (x, then y). The exterior stays ring 0.
+3. The parts: sorted the same way by their canonical exterior ring.
+
+Valid parts do not overlap and valid holes do not overlap, so two rings compare equal only if
+they are the same ring, and the order is total. The comparison is on the stored `float64`
+values, with no tolerance: a tolerance would make the order depend on which neighbour is within
+it, and the `from` / `to` check below exists to catch a geometry that moved.
+
 - `from` / `to`: the edge's endpoints in the project CRS, as a check, not as the key. A re-import
   whose canonical edge no longer has these endpoints (within a tolerance) is a validation
   finding, not a silent re-attachment.
 
 A balcony or loggia (`rls19-balcony`) needs a reference line that is not a footprint edge. That
 is open in Section 7 (questions 2 and 3), and the key may grow a `line` variant for it.
+
+**Receiver IDs carry the whole key.** A generated point's ID is formed from (`building_ref`,
+`part`, `ring`, `edge`, station, `storey`), in that order. Dropping `part` or `ring` would give a
+courtyard edge 0 and an exterior edge 0 at the same station and storey the same ID.
 
 ### Receiver properties
 
@@ -534,7 +575,7 @@ is open in Section 7 (questions 2 and 3), and the key may grow a `line` variant 
 | `storey`             | integer          | 0 = ground floor (_Erdgeschoss_), as in Section 5.                                                        |
 | `station_u_m`        | number           | `u` of the point on the facade. For a window-derived point, the `u` of the window's centre.               |
 | `window`             | object           | `{ "u_m", "sill_z_m", "width_m", "height_m" }` in the facade frame. Absent for B2 geometry-only points.   |
-| `slab_height_source` | string           | `measured`, `levels` or `assumed` (Section 5, recommendation). Absent when a window fixes the height.     |
+| `slab_height_source` | string           | `measured`, `levels` or `assumed` (Section 5, Decision). Absent when a window fixes the height.           |
 | `evidence`           | array of objects | Where the placement came from. Empty for a pure B2 point. Fields below.                                   |
 | `review_status`      | string           | `proposed`, `confirmed` or `rejected`. B2 points start `proposed`. A `rejected` point never enters a run. |
 
@@ -551,7 +592,7 @@ or `own` / `client-engagement`), `terms_url`, `attribution`, and for D1 the `tra
 image-to-facade point pairs. A site photo's `source_id` is an opaque reference into the
 engagement's store, never a path that names the client.
 
-### Open decision: what keys a building
+### Decision: what keys a building
 
 `building_ref` has to survive a re-import. The candidates:
 
@@ -568,15 +609,26 @@ engagement's store, never a path that names the client.
    survives a change of source, but it is a heuristic, and a heuristic must not decide where an
    Immissionsort is without a person seeing it.
 
-**Recommendation: 1, with 3 as an explicit, reviewed step.** Key by the feature `id`. A receiver
+**Decided (review, 2026-10-22): 1, with 3 as an explicit, reviewed step.** Key by the feature
+`id`. A receiver
 whose `building_ref` does not resolve, or whose `from` / `to` no longer match, is a validation
 finding (`receiver.facade.unresolved`, `receiver.facade.moved`) that blocks a normative run. An
 explicit re-attach action (CLI or UI) proposes matches by geometry and sets the matched points to
 `review_status: proposed` until a person confirms them. A building that only has the
 `citygml-building-%03d` fallback id cannot carry facade receivers until it has a stable id.
 
-### Open decision: what the run does with `proposed`
+### Decision: what the run does with `proposed`
 
-This is the existing entry under Open decisions in `PLAN.md`. Section 7, question 9 adds that the
-same rule should cover `slab_height_source: assumed`. The data model does not decide it; it only
-makes the state visible to whoever does.
+**Decided (review, 2026-10-22): refused unless opted in.** One rule governs every unconfirmed
+input to a facade Immissionsort:
+
+- a point with `review_status: proposed`, and
+- a point with `slab_height_source: assumed`.
+
+A normative run over a receiver set that contains either is refused, the way a scaffold standard
+is refused without `--experimental`. An explicit opt-in flag lets it run. The run then stamps the
+number of proposed and of assumed-height points into `provenance.json` and `run-summary.json`,
+and the report states them, so the result carries its own caveat to a reader who never sees the
+model. A `rejected` point never enters a run, with or without the flag. A non-normative standard
+runs over proposed points without the flag. Where the flag lives (`aconiq run`, the API, MCP) and
+its name are B3's to settle; they must be the same on every surface.
