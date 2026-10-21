@@ -137,6 +137,9 @@ levels breaking, so these belong together, ideally before or with the first tag:
 
 **Behaviour and API**
 
+- The extent of the own facade a facade Immissionsort excludes: its footprint edge, the
+  building's coplanar edges, or the coplanar plane across party walls (P1 §1.9).
+
 - Whether a deleted run's export bundle keeps addressable artifact refs (P8, Phase D).
 - An uncovered DTM query reads 0 m in RLS-19 on both targets; keep it or refuse like Schall 03
   (P2). Either way both targets move in one commit.
@@ -637,6 +640,47 @@ deliberately left undone, because it lives on this branch and the datum fix was 
 Cost: a DTM-attached run is ~28 % slower on the propagation path (25 m nominal sampling, capped at
 64 intervals). Only projects that import a DTM pay it; a geographic project pays more, because every
 sample goes through `terrainInComputeCRS`.
+
+### 1.9 Facade Immissionsorte count their own facade, and Schall 03's is shielded by it — open
+
+Found by P18 B1 (2026-10-22) and pinned by `own_facade_reflection_test.go` in `rls19/road` and
+`schall03`: tests that assert today's state with a ±0.25 dB band and must flip when this is
+fixed. Both rules exclude reflections at the receiver's own facade — RLS-19 the paths whose last
+reflection lies on it (Section 1, Immissionsort, Anmerkung), Schall 03 every path that touches it
+(16. BImSchV Anl. 2 Nr. 2.2.10). Neither module knows which facade a receiver belongs to, so
+neither excludes anything. On a 10 m facade 20 m from the source:
+
+- **RLS-19, 0.05 m out: +3.29 dB** over free field as a building, which is what every CLI run
+  builds. +2.75 dB is the own facade's image; the rest is the back wall's image reaching the
+  receiver through the building, because the shielding exclusion is per reflector (conformance
+  declaration, Nr. 3.6). Every hand-placed and SoundPLAN-imported facade point is affected.
+- **Schall 03, 0.05 m out: +3.24 dB** (+2.52 dB from the own facade's image).
+- **Schall 03, on the facade (0 m), its own prescribed position: −19.08 dB** with the footprint
+  alone, −3.11 dB with walls and footprint. The footprint edge the point stands on is a closed
+  segment, so the direct path "crosses" it and the facade shields its own Immissionsort. This
+  direction is unsafe — the level is under-predicted — and it applies in every CLI run, whether or
+  not the building is a `schall03_reflecting_wall`.
+- **Schall 03 canyon:** of six paths up to third order, five touch the own facade and three end on
+  it. A last-bounce filter (RLS-19's) would keep two that Nr. 2.2.10 drops, so one shared
+  function needs a mode, not one rule.
+- **Coplanar neighbour across a party wall:** as a plain wall it adds only +0.15 dB (RLS-19) /
+  +0.03 dB (Schall 03) within 0.1 m of the party wall and nothing at 1 m. As a building it
+  _lowers_ the level, −0.68 / −0.47 dB, because shielding is tested along the whole unfolded image
+  path, including the part behind the facade plane that is only a mirror.
+
+The fix needs the receiver→facade link (A3's `facade` key, produced by P18 B2) and two choices:
+
+- **[Decision]** The extent of "the facade" a point excludes: its own footprint edge, the
+  building's coplanar edges, or every coplanar segment across party walls
+  (`facade-receivers.md` §7, question 4). The measurement makes the plane version cheap to skip
+  for a plain wall and decisive only through the shielding artefact.
+- How a Schall 03 point on its facade stops being shielded by it: exempt the linked facade from
+  screening, or place the point a recorded numerical distance outward (`facade-receivers.md` §6).
+  It must be the same on both targets.
+
+Whether the shielding of an own image by the neighbour building (the unfolded leg behind the
+facade plane) is itself a defect is open; it belongs to the same change, because the exclusion
+reshapes those paths.
 
 ## Priority 2 — Make the CLI run the normative code
 
@@ -2789,7 +2833,7 @@ as it must be.
 Deterministic, no imagery. This is useful by itself (a facade level map per building), and it
 produces the candidates Phase D confirms or rejects.
 
-- [ ] **B1 Measure the own-facade reflection first.** Nothing in the tree associates a receiver
+- [x] **B1 Measure the own-facade reflection first.** Nothing in the tree associates a receiver
       with a facade, and no rule drops a path whose last reflection lies on the receiver's own
       facade. Measure what a receiver 5 cm in front of a reflecting facade gets today against the
       same receiver with that wall removed. If it is counted, this is a Gate 1 numeric defect in
@@ -2800,6 +2844,10 @@ produces the candidates Phase D confirms or rejects.
       RLS-19's last-reflection one at the module's third order. Include a coplanar neighbour
       facade across a party wall: in a block perimeter "the facade" is a plane, not one edge
       (`facade-receivers.md` Section 6).
+      (2026-10-22) Counted in both modules: +3.29 dB (RLS-19) and +3.24 dB (Schall 03) at 0.05 m,
+      and a Schall 03 point on its facade is shielded by it, −19.08 dB. Moved to Priority 1 §1.9
+      with the measured numbers; `own_facade_reflection_test.go` in both packages pins them. B2
+      is no longer blocked by the measurement; the §1.9 fix consumes B2's facade link.
 - [ ] **B2 Implement `FacadeReceiverSet`** in `internal/geo`. For each exterior edge of a selected
       building (and courtyard edges when `include_courtyard`): points at a fixed spacing along
       the facade, one per storey, offset outward along the edge normal by the placement rule's
