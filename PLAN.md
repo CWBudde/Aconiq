@@ -2807,7 +2807,7 @@ change to any of them amends the ADR first.
       the audited `save_model`. The scenario tools wrap the routes the item below adds; until
       then an agent sees only `scenario_count`.
 - [x] **Expose applicable standards, units, CRS and provenance as resources or tool results.**
-      (2026-10-21, #NN) `list_standards` and `transform` are read tools; `aconiq://project`,
+      (2026-10-21, #122) `list_standards` and `transform` are read tools; `aconiq://project`,
       `aconiq://standards`, `aconiq://runs/{id}` and `aconiq://runs/{id}/provenance` are
       resources, each the API's answer verbatim, listed with or without `--allow-writes`. A run id
       is re-escaped as one segment of its route, so no URI spelling reaches another one. Units here
