@@ -2844,7 +2844,7 @@ produces the candidates Phase D confirms or rejects.
       RLS-19's last-reflection one at the module's third order. Include a coplanar neighbour
       facade across a party wall: in a block perimeter "the facade" is a plane, not one edge
       (`facade-receivers.md` Section 6).
-      (2026-10-22) Counted in both modules: +3.29 dB (RLS-19) and +3.24 dB (Schall 03) at 0.05 m,
+      (2026-10-22, #126) Counted in both modules: +3.29 dB (RLS-19) and +3.24 dB (Schall 03) at 0.05 m,
       and a Schall 03 point on its facade is shielded by it, −19.08 dB. Moved to Priority 1 §1.9
       with the measured numbers; `own_facade_reflection_test.go` in both packages pins them. B2
       is no longer blocked by the measurement; the §1.9 fix consumes B2's facade link.
