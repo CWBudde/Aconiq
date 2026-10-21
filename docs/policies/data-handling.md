@@ -1,6 +1,6 @@
 # Data Handling Policy
 
-Status date: 2026-09-17
+Status date: 2026-10-22
 
 ## The decision
 
@@ -71,6 +71,34 @@ answer yet — add a row before using it, not after.
 Two things may never be stored there at all, whatever the directory's status: material obtained
 under terms that forbid holding a copy, and a customer bundle whose engagement has ended and whose
 retention period has run out.
+
+## Site and imagery evidence for facade Immissionsorte
+
+Priority 18 places Immissionsorte from imagery of a site and from a client's plans. None of that
+material lives under `interoperability/`, and none of it is a standards text, but the rule above
+applies to it unchanged: a source has a row here before anything is derived from it. The evidence
+behind each row — licence texts, attribution forms, the dates they were read — is in
+`docs/research/facade-evidence-sources.md`; this table only states what may be held and where.
+
+"Project" means a project folder outside the tree, held under the engagement. "Repository" means
+tracked source, `testdata/` included.
+
+| Source                                          | What it is                                                | Rights                                                                                                           | May it, or a feature derived from it, be stored in a project?                                                                                                                                                                             | May it enter the repository?                                                                                                                  |
+| ----------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| LGLN DOP20 / DOP10                              | Orthophotos of Lower Saxony                               | **CC BY 4.0** (LGLN AGNB §7.1)                                                                                   | **Yes, a derived feature,** with the attribution `© GeoBasis-DE/LGLN <year of download>, Daten geändert` (AGNB §7.2) and the licence name in its evidence record. The image is referenced by tile id and hash, not copied into the model. | **No.** The licence would allow it with attribution; the project does not use it, because the pilot fixture is synthetic (`PLAN.md` P18, F2). |
+| Stadt Hannover DOP20                            | The city's own orthophoto flights                         | **CC BY 4.0** "soweit nicht anders gekennzeichnet" (city Open GeoData terms)                                     | As LGLN DOP, with the city's attribution.                                                                                                                                                                                                 | **No**, as LGLN DOP.                                                                                                                          |
+| Hannover 3D oblique imagery                     | The city's oblique aerial photos, in a public viewer only | **Unknown.** The viewer names CC BY 4.0; no licence document or download exists.                                 | **Look only, nothing recorded,** until the city's Servicecenter Geoinformation confirms the licence and an access path. Fetching or hashing the viewer's tiles is not an offered use.                                                     | **No.**                                                                                                                                       |
+| Mapillary, Panoramax                            | Crowd-sourced street-level imagery                        | **CC BY-SA 4.0** (Panoramax: per instance, one instance `etalab-2.0`)                                            | **Look only, nothing recorded.** It may decide where someone goes to photograph. No evidence record, no image id, no hash, no copy, until the share-alike question (does it reach a derived receiver?) has a legal answer.                | **No.**                                                                                                                                       |
+| Google Maps, Street View, Earth                 | Google's map and imagery products                         | Google Maps Platform Terms §3.2.3 (a), (c); consumer Maps terms §2                                               | **No.** A desk-study look may decide where to photograph; nothing seen there is recorded, and no feature has a Google image as its evidence.                                                                                              | **No.**                                                                                                                                       |
+| Own site photos                                 | Photos taken at the site by the engagement                | Rights held by the photographer or employer. **Personal data** (GDPR Art. 4(1)): windows, people, number plates. | **The derived features, the image's hash and an opaque reference** into the engagement's store. Never the image itself, never a path that names the client. Deleted with the engagement, like a customer bundle.                          | **Nothing.** Not the image, not a derived feature, not the reference. The CI fixture is synthetic.                                            |
+| Client plans (Bauantrag, Ansichten, Grundrisse) | Architectural drawings a client supplies                  | Architect's copyright; the use right comes from the engagement. Customer data.                                   | **Yes, within the engagement**, under the customer rows above.                                                                                                                                                                            | **Nothing**, as the customer rows above.                                                                                                      |
+
+Two rules follow from the table and hold for every row. **Imagery is evidence for the model, never
+an input to a run:** what is derived from an image is frozen into the model as ordinary features
+with their evidence record, and nothing in the compute path reads an image. And **sending a site
+photo to a hosted vision model is a transmission** under the next section's terms: it is decided
+per engagement, against the engagement's legal basis for processing the photo, not by whoever
+holds the file.
 
 ## Who may hold it, and on what terms
 
