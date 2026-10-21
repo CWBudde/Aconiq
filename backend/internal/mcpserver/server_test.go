@@ -251,7 +251,7 @@ func TestToolsListedFollowTheWriteGate(t *testing.T) {
 
 	readOnly := listTools(t, newFixture(t, false).session)
 
-	if names := slices.Sorted(maps.Keys(readOnly)); !slices.Equal(names, []string{"get_model", "project_status"}) {
+	if names := slices.Sorted(maps.Keys(readOnly)); !slices.Equal(names, []string{"get_model", "list_standards", "project_status", "transform"}) {
 		t.Fatalf("read-only server lists %v", names)
 	}
 
@@ -263,7 +263,7 @@ func TestToolsListedFollowTheWriteGate(t *testing.T) {
 
 	writable := listTools(t, newFixture(t, true).session)
 
-	if names := slices.Sorted(maps.Keys(writable)); !slices.Equal(names, []string{"get_model", "project_status", "save_model"}) {
+	if names := slices.Sorted(maps.Keys(writable)); !slices.Equal(names, []string{"get_model", "list_standards", "project_status", "save_model", "transform"}) {
 		t.Fatalf("writable server lists %v", names)
 	}
 
