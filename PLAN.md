@@ -3177,10 +3177,8 @@ change to any of them amends the ADR first.
 
 ### Subphase SL-7.1 — Research and specification
 
-Settled for the model hand-off by `docs/research/soundplan-export.md` (#130): ESRI Shapefile, because
-both editions import it with attribute assignment and it can be checked without SoundPLAN.
-Live constraint: QSI (DIN 45687) is the second target once the standard text is held — not
-before, since a mapping nobody can check against the text is a guess.
+Settled for the model hand-off by `docs/research/soundplan-export.md` (#130). Live constraint:
+QSI (DIN 45687) is the second target only once the standard text is held.
 
 - [ ] Import an `aconiq export --format soundplan-shp` bundle into licensed SoundPLANnoise and
       SoundPLANessential, and record the versions, dialogs and deviations in the note. Nothing in
@@ -3189,12 +3187,10 @@ before, since a mapping nobody can check against the text is a guess.
 
 ### Subphase SL-7.2 — Implementation
 
-The model mapping exists (`report/export/soundplan.go`): one layer per kind, fixed columns for
-heights and the ISO 9613-2 source set, every other scalar property passed through, and
-`soundplan-mapping.json` naming each column and each loss. Two constraints are live. **The
-layers are written in the run's compute CRS**, not the project's: a geographic project goes
-over in the UTM zone the run chose, and Web Mercator is refused. **Sum levels only** — the
-model carries no octave bands.
+The model mapping is described in the same note (#130). Two constraints are live. **The layers
+are written in the run's compute CRS**, not the project's: a geographic project goes over in
+the UTM zone the run chose, and Web Mercator is refused. **Sum levels only** — the model carries
+no octave bands.
 
 - [ ] Map phase and scenario membership of construction sources, once SL-6 defines it.
 - [ ] Carry the route geometry, once SL-3 delivers it.
