@@ -395,6 +395,13 @@ func applyOptionalExportOutputs(
 		staged.modelGeoJSONPath, staged.model,
 	)
 	if fmtErr != nil {
+		// A format that already classified its refusal keeps that kind;
+		// anything else is an internal failure.
+		var appErr *domainerrors.AppError
+		if errors.As(fmtErr, &appErr) {
+			return nil, fmtErr
+		}
+
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.export", "format export", fmtErr)
 	}
 

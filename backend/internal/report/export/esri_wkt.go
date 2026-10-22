@@ -1,6 +1,7 @@
 package export
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -78,6 +79,12 @@ func wktNumber(v float64) string {
 	return s
 }
 
+// ErrSoundPLANCRS marks the refusal of the CRS a SoundPLAN export would be
+// written in. It is a precondition the user meets by computing in a metric
+// conformal CRS, not a failure of the export, so callers classify it as
+// user input.
+var ErrSoundPLANCRS = errors.New("not a metric conformal CRS")
+
 // soundPLANPRJ resolves the CRS a SoundPLAN export is labelled with, or
 // refuses it.
 func soundPLANPRJ(crs string) (string, error) {
@@ -89,9 +96,9 @@ func soundPLANPRJ(crs string) (string, error) {
 	wkt, ok := ESRIWKTForEPSG(parsed.EPSGCode())
 	if !ok {
 		return "", fmt.Errorf(
-			"soundplan export: %s is not a metric conformal CRS; SoundPLAN computes distances in the plane "+
+			"soundplan export: %s is %w; SoundPLAN computes distances in the plane "+
 				"of the coordinates it imports, so only ETRS89 / UTM, WGS84 / UTM or DHDN / Gauss-Krüger "+
-				"coordinates can be handed over", parsed.ID,
+				"coordinates can be handed over", parsed.ID, ErrSoundPLANCRS,
 		)
 	}
 

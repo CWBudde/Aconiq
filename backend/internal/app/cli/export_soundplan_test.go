@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/io/soundplanimport"
 	exportfmt "github.com/aconiq/backend/internal/report/export"
@@ -176,5 +177,10 @@ func TestExportSoundPLANRefusesWebMercator(t *testing.T) {
 	err := runCLI("--project", projectDir, "export", "--format", "soundplan-shp")
 	if err == nil || !strings.Contains(err.Error(), "not a metric conformal CRS") {
 		t.Fatalf("export over Web Mercator: %v", err)
+	}
+
+	// The CRS is the user's to change, so the refusal exits 2, not 1.
+	if !domainerrors.IsUserError(err) {
+		t.Errorf("refusal is not classified as user input: %v", err)
 	}
 }

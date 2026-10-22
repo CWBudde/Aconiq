@@ -161,7 +161,7 @@ writes the CRS the run computed in:
 
 Only conformal metric CRS get a `.prj`: ETRS89 / UTM 31–34, WGS84 / UTM 32–33 and DHDN /
 Gauss-Krüger 2–5. Anything else is refused, Web Mercator included, whose plane distances are
-about 1.6× the ground distance in Germany.
+about 1.6× the ground distance in Germany. The refusal is user input: `aconiq export` exits 2.
 
 The `.prj` is written in ESRI WKT. Whether SoundPLAN reads it, or expects the project's
 coordinate system to be set by hand, is unverified (see below).

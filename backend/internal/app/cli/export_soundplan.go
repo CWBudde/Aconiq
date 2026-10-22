@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
@@ -65,7 +66,8 @@ func (c *formatExportContext) exportSoundPLAN(out map[string][]string) error {
 	// without one cannot answer it, and an empty success would read as a
 	// project with nothing in it.
 	if c.modelGeoJSONPath == "" {
-		return errors.New("soundplan export: the project has no imported model to export; run `aconiq import` first")
+		return domainerrors.New(domainerrors.KindUserInput, "cli.export",
+			"soundplan export: the project has no imported model to export; run `aconiq import` first", nil)
 	}
 
 	// SoundPLAN gets the coordinates the run computed in. For a projected
@@ -86,6 +88,12 @@ func (c *formatExportContext) exportSoundPLAN(out map[string][]string) error {
 		SourceCRS: sourceCRS,
 		Date:      c.model.date,
 	})
+	if errors.Is(err, exportfmt.ErrSoundPLANCRS) {
+		// The run's CRS is the user's choice, and computing in a metric
+		// conformal one is how they meet it: exit 2, not 1.
+		return domainerrors.New(domainerrors.KindUserInput, "cli.export", "", err)
+	}
+
 	if err != nil {
 		return fmt.Errorf("soundplan export: %w", err)
 	}
