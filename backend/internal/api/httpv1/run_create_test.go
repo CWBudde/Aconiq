@@ -91,6 +91,9 @@ func TestCreateRunEndpointRejectsArgumentInjection(t *testing.T) {
 		{"flag-shaped standard id", `{"standard_id": "--project"}`},
 		{"flag-shaped param key", `{"params": {"--project": "x"}}`},
 		{"newline in param value", "{\"params\": {\"road_speed_kph\": \"50\\n--project\"}}"},
+		{"empty facade building", `{"facade_buildings": [""]}`},
+		{"newline in facade building", "{\"facade_buildings\": [\"b1\\n--project\"]}"},
+		{"non-positive facade spacing", `{"facade_spacing_m": 0}`},
 	}
 
 	for _, tc := range cases {

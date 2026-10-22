@@ -399,17 +399,34 @@ export interface components {
         };
         CreateRunRequest: {
             /**
+             * @description Required for a normative run over facade receivers that are still proposed or whose slab height is assumed; their counts are then stamped into provenance, the run summary and the report.
+             * @default false
+             */
+            allow_unconfirmed?: boolean;
+            /**
              * @description Required for scaffold-tier standards: they carry no normative coefficients, their base levels are invented and they have no octave bands, so a run must acknowledge that before it may emit levels. Requests without it are rejected with error code experimental_opt_in_required.
              * @default false
              */
             experimental?: boolean;
+            /** @description Model building feature ids that carry facade receivers. Required with receiver_mode facade. */
+            facade_buildings?: string[];
+            /**
+             * @description Also place facade receivers on courtyard (inner-ring) facades.
+             * @default false
+             */
+            facade_include_courtyard?: boolean;
+            /** @description Station spacing along each facade, in metres. Required with receiver_mode facade; there is no default. */
+            facade_spacing_m?: number;
             input_paths?: string[];
             model_path?: string;
             params?: {
                 [key: string]: string;
             };
-            /** @enum {string} */
-            receiver_mode?: "auto-grid" | "custom";
+            /**
+             * @description facade generates receivers on the facades of facade_buildings, at the placement rule of the standard (rls19-road and schall03 only).
+             * @enum {string}
+             */
+            receiver_mode?: "auto-grid" | "custom" | "facade";
             scenario_id?: string;
             standard_id?: string;
             standard_profile?: string;

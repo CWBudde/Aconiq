@@ -153,7 +153,10 @@ func TestRunRequestSchemasRequireTheMethodFields(t *testing.T) {
 			t.Fatalf("%s requires %v, want %v", name, decoded.Required, required)
 		}
 
-		properties := []string{"experimental", "params", "receiver_mode", "scenario_id", "standard_id", "standard_profile", "standard_version"}
+		properties := []string{
+			"allow_unconfirmed", "experimental", "facade_buildings", "facade_include_courtyard", "facade_spacing_m",
+			"params", "receiver_mode", "scenario_id", "standard_id", "standard_profile", "standard_version",
+		}
 		if got := slices.Sorted(maps.Keys(decoded.Properties)); !slices.Equal(got, properties) {
 			t.Fatalf("%s offers %v, want %v", name, got, properties)
 		}
@@ -454,6 +457,49 @@ func TestStartRunCannotBeAbandonedByItsCaller(t *testing.T) {
 	lines := auditLines(t, f.store)
 	if len(lines) != 1 || lines[0]["outcome"] != "ok" || lines[0]["run_id"] != "run-1" {
 		t.Fatalf("audit = %v", lines)
+	}
+}
+
+// The facade receiver set and the unconfirmed opt-in reach the API under the
+// API's own field names, so the run they start is the one `aconiq run` would.
+func TestStartRunForwardsTheFacadeSetAndTheUnconfirmedOptIn(t *testing.T) {
+	t.Parallel()
+
+	var forwarded map[string]any
+
+	f := newFixtureWrapped(t, true, startRunAnswering(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&forwarded)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"id":"run-1","status":"pending"}`))
+	}))
+
+	args := runRequestArgs("rls19-road")
+	args["receiver_mode"] = "facade"
+	args["facade_buildings"] = []any{"osm-way-1"}
+	args["facade_spacing_m"] = 2.5
+	args["facade_include_courtyard"] = true
+	args["allow_unconfirmed"] = true
+
+	result := f.call(t, "start_run", args)
+	if result.IsError {
+		t.Fatalf("start_run = %s", resultText(t, result))
+	}
+
+	for key, want := range map[string]any{
+		"receiver_mode":            "facade",
+		"facade_spacing_m":         2.5,
+		"facade_include_courtyard": true,
+		"allow_unconfirmed":        true,
+	} {
+		if forwarded[key] != want {
+			t.Fatalf("forwarded %s = %v, want %v (body %v)", key, forwarded[key], want, forwarded)
+		}
+	}
+
+	if buildings, ok := forwarded["facade_buildings"].([]any); !ok || len(buildings) != 1 || buildings[0] != "osm-way-1" {
+		t.Fatalf("forwarded facade_buildings = %v", forwarded["facade_buildings"])
 	}
 }
 

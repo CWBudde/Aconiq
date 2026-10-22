@@ -90,10 +90,10 @@ because a client is free to ignore annotations.
 
 **State-changing — only with `aconiq mcp --allow-writes`:**
 
-| Tool         | Backed by                                                                      |
-| ------------ | ------------------------------------------------------------------------------ |
-| `start_run`  | `POST /api/v1/runs`; a scaffold-tier standard still needs `experimental: true` |
-| `cancel_run` | `POST /api/v1/runs/{id}/cancel`                                                |
+| Tool         | Backed by                                                                                                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `start_run`  | `POST /api/v1/runs`; a scaffold-tier standard still needs `experimental: true`, and a normative run over proposed or assumed-height facade receivers `allow_unconfirmed: true` |
+| `cancel_run` | `POST /api/v1/runs/{id}/cancel`                                                                                                                                                |
 
 **Destructive — `--allow-writes` and a matching `confirm` argument:**
 

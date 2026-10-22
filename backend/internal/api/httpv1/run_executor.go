@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"time"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -146,8 +147,24 @@ func appendRunRequestArgs(args []string, req createRunRequest) []string {
 		}
 	}
 
+	for _, building := range req.FacadeBuildings {
+		args = append(args, "--facade-building="+building)
+	}
+
+	if req.FacadeSpacingM != nil {
+		args = append(args, "--facade-spacing-m", strconv.FormatFloat(*req.FacadeSpacingM, 'g', -1, 64))
+	}
+
+	if req.FacadeIncludeCourtyard {
+		args = append(args, "--facade-courtyard")
+	}
+
 	if req.Experimental {
 		args = append(args, "--experimental")
+	}
+
+	if req.AllowUnconfirmed {
+		args = append(args, "--allow-unconfirmed")
 	}
 
 	paramKeys := make([]string, 0, len(req.Params))
