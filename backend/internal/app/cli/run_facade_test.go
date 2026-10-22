@@ -374,7 +374,9 @@ func TestBrokenFacadeLinksBlockANormativeRun(t *testing.T) {
 
 // The building mapping reads levels and the height source as the importers
 // write them. A building with levels and no height_source is `levels`: the
-// projects imported before the importer wrote it carry none.
+// projects imported before the importer wrote it carry none. One with neither
+// (an OSM height tag alone, CityGML, LGLN) is `assumed`, and the generator
+// places points on every mapped building rather than refusing its source.
 func TestFacadeBuildingFromFeature(t *testing.T) {
 	t.Parallel()
 
@@ -390,10 +392,10 @@ func TestFacadeBuildingFromFeature(t *testing.T) {
 		{"levels as a number", map[string]any{"building:levels": float64(3)}, 3, geo.SlabHeightLevels},
 		{"levels and measured", map[string]any{"building:levels": "3", "height_source": "measured"}, 3, geo.SlabHeightMeasured},
 		{"assumed", map[string]any{"height_source": "assumed"}, 0, geo.SlabHeightAssumed},
-		{"nothing", map[string]any{}, 0, ""},
-		{"fractional levels are unknown", map[string]any{"building:levels": "2.5"}, 0, ""},
-		{"zero levels are unknown", map[string]any{"building:levels": "0"}, 0, ""},
-		{"negative levels are unknown", map[string]any{"building:levels": "-2"}, 0, ""},
+		{"nothing", map[string]any{}, 0, geo.SlabHeightAssumed},
+		{"fractional levels are unknown", map[string]any{"building:levels": "2.5"}, 0, geo.SlabHeightAssumed},
+		{"zero levels are unknown", map[string]any{"building:levels": "0"}, 0, geo.SlabHeightAssumed},
+		{"negative levels are unknown", map[string]any{"building:levels": "-2"}, 0, geo.SlabHeightAssumed},
 	} {
 		feature := modelgeojson.Feature{
 			ID:           "a",
@@ -411,6 +413,13 @@ func TestFacadeBuildingFromFeature(t *testing.T) {
 
 		if building.Levels != tc.levels || building.HeightSource != tc.source || building.HeightM != 9 || building.GroundFloorM != 0 {
 			t.Fatalf("%s: building = %+v", tc.name, building)
+		}
+
+		_, err = geo.FacadeReceiverSet{
+			ID: "facade", BuildingIDs: []string{"a"}, PlacementRule: geo.PlacementRLS19Facade, SpacingM: 5,
+		}.Generate([]geo.FacadeBuilding{building})
+		if err != nil {
+			t.Fatalf("%s: generate: %v", tc.name, err)
 		}
 	}
 }

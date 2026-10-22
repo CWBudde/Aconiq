@@ -418,8 +418,12 @@ func generatedFacadeReceiverSet(
 // unknown storey count, which the generator turns into an assumed slab height.
 // A building with levels and no height_source is `levels`, never `measured`:
 // the projects imported before osmimport wrote `levels` carry none, and their
-// heights are levels × 3 m all the same. The ground-floor height is 0 until
-// something records a Hochparterre (facade-receivers.md §7, question 1).
+// heights are levels × 3 m all the same. A building with neither — an OSM
+// `height` tag alone, a CityGML or LGLN building — has no storey count, so it
+// is `assumed`: that is what the generator makes of its slab heights anyway,
+// and it must not stop the run as an unknown source. The ground-floor height
+// is 0 until something records a Hochparterre (facade-receivers.md §7,
+// question 1).
 func facadeBuildingFromFeature(feature modelgeojson.Feature) (geo.FacadeBuilding, error) {
 	polygons, err := polygonsFromFeature(feature, modelgeojson.FeatureKindBuilding)
 	if err != nil {
@@ -440,8 +444,11 @@ func facadeBuildingFromFeature(feature modelgeojson.Feature) (geo.FacadeBuilding
 		building.HeightSource = source
 	}
 
-	if building.HeightSource == "" && building.Levels > 0 {
-		building.HeightSource = geo.SlabHeightLevels
+	if building.HeightSource == "" {
+		building.HeightSource = geo.SlabHeightAssumed
+		if building.Levels > 0 {
+			building.HeightSource = geo.SlabHeightLevels
+		}
 	}
 
 	return building, nil
