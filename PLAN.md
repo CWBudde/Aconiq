@@ -2841,21 +2841,6 @@ as it must be.
 Deterministic, no imagery. This is useful by itself (a facade level map per building), and it
 produces the candidates Phase D confirms or rejects.
 
-- [x] **B1 Measure the own-facade reflection first.** Nothing in the tree associates a receiver
-      with a facade, and no rule drops a path whose last reflection lies on the receiver's own
-      facade. Measure what a receiver 5 cm in front of a reflecting facade gets today against the
-      same receiver with that wall removed. If it is counted, this is a Gate 1 numeric defect in
-      a normative module, affecting every hand-placed and every SoundPLAN-imported facade
-      Immissionsort. It moves to Priority 1 and is fixed there, with the receiver→facade link as
-      its input. Do not build B2 on top of it unmeasured. Measure `schall03` too: Anlage 2
-      Nr. 2.2.10 excludes **every** reflection at the associated facade, a different filter from
-      RLS-19's last-reflection one at the module's third order. Include a coplanar neighbour
-      facade across a party wall: in a block perimeter "the facade" is a plane, not one edge
-      (`facade-receivers.md` Section 6).
-      (2026-10-22, #126) Counted in both modules: +3.29 dB (RLS-19) and +3.24 dB (Schall 03) at 0.05 m,
-      and a Schall 03 point on its facade is shielded by it, −19.08 dB. Moved to Priority 1 §1.9
-      with the measured numbers; `own_facade_reflection_test.go` in both packages pins them. B2
-      is no longer blocked by the measurement; the §1.9 fix consumes B2's facade link.
 - [ ] **B2 Implement `FacadeReceiverSet`** in `internal/geo`. For each exterior edge of a selected
       building (and courtyard edges when `include_courtyard`): points at a fixed spacing along
       the facade, one per storey, offset outward along the edge normal by the placement rule's
@@ -2874,8 +2859,8 @@ produces the candidates Phase D confirms or rejects.
       its canonicalisation and the receiver properties are that note's "Data model (A3)".
 - [ ] **B3 Wire it into `aconiq run`** as a receiver mode beside `custom` and the auto-grid, and into
       the receiver table, so a result row names its building, facade and storey. RLS-19 uses the
-      facade link for the own-facade exclusion from B1. The run refuses `proposed` and
-      assumed-height points without an opt-in flag, the same flag on CLI, API and MCP, and
+      facade link for the own-facade exclusion of Priority 1 §1.9. The run refuses `proposed`
+      and assumed-height points without an opt-in flag, the same flag on CLI, API and MCP, and
       stamps their count into `provenance.json`, `run-summary.json` and the report. A receiver
       whose `building_ref` no longer resolves, or whose `from` / `to` moved, blocks a normative
       run; re-attachment is an explicit reviewed step (`facade-receivers.md`, Data model). The
@@ -2936,13 +2921,13 @@ windows, which are the user's immediate need.
       B2 candidates for the pilot building, map its windows from own site photos through D1, and run
       RLS-19 on the facade receivers. Report per window: facade, floor, rule, level, evidence,
       review state. Compare against the auto-grid level at the same spot and record the
-      difference (the own-facade term from B1 should be visible in it). Photos and the resulting
-      project stay outside the tree.
+      difference (the own-facade term of Priority 1 §1.9 should be visible in it). Photos and
+      the resulting project stay outside the tree.
 - [ ] **F2 Licence-safe fixture**: a synthetic building in `testdata/` that has the pilot's shape
       class (closed block-perimeter row house, street facade and courtyard facade, four to five
       floors) but invented dimensions. Use it for golden tests of B2 IDs and positions, the C1
-      placement rules, the D1 homography, and the B1 exclusion. It must carry nothing from the
-      real photos.
+      placement rules, the D1 homography, and the §1.9 own-facade exclusion. It must carry
+      nothing from the real photos.
 - [ ] **F3 Document the workflow** in English and German, including what the evidence fields
       claim and what they do not: a confirmed window says a person checked it against an image,
       not that the room behind it is _schutzbedürftig_ in the legal sense.
