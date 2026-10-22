@@ -120,6 +120,41 @@ func (g *gridModel) ElevationAt(x, y float64) (float64, bool) {
 	return v, true
 }
 
+// EachCell calls fn with the centre and the stored value of every cell of the
+// grid behind model, row by row from the north-west corner, skipping nodata.
+// It stops at, and returns, the first error fn returns.
+//
+// It answers the stored values, not ElevationAt at the centres: bilinear
+// interpolation at a centre computed in floating point can land a hair off
+// the cell and mix in a neighbour, and a nodata neighbour would drop a cell
+// that holds a value. It refuses a model that is not a loaded grid — a
+// wrapper such as InComputeCRS answers queries in another CRS and has no
+// cells of its own.
+func EachCell(model Model, fn func(x, y, z float64) error) error {
+	g, ok := model.(*gridModel)
+	if !ok {
+		return fmt.Errorf("terrain: %T is not a loaded grid and has no cells to enumerate", model)
+	}
+
+	for row := range g.height {
+		y := g.originY - float64(row)*g.pixelSizeY
+
+		for col := range g.width {
+			v := g.at(col, row)
+			if g.hasNoData && g.isNoData(v) || math.IsNaN(v) {
+				continue
+			}
+
+			err := fn(g.originX+float64(col)*g.pixelSizeX, y, v)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (g *gridModel) at(x, y int) float64 {
 	return g.data[y*g.width+x]
 }
