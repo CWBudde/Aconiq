@@ -3177,7 +3177,7 @@ change to any of them amends the ADR first.
 
 ### Subphase SL-7.1 — Research and specification
 
-Settled for the model hand-off by `docs/research/soundplan-export.md`: ESRI Shapefile, because
+Settled for the model hand-off by `docs/research/soundplan-export.md` (#130): ESRI Shapefile, because
 both editions import it with attribute assignment and it can be checked without SoundPLAN.
 Live constraint: QSI (DIN 45687) is the second target once the standard text is held — not
 before, since a mapping nobody can check against the text is a guess.
