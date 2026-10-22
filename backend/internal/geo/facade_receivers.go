@@ -61,6 +61,12 @@ const ReviewStatusProposed = "proposed"
 // so the codebase holds one storey height.
 const StoreyHeightFallbackM = 3.0
 
+// MaxFacadeReceivers caps the receivers one set may place. Validate accepts
+// any finite spacing and height, and a tiny spacing or a huge height would
+// otherwise ask for more stations or storeys than an int holds, or than memory
+// takes; the counts are checked against it before anything is allocated.
+const MaxFacadeReceivers = 100_000
+
 // facadeProbeOffsetM is how far out a station is tested for lying inside a
 // building. It is independent of the rule's offset, so a Schall 03 point on a
 // party wall, which the strict-interior test would keep, is dropped too.
@@ -270,7 +276,12 @@ func (f FacadeReceiverSet) place(
 				a, b := vertices[edge], vertices[(edge+1)%len(vertices)]
 				key := FacadeKey{BuildingRef: building.ID, Part: part, Ring: ring, Edge: edge, From: a, To: b}
 
-				for station, u := range facadeStations(a, b, f.SpacingM) {
+				stations, ok := facadeStations(a, b, f.SpacingM, (MaxFacadeReceivers-len(receivers))/len(storeys.z))
+				if !ok {
+					return nil, nil, fmt.Errorf("facade receiver set %q needs more than %d receivers; raise spacing_m", f.ID, MaxFacadeReceivers)
+				}
+
+				for station, u := range stations {
 					point := FacadePoint(a, b, u, offsetM)
 					probe := FacadePoint(a, b, u, facadeProbeOffsetM)
 
@@ -331,17 +342,24 @@ func FacadePoint(a, b Point2D, u, d float64) Point2D {
 
 // facadeStations splits an edge into n = ceil(L / spacing) equal parts and
 // returns the u of each part's centre, so every edge gets at least one
-// station and none stands on a corner.
-func facadeStations(a, b Point2D, spacingM float64) []float64 {
+// station and none stands on a corner. It reports false, allocating nothing,
+// when n would exceed limit.
+func facadeStations(a, b Point2D, spacingM float64, limit int) ([]float64, bool) {
 	length := math.Hypot(b.X-a.X, b.Y-a.Y)
-	n := int(math.Ceil(length / spacingM))
+
+	count := math.Ceil(length / spacingM)
+	if !(count <= float64(limit)) {
+		return nil, false
+	}
+
+	n := int(count)
 	stations := make([]float64, n)
 
 	for k := range n {
 		stations[k] = (float64(k) + 0.5) * length / float64(n)
 	}
 
-	return stations
+	return stations, true
 }
 
 // storeys is a building's slab heights, storey 0 (the ground floor) first,
@@ -363,6 +381,10 @@ func storeyHeights(b FacadeBuilding) (storeys, error) {
 		return storeys{}, errors.New("levels must be >= 0")
 	}
 
+	if b.Levels > MaxFacadeReceivers {
+		return storeys{}, fmt.Errorf("levels %d needs more than %d receivers per station", b.Levels, MaxFacadeReceivers)
+	}
+
 	if math.IsNaN(b.GroundFloorM) || math.IsInf(b.GroundFloorM, 0) {
 		return storeys{}, errors.New("ground floor level must be finite")
 	}
@@ -378,7 +400,12 @@ func storeyHeights(b FacadeBuilding) (storeys, error) {
 	switch {
 	case b.Levels == 0:
 		// No storey count: as many fallback storeys as fit, at least one.
-		count = max(1, int(math.Floor(b.HeightM/StoreyHeightFallbackM)))
+		fit := math.Floor(b.HeightM / StoreyHeightFallbackM)
+		if fit > MaxFacadeReceivers {
+			return storeys{}, fmt.Errorf("height_m %g needs more than %d receivers per station", b.HeightM, MaxFacadeReceivers)
+		}
+
+		count = max(1, int(fit))
 		source = SlabHeightAssumed
 	case b.HeightSource == SlabHeightMeasured:
 		s = b.HeightM / float64(b.Levels)

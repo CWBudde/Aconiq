@@ -474,6 +474,24 @@ func TestFacadeReceiverSetGenerateRefuses(t *testing.T) {
 		}
 	}
 
+	// A finite spacing or height can still ask for more receivers than an int
+	// holds or memory takes; the count is refused before anything is allocated.
+	for name, tc := range map[string]struct {
+		spacingM float64
+		building FacadeBuilding
+	}{
+		"overflowing spacing":   {1e-300, ok},
+		"too fine a spacing":    {1e-3, ok},
+		"overflowing height":    {3, with(func(b *FacadeBuilding) { b.HeightM, b.Levels = 1e300, 0 })},
+		"too many levels":       {3, with(func(b *FacadeBuilding) { b.Levels = MaxFacadeReceivers + 1 })},
+		"budget across storeys": {0.5, with(func(b *FacadeBuilding) { b.Levels = MaxFacadeReceivers / 50 })},
+	} {
+		_, err := facadeSet(PlacementRLS19Facade, tc.spacingM, "b1").Generate([]FacadeBuilding{tc.building})
+		if err == nil || !strings.Contains(err.Error(), "receivers") {
+			t.Errorf("%s: err = %v, want the receiver limit", name, err)
+		}
+	}
+
 	if _, err := facadeSet("talaerm-window", 3, "b1").Generate([]FacadeBuilding{ok}); err == nil ||
 		!strings.Contains(err.Error(), "talaerm-window") {
 		t.Errorf("non-geometric rule: err = %v, want it named", err)
