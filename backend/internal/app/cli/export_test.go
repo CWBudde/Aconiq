@@ -497,7 +497,7 @@ func TestExportRegistersAnArtifactForEveryFormatFile(t *testing.T) {
 	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield",
 		"--param", "grid_resolution_m=10", "--param", "grid_padding_m=0")
 	mustRunCLI(t, "--project", projectDir, "export",
-		"--format", "geotiff,cog,gpkg,contour-geojson,contour-gpkg")
+		"--format", "geotiff,cog,gpkg,contour-geojson,contour-gpkg,soundplan-shp")
 
 	store, err := projectfs.New(projectDir)
 	if err != nil {
@@ -523,6 +523,7 @@ func TestExportRegistersAnArtifactForEveryFormatFile(t *testing.T) {
 		project.ArtifactKindExportFormatGeoPackage,
 		project.ArtifactKindExportFormatContourGeoJSON,
 		project.ArtifactKindExportFormatContourGPKG,
+		project.ArtifactKindExportFormatSoundPLAN,
 	} {
 		if len(byKind[kind]) == 0 {
 			t.Errorf("no artifact registered for %s", kind)

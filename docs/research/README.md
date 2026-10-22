@@ -49,6 +49,9 @@ External references:
   - Where RLS-19, TA Lärm and Schall 03 put an Immissionsort at a building, the proposed
     `placement_rule` identifiers, the storey-slab height options, and the facade frame and
     receiver data model (Priority 18 A2, A3).
+- `soundplan-export.md`
+  - Which import formats SoundPLANnoise and SoundPLANessential accept, why the model hand-off
+    is ESRI Shapefile, the field mapping and its limits, and the manual import steps (SL-7, #117).
 
 Milestone D source index:
 

@@ -1,0 +1,256 @@
+{
+  "format": "esri-shapefile",
+  "purpose": "model input for a SoundPLAN calculation; contains no computed levels",
+  "crs": "EPSG:25832",
+  "elevation_reference": "HEIGHT_M and HS_M are heights above ground, as the model holds them; ground elevation is terrain.txt when present, never folded into the heights",
+  "layers": [
+    {
+      "layer": "buildings",
+      "file": "buildings.shp",
+      "geometry": "Polygon",
+      "features": 2,
+      "records": 2,
+      "columns": [
+        {
+          "field": "ID",
+          "property": "id",
+          "type": "character"
+        },
+        {
+          "field": "HEIGHT_M",
+          "property": "height_m",
+          "type": "numeric",
+          "decimals": 3,
+          "unit": "m"
+        },
+        {
+          "field": "HEIGHT_SOU",
+          "property": "height_source",
+          "type": "character"
+        }
+      ]
+    },
+    {
+      "layer": "barriers",
+      "file": "barriers.shp",
+      "geometry": "PolyLine",
+      "features": 1,
+      "records": 1,
+      "columns": [
+        {
+          "field": "ID",
+          "property": "id",
+          "type": "character"
+        },
+        {
+          "field": "HEIGHT_M",
+          "property": "height_m",
+          "type": "numeric",
+          "decimals": 3,
+          "unit": "m"
+        }
+      ]
+    },
+    {
+      "layer": "receivers",
+      "file": "receivers.shp",
+      "geometry": "Point",
+      "features": 2,
+      "records": 2,
+      "columns": [
+        {
+          "field": "ID",
+          "property": "id",
+          "type": "character"
+        },
+        {
+          "field": "HEIGHT_M",
+          "property": "height_m",
+          "type": "numeric",
+          "decimals": 3,
+          "unit": "m"
+        },
+        {
+          "field": "AREA_CAT",
+          "property": "bimschv16_area_category",
+          "type": "character"
+        }
+      ]
+    },
+    {
+      "layer": "sources_point",
+      "file": "sources_point.shp",
+      "geometry": "Point",
+      "features": 2,
+      "records": 3,
+      "columns": [
+        {
+          "field": "ID",
+          "property": "id",
+          "type": "character"
+        },
+        {
+          "field": "LW_DB",
+          "property": "iso9613_sound_power_level_db",
+          "type": "numeric",
+          "decimals": 2,
+          "unit": "dB"
+        },
+        {
+          "field": "HS_M",
+          "property": "iso9613_source_height_m",
+          "type": "numeric",
+          "decimals": 3,
+          "unit": "m"
+        },
+        {
+          "field": "NOTE",
+          "property": "note",
+          "type": "character"
+        },
+        {
+          "field": "PI",
+          "property": "pi",
+          "type": "numeric",
+          "decimals": 6
+        },
+        {
+          "field": "PART",
+          "property": "(multipoint part)",
+          "type": "numeric",
+          "decimals": 0
+        }
+      ]
+    },
+    {
+      "layer": "sources_line",
+      "file": "sources_line.shp",
+      "geometry": "PolyLine",
+      "features": 1,
+      "records": 1,
+      "columns": [
+        {
+          "field": "ID",
+          "property": "id",
+          "type": "character"
+        },
+        {
+          "field": "RLS19_SPEE",
+          "property": "rls19_speed_kph",
+          "type": "numeric",
+          "decimals": 0
+        },
+        {
+          "field": "RLS19_TRAF",
+          "property": "rls19_traffic_day_veh_h",
+          "type": "numeric",
+          "decimals": 0
+        },
+        {
+          "field": "RLS19_TR_1",
+          "property": "rls19_traffic_night_veh_h",
+          "type": "numeric",
+          "decimals": 0
+        }
+      ]
+    },
+    {
+      "layer": "sources_area",
+      "file": "sources_area.shp",
+      "geometry": "Polygon",
+      "features": 1,
+      "records": 1,
+      "columns": [
+        {
+          "field": "ID",
+          "property": "id",
+          "type": "character"
+        },
+        {
+          "field": "LW_DB",
+          "property": "iso9613_sound_power_level_db",
+          "type": "numeric",
+          "decimals": 2,
+          "unit": "dB"
+        },
+        {
+          "field": "ACTIVE",
+          "property": "active",
+          "type": "logical"
+        }
+      ]
+    },
+    {
+      "layer": "calc_area",
+      "file": "calc_area.shp",
+      "geometry": "Polygon",
+      "features": 1,
+      "records": 1,
+      "columns": [
+        {
+          "field": "ID",
+          "property": "id",
+          "type": "character"
+        }
+      ]
+    },
+    {
+      "layer": "ground_zones",
+      "file": "ground_zones.shp",
+      "geometry": "Polygon",
+      "features": 1,
+      "records": 1,
+      "columns": [
+        {
+          "field": "ID",
+          "property": "id",
+          "type": "character"
+        },
+        {
+          "field": "G",
+          "property": "ground_factor",
+          "type": "numeric",
+          "decimals": 3,
+          "unit": "1"
+        }
+      ]
+    }
+  ],
+  "lossy": [
+    {
+      "feature_id": "r2",
+      "property": "geometry",
+      "reason": "vertex z coordinates are dropped; Shapefile layers are written 2D and heights travel as attributes"
+    },
+    {
+      "feature_id": "s1",
+      "property": "mixed",
+      "reason": "the property holds values of different types across features, which no single dBASE field can"
+    },
+    {
+      "feature_id": "s1",
+      "property": "note",
+      "reason": "the value is 255 bytes, more than a dBASE character field holds (254); the cell is left empty"
+    },
+    {
+      "feature_id": "s1",
+      "property": "pi",
+      "reason": "the value is rounded to 6 decimals"
+    },
+    {
+      "feature_id": "s1",
+      "property": "rls19_directional_sources",
+      "reason": "structured values (arrays, objects) have no dBASE field type; the property is not exported"
+    },
+    {
+      "feature_id": "s2",
+      "property": "mixed",
+      "reason": "the property holds values of different types across features, which no single dBASE field can"
+    },
+    {
+      "feature_id": "x1",
+      "property": "kind",
+      "reason": "kind \"tree\" (source_type \"\") has no SoundPLAN layer; the feature is not exported"
+    }
+  ]
+}

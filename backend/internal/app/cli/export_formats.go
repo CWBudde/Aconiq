@@ -85,6 +85,8 @@ type formatExportContext struct {
 	// one a geographic project was projected into before computing.
 	projectCRSErr error
 	resultsCRSErr error
+	// What the SoundPLAN format reads beyond the bundle.
+	model modelExportInputs
 }
 
 func executeFormatExports(
@@ -96,8 +98,10 @@ func executeFormatExports(
 	copiedResults copiedRunResults,
 	contourInterval float64,
 	modelGeoJSONPath string,
+	model modelExportInputs,
 ) (map[string][]string, error) {
 	fc := newFormatExportContext(bundleDir, projectCRS, resultsCRS, copiedResults, contourInterval, modelGeoJSONPath)
+	fc.model = model
 
 	out := make(map[string][]string)
 
@@ -309,6 +313,8 @@ func (c *formatExportContext) exportFormat(ctx context.Context, f exportfmt.Form
 		return c.exportContourGeoJSON(out)
 	case exportfmt.FormatContourGeoPackage:
 		return c.exportContourGeoPackage(ctx, out)
+	case exportfmt.FormatSoundPLANShapefile:
+		return c.exportSoundPLAN(out)
 	}
 
 	return nil
@@ -590,11 +596,12 @@ type formatArtifactInputs struct {
 // consumer switching on `Kind` would render an unlabelled row, and the export
 // page's kind table is explicitly required to carry a row per kind.
 var formatArtifactKinds = map[string]string{
-	string(exportfmt.FormatGeoTIFF):           project.ArtifactKindExportFormatGeoTIFF,
-	string(exportfmt.FormatCOG):               project.ArtifactKindExportFormatCOG,
-	string(exportfmt.FormatGeoPackage):        project.ArtifactKindExportFormatGeoPackage,
-	string(exportfmt.FormatContourGeoJSON):    project.ArtifactKindExportFormatContourGeoJSON,
-	string(exportfmt.FormatContourGeoPackage): project.ArtifactKindExportFormatContourGPKG,
+	string(exportfmt.FormatGeoTIFF):            project.ArtifactKindExportFormatGeoTIFF,
+	string(exportfmt.FormatCOG):                project.ArtifactKindExportFormatCOG,
+	string(exportfmt.FormatGeoPackage):         project.ArtifactKindExportFormatGeoPackage,
+	string(exportfmt.FormatContourGeoJSON):     project.ArtifactKindExportFormatContourGeoJSON,
+	string(exportfmt.FormatContourGeoPackage):  project.ArtifactKindExportFormatContourGPKG,
+	string(exportfmt.FormatSoundPLANShapefile): project.ArtifactKindExportFormatSoundPLAN,
 }
 
 // formatExportArtifacts turns the written format files into manifest entries.
@@ -652,6 +659,12 @@ func loadModelFeaturesFromGeoJSON(geojsonPath string) ([]exportfmt.ModelFeature,
 		return nil, fmt.Errorf("read model geojson: %w", err)
 	}
 
+	return modelFeaturesFromGeoJSON(data)
+}
+
+// modelFeaturesFromGeoJSON is loadModelFeaturesFromGeoJSON over bytes already
+// read, for the SoundPLAN export, which may project the model first.
+func modelFeaturesFromGeoJSON(data []byte) ([]exportfmt.ModelFeature, error) {
 	var fc struct {
 		Features []struct {
 			Properties map[string]any `json:"properties"`
@@ -662,7 +675,7 @@ func loadModelFeaturesFromGeoJSON(geojsonPath string) ([]exportfmt.ModelFeature,
 		} `json:"features"`
 	}
 
-	err = json.Unmarshal(data, &fc)
+	err := json.Unmarshal(data, &fc)
 	if err != nil {
 		return nil, fmt.Errorf("parse model geojson: %w", err)
 	}
@@ -673,6 +686,7 @@ func loadModelFeaturesFromGeoJSON(geojsonPath string) ([]exportfmt.ModelFeature,
 		mf := exportfmt.ModelFeature{
 			GeometryType: f.Geometry.Type,
 			Coordinates:  f.Geometry.Coordinates,
+			Properties:   f.Properties,
 		}
 
 		if id, ok := f.Properties["id"].(string); ok {

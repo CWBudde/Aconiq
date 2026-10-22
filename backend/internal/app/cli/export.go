@@ -56,6 +56,7 @@ type stagedExportBundle struct {
 	provenancePath   string
 	runResults       copiedRunResults
 	modelGeoJSONPath string
+	model            modelExportInputs
 }
 
 func newExportCommand() *cobra.Command {
@@ -75,7 +76,7 @@ func newExportCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.emitSampleResults, "emit-sample-results", false, "Generate sample raster/table outputs in the export bundle")
 	cmd.Flags().BoolVar(&opts.skipReport, "skip-report", false, "Skip report generation (by default report.md/report.html/report.typ are generated)")
 	cmd.Flags().BoolVar(&opts.generatePDF, "pdf", false, "Compile report.pdf with Typst in addition to the offline report bundle")
-	cmd.Flags().StringVar(&opts.formatList, "format", "", "Comma-separated export formats: geotiff, cog, gpkg, contour-geojson, contour-gpkg")
+	cmd.Flags().StringVar(&opts.formatList, "format", "", "Comma-separated export formats: geotiff, cog, gpkg, contour-geojson, contour-gpkg, soundplan-shp")
 	cmd.Flags().Float64Var(&opts.contourInterval, "contour-interval", exportfmt.DefaultContourInterval, "Contour line interval in dB (default 5)")
 
 	return cmd
@@ -279,7 +280,10 @@ func stageExportBundle(
 	run project.Run,
 	targetCRS string,
 ) (stagedExportBundle, error) {
-	staged := stagedExportBundle{copiedFiles: make([]string, 0, 12)}
+	staged := stagedExportBundle{
+		copiedFiles: make([]string, 0, 12),
+		model:       newModelExportInputs(storeRoot, proj, run, targetCRS),
+	}
 
 	if run.LogPath != "" {
 		src := filepath.Join(storeRoot, filepath.FromSlash(run.LogPath))
@@ -388,9 +392,16 @@ func applyOptionalExportOutputs(
 	exportedPaths, fmtErr := executeFormatExports(
 		ctx, formats, bundleDir, projectCRS, resultsCRS,
 		staged.runResults, opts.contourInterval,
-		staged.modelGeoJSONPath,
+		staged.modelGeoJSONPath, staged.model,
 	)
 	if fmtErr != nil {
+		// A format that already classified its refusal keeps that kind;
+		// anything else is an internal failure.
+		var appErr *domainerrors.AppError
+		if errors.As(fmtErr, &appErr) {
+			return nil, fmtErr
+		}
+
 		return nil, domainerrors.New(domainerrors.KindInternal, "cli.export", "format export", fmtErr)
 	}
 

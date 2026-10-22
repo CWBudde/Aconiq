@@ -103,6 +103,7 @@ const (
 	ArtifactKindExportFormatGeoPackage     = "export.format_gpkg"
 	ArtifactKindExportFormatContourGeoJSON = "export.format_contour_geojson"
 	ArtifactKindExportFormatContourGPKG    = "export.format_contour_gpkg"
+	ArtifactKindExportFormatSoundPLAN      = "export.format_soundplan_shp"
 )
 
 // ArtifactKindExportPrefix is the common prefix of every artifact `aconiq
