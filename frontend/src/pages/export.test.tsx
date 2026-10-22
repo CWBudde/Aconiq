@@ -791,6 +791,11 @@ describe("ExportPage unknown artifact kinds", () => {
       "formats/contours.gpkg",
       m.export_artifact_label_contour_gpkg,
     ],
+    [
+      "export.format_soundplan_shp",
+      "formats/soundplan/buildings.shp",
+      m.export_artifact_label_soundplan_shp,
+    ],
   ])("labels %s rather than printing its kind", (kind, path, label) => {
     const formatArtifact = artifact("a-fmt", kind, `exports/run-1/${path}`);
     renderPage([run("run-1", [bundle, formatArtifact])]);

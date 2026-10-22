@@ -18,6 +18,7 @@ export const EXPORT_FORMATS = [
   "gpkg",
   "contour-geojson",
   "contour-gpkg",
+  "soundplan-shp",
 ] as const;
 
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];

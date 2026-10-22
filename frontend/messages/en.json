@@ -396,6 +396,7 @@
   "export_artifact_label_gpkg": "GeoPackage",
   "export_artifact_label_contour_geojson": "Contours (GeoJSON)",
   "export_artifact_label_contour_gpkg": "Contours (GeoPackage)",
+  "export_artifact_label_soundplan_shp": "SoundPLAN model (Shapefile)",
   "banner_draft_recovery": "Draft recovery",
   "msg_settings_appearance_help": "Choose how the interface should look.",
   "msg_settings_language_help": "Choose the language used across the UI.",

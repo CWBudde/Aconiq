@@ -106,6 +106,10 @@ const EXPORT_KIND_LABELS: Record<
     label: m.export_artifact_label_contour_gpkg,
     icon: Spline,
   },
+  "export.format_soundplan_shp": {
+    label: m.export_artifact_label_soundplan_shp,
+    icon: Database,
+  },
 };
 
 function kindMeta(kind: string) {

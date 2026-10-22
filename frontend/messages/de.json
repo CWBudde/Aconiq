@@ -396,6 +396,7 @@
   "export_artifact_label_gpkg": "GeoPackage",
   "export_artifact_label_contour_geojson": "Isophonen (GeoJSON)",
   "export_artifact_label_contour_gpkg": "Isophonen (GeoPackage)",
+  "export_artifact_label_soundplan_shp": "SoundPLAN-Modell (Shapefile)",
   "banner_draft_recovery": "Entwurf wiederherstellen",
   "msg_settings_appearance_help": "Legt fest, wie die Oberfläche aussieht.",
   "msg_settings_language_help": "Legt die in der Oberfläche verwendete Sprache fest.",

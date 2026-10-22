@@ -25,6 +25,10 @@ const (
 
 	// FormatCOG exports raster results as Cloud Optimized GeoTIFF with tiles and overviews.
 	FormatCOG Format = "cog"
+
+	// FormatSoundPLANShapefile exports the model as ESRI Shapefiles laid out
+	// for SoundPLAN's Geo-Database import, with a mapping report.
+	FormatSoundPLANShapefile Format = "soundplan-shp"
 )
 
 // AllFormats lists every supported export format.
@@ -34,6 +38,7 @@ var AllFormats = []Format{
 	FormatGeoPackage,
 	FormatContourGeoJSON,
 	FormatContourGeoPackage,
+	FormatSoundPLANShapefile,
 }
 
 // FormatInfo describes one export format for documentation and the format matrix.
@@ -41,7 +46,7 @@ type FormatInfo struct {
 	Format      Format
 	Label       string
 	Description string
-	Category    string // "raster", "vector", "contour"
+	Category    string // "raster", "vector", "contour", "model"
 	Extension   string
 }
 
@@ -82,6 +87,13 @@ func FormatMatrix() []FormatInfo {
 			Description: "ISO-band contour lines from raster results as OGC GeoPackage",
 			Category:    "contour",
 			Extension:   ".gpkg",
+		},
+		{
+			Format:      FormatSoundPLANShapefile,
+			Label:       "SoundPLAN Shapefiles",
+			Description: "The model as ESRI Shapefiles per object type for SoundPLAN's Geo-Database import, with a field mapping and loss report",
+			Category:    "model",
+			Extension:   ".shp",
 		},
 	}
 }
