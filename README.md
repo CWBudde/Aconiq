@@ -170,9 +170,13 @@ Errors use a single JSON envelope (`code`, `message`, `details`, `hint`).
 `aconiq mcp` serves one project to an AI agent over the
 [Model Context Protocol](https://modelcontextprotocol.io). It speaks MCP over stdin and stdout and
 opens no socket. The project is the one `--project` names, fixed for the life of the process, and
-no tool takes a path. Each tool is a thin adapter over the local HTTP API, served in process: it
-accepts and refuses exactly what the API does and answers with the API's own JSON, error envelope
-included. stdout carries the protocol and nothing else; logs go to stderr.
+no tool takes a path. Each tool is a thin adapter over the local HTTP API, served in process: a
+call it forwards is judged by the API and answered with the API's own JSON, error envelope
+included. Before forwarding, the MCP layer refuses arguments the tool's input schema does not
+accept — a missing required field, a wrong type, an unknown property — and a `save_model`
+without `confirm`. `start_run` and `estimate_run` require the scenario, standard, version, profile
+and receiver mode, non-empty, where the CLI would default them. stdout carries the protocol
+and nothing else; logs go to stderr.
 
 ### Setup
 
@@ -239,10 +243,13 @@ Resources: `aconiq://project`, `aconiq://standards`, `aconiq://runs/{id}`,
   facade link) that are still proposed, or whose slab height is assumed, is refused unless
   `start_run` passes `allow_unconfirmed: true`; their counts then go into the run's provenance and
   report.
-- Every state-changing call, refused ones included, is appended to `.noise/logs/mcp-audit.jsonl`
-  with a digest of its arguments, never the payload. A write whose audit entry cannot be opened is
-  not attempted.
-- Runs the server started are stopped when it exits.
+- Every state-changing call, refused ones included, is recorded in `.noise/logs/mcp-audit.jsonl`
+  with a digest of its arguments, never the payload. The log is opened before the call, and a
+  write whose log cannot be opened is not attempted. If the entry then fails to write — a full
+  disk, say — the call has already happened: its result carries a warning and the failure is
+  logged at ERROR, but the log has no line for it.
+- On exit the server interrupts the runs it started and waits a bounded time for them to stop. A
+  run still open after that is closed as interrupted by the next `aconiq mcp` or `aconiq serve`.
 
 The boundaries, the security policy and the exposed fields are specified in
 [ADR-002](docs/adr/002-mcp-server-boundaries.md).
