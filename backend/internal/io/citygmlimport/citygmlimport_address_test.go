@@ -60,6 +60,10 @@ func TestReadKeepsTheBuildingAddress(t *testing.T) {
 		address(street("Musterstraße", "7"), street("Musterstraße", "9")) + `</bldg:Building>
   </core:cityObjectMember>
   <core:cityObjectMember>
+    <bldg:Building gml:id="same_street_spelled_twice">` + ground("130", "0", "140", "10") +
+		address(street("Musterstraße", "13"), street(" musterSTRAßE ", "15")) + `</bldg:Building>
+  </core:cityObjectMember>
+  <core:cityObjectMember>
     <bldg:Building gml:id="corner">` + ground("90", "0", "100", "10") +
 		address(street("Musterstraße", "11"), street("Beispielweg", "2")) + `</bldg:Building>
   </core:cityObjectMember>
@@ -82,8 +86,12 @@ func TestReadKeepsTheBuildingAddress(t *testing.T) {
 		"own":           {"Musterstraße", "5A"},
 		"locality_only": {nil, nil},
 		"two_numbers":   {"Musterstraße", "7;9"},
-		"corner":        {nil, nil},
-		"none":          {nil, nil},
+		// One street, however its two entries spell it: the selector folds
+		// case and spaces, so the grouping must too, and keeps the first
+		// spelling.
+		"same_street_spelled_twice": {"Musterstraße", "13;15"},
+		"corner":                    {nil, nil},
+		"none":                      {nil, nil},
 	}
 
 	if len(result.Collection.Features) != len(want) {

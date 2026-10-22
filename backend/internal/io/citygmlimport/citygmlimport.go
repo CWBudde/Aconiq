@@ -177,12 +177,16 @@ func (w *addressWalk) keep() {
 }
 
 // oneStreet joins a building's numbers into a ";" list when all its
-// addresses lie on one street, and reports false when they do not.
+// addresses lie on one street, and reports false when they do not. Street
+// names are compared as `aconiq run --facade-building` compares them, without
+// case and extra spaces, so two spellings of one street stay one street; the
+// first spelling is the one kept.
 func oneStreet(list []thoroughfare) (buildingAddress, bool) {
 	numbers := make([]string, 0, len(list))
+	street := foldStreet(list[0].name)
 
 	for _, th := range list {
-		if th.name != list[0].name {
+		if foldStreet(th.name) != street {
 			return buildingAddress{}, false
 		}
 
@@ -192,6 +196,12 @@ func oneStreet(list []thoroughfare) (buildingAddress, bool) {
 	}
 
 	return buildingAddress{street: list[0].name, numbers: strings.Join(numbers, ";")}, true
+}
+
+// foldStreet folds case and collapses whitespace, and nothing else: the
+// normalisation the CLI's address match applies (normalizeAddress).
+func foldStreet(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
 }
 
 // gmlID returns an element's gml:id, trimmed, or "" when it has none.
