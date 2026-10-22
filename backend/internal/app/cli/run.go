@@ -73,7 +73,7 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringVar(&standardProfile, "standard-profile", "", "Standard profile (defaults to version profile default)")
 	cmd.Flags().StringVar(&modelPath, "model", defaultModelPath, "Path to normalized GeoJSON model")
 	cmd.Flags().StringVar(&receiverMode, "receiver-mode", receiverModeAutoGrid, "Receiver mode: auto-grid, custom or facade")
-	cmd.Flags().StringArrayVar(&facade.buildings, "facade-building", nil, "Building feature id whose facades carry receivers in receiver mode facade (repeatable)")
+	cmd.Flags().StringArrayVar(&facade.buildings, "facade-building", nil, "Building whose facades carry receivers in receiver mode facade: a feature id, or \"<street> <number>\" as its addr:street and addr:housenumber spell it (repeatable)")
 	cmd.Flags().Float64Var(&facade.spacingM, "facade-spacing-m", 0, "Station spacing along each facade in metres, required in receiver mode facade")
 	cmd.Flags().BoolVar(&facade.includeCourtyard, "facade-courtyard", false, "Also place facade receivers on courtyard facades")
 	cmd.Flags().BoolVar(&facade.allowUnconfirmed, "allow-unconfirmed", false, "Run a normative standard over facade receivers that are proposed or have an assumed slab height, and record their counts")

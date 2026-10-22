@@ -252,6 +252,15 @@ func applyBuildingProps(tags map[string]string, props map[string]any) {
 		props["building:levels"] = v
 	}
 
+	// The street and the house number select a building for facade
+	// receivers (aconiq run --facade-building "<street> <number>"), so they
+	// are kept as OSM spells them, a ";" list of numbers included.
+	for _, key := range []string{"addr:street", "addr:housenumber"} {
+		if v := tags[key]; v != "" {
+			props[key] = v
+		}
+	}
+
 	setHeight(props, buildingHeight(tags))
 }
 

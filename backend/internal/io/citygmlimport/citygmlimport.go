@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
@@ -57,6 +58,151 @@ func checkXMLNestingDepth(data []byte) error {
 			depth--
 		}
 	}
+}
+
+// buildingAddress is a building's street and house number as the OSM
+// importer spells them (addr:street, addr:housenumber), so that `aconiq run
+// --facade-building "<street> <number>"` reads one shape whatever the source.
+// numbers is a ";" list when the building has several on the street.
+type buildingAddress struct {
+	street  string
+	numbers string
+}
+
+// readAddresses collects each Building's and BuildingPart's bldg:address,
+// keyed by gml:id. go-citygml does not decode addresses, so this is a second,
+// lighter walk over the tokens; a document that names no Thoroughfare skips
+// it. The address is read from xAL's Thoroughfare (ThoroughfareName and
+// ThoroughfareNumber) wherever it nests, and belongs to the innermost
+// enclosing Building or BuildingPart.
+//
+// A thoroughfare without both a name and a number selects nothing and is
+// left out. A building whose addresses lie on more than one street (a corner
+// house) gets none: two flat properties cannot pair each number with its
+// street, and a wrong pairing would select the wrong building. It is selected
+// by its id. Malformed XML ends the walk quietly; the parser reports it.
+func readAddresses(data []byte) map[string]buildingAddress {
+	if !bytes.Contains(data, []byte("Thoroughfare")) {
+		return nil
+	}
+
+	walk := addressWalk{found: make(map[string][]thoroughfare)}
+	dec := xml.NewDecoder(bytes.NewReader(data))
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+
+		switch t := tok.(type) {
+		case xml.StartElement:
+			walk.start(t)
+		case xml.CharData:
+			if walk.field != nil {
+				*walk.field += string(t)
+			}
+		case xml.EndElement:
+			walk.end(t.Name.Local)
+		}
+	}
+
+	addresses := make(map[string]buildingAddress, len(walk.found))
+
+	for id, list := range walk.found {
+		if address, ok := oneStreet(list); ok {
+			addresses[id] = address
+		}
+	}
+
+	return addresses
+}
+
+// thoroughfare is one xal:Thoroughfare's name and number.
+type thoroughfare struct{ name, number string }
+
+// addressWalk is readAddresses' state between tokens.
+type addressWalk struct {
+	found   map[string][]thoroughfare
+	owners  []string // gml:id of each open Building / BuildingPart
+	current *thoroughfare
+	field   *string // the text being read, inside ThoroughfareName / Number
+}
+
+func (w *addressWalk) start(t xml.StartElement) {
+	switch t.Name.Local {
+	case "Building", "BuildingPart":
+		w.owners = append(w.owners, gmlID(t))
+	case "Thoroughfare":
+		w.current = &thoroughfare{}
+	case "ThoroughfareName":
+		if w.current != nil {
+			w.field = &w.current.name
+		}
+	case "ThoroughfareNumber":
+		if w.current != nil {
+			w.field = &w.current.number
+		}
+	}
+}
+
+func (w *addressWalk) end(local string) {
+	switch local {
+	case "Building", "BuildingPart":
+		if len(w.owners) > 0 {
+			w.owners = w.owners[:len(w.owners)-1]
+		}
+	case "Thoroughfare":
+		w.keep()
+		w.current = nil
+	case "ThoroughfareName", "ThoroughfareNumber":
+		w.field = nil
+	}
+}
+
+// keep files the closed thoroughfare under its innermost owner, when it has
+// both a name and a number and the owner an id.
+func (w *addressWalk) keep() {
+	if w.current == nil || len(w.owners) == 0 || w.owners[len(w.owners)-1] == "" {
+		return
+	}
+
+	th := thoroughfare{name: strings.TrimSpace(w.current.name), number: strings.TrimSpace(w.current.number)}
+	if th.name == "" || th.number == "" {
+		return
+	}
+
+	owner := w.owners[len(w.owners)-1]
+	w.found[owner] = append(w.found[owner], th)
+}
+
+// oneStreet joins a building's numbers into a ";" list when all its
+// addresses lie on one street, and reports false when they do not.
+func oneStreet(list []thoroughfare) (buildingAddress, bool) {
+	numbers := make([]string, 0, len(list))
+
+	for _, th := range list {
+		if th.name != list[0].name {
+			return buildingAddress{}, false
+		}
+
+		if !slices.Contains(numbers, th.number) {
+			numbers = append(numbers, th.number)
+		}
+	}
+
+	return buildingAddress{street: list[0].name, numbers: strings.Join(numbers, ";")}, true
+}
+
+// gmlID returns an element's gml:id, trimmed, or "" when it has none.
+func gmlID(start xml.StartElement) string {
+	for _, attr := range start.Attr {
+		if attr.Name.Local == "id" {
+			return strings.TrimSpace(attr.Value)
+		}
+	}
+
+	return ""
 }
 
 // ErrNoBuildings reports a document that yielded no importable building.
@@ -117,7 +263,7 @@ func ReadWithCRS(data []byte) (ReadResult, error) {
 		return ReadResult{}, fmt.Errorf("citygml: %w", err)
 	}
 
-	candidates := importCandidates(doc.Buildings)
+	candidates := importCandidates(doc.Buildings, readAddresses(data))
 	features := make([]modelgeojson.GeoJSONFeature, 0, len(candidates))
 	report := ImportReport{Total: len(candidates)}
 
@@ -126,6 +272,11 @@ func ReadWithCRS(data []byte) (ReadResult, error) {
 		if reason == "" {
 			if c.parentID != "" {
 				feature.Properties["citygml_parent_id"] = c.parentID
+			}
+
+			if c.address.street != "" {
+				feature.Properties["addr:street"] = c.address.street
+				feature.Properties["addr:housenumber"] = c.address.numbers
 			}
 
 			features = append(features, feature)
@@ -162,7 +313,8 @@ func ReadWithCRS(data []byte) (ReadResult, error) {
 // candidate is one Building or BuildingPart that may become a feature.
 type candidate struct {
 	building *types.Building
-	parentID string // the enclosing Building's gml:id; empty for a Building
+	parentID string          // the enclosing Building's gml:id; empty for a Building
+	address  buildingAddress // its own address, else the nearest enclosing one
 }
 
 // importCandidates flattens buildings and their parts, depth-first in
@@ -171,23 +323,33 @@ type candidate struct {
 // height changes, which is what a noise model needs to see. A building made
 // only of parts (no footprint of its own) is a container and is left out
 // rather than reported as skipped.
-func importCandidates(buildings []types.Building) []candidate {
+//
+// A part without an address of its own takes its building's: LGLN puts the
+// address on the Building, after its parts, and the parts are the features.
+func importCandidates(buildings []types.Building, addresses map[string]buildingAddress) []candidate {
 	var out []candidate
 
-	var walk func(b *types.Building, parentID string)
+	var walk func(b *types.Building, parentID string, inherited buildingAddress)
 
-	walk = func(b *types.Building, parentID string) {
+	walk = func(b *types.Building, parentID string, inherited buildingAddress) {
+		id := strings.TrimSpace(b.ID)
+
+		address, ok := addresses[id]
+		if !ok || id == "" {
+			address = inherited
+		}
+
 		if len(b.Parts) == 0 || b.Footprint != nil {
-			out = append(out, candidate{building: b, parentID: parentID})
+			out = append(out, candidate{building: b, parentID: parentID, address: address})
 		}
 
 		for i := range b.Parts {
-			walk(&b.Parts[i], strings.TrimSpace(b.ID))
+			walk(&b.Parts[i], id, address)
 		}
 	}
 
 	for i := range buildings {
-		walk(&buildings[i], "")
+		walk(&buildings[i], "", buildingAddress{})
 	}
 
 	return out

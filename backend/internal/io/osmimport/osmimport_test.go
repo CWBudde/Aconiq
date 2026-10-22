@@ -161,6 +161,36 @@ func TestFetch_Building(t *testing.T) {
 	}
 }
 
+// The address tags are what --facade-building "<street> <number>" selects a
+// building by, so they are kept as the tags spell them. Other addr:* tags
+// (postcode, city) are not: nothing reads them.
+func TestApplyBuildingPropsKeepsTheAddress(t *testing.T) {
+	t.Parallel()
+
+	props := map[string]any{}
+	applyBuildingProps(map[string]string{
+		"building":         "house",
+		"addr:street":      "Musterstraße",
+		"addr:housenumber": "12;14",
+		"addr:postcode":    "30000",
+	}, props)
+
+	if props["addr:street"] != "Musterstraße" || props["addr:housenumber"] != "12;14" {
+		t.Errorf("address = %v / %v, want Musterstraße / 12;14", props["addr:street"], props["addr:housenumber"])
+	}
+
+	if _, ok := props["addr:postcode"]; ok {
+		t.Error("addr:postcode was kept; only the street and the house number are read")
+	}
+
+	bare := map[string]any{}
+	applyBuildingProps(map[string]string{"building": "yes"}, bare)
+
+	if _, ok := bare["addr:street"]; ok {
+		t.Error("a building without address tags carries addr:street")
+	}
+}
+
 func TestFetch_Barrier(t *testing.T) {
 	t.Parallel()
 

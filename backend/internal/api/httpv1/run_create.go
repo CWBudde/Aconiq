@@ -331,12 +331,12 @@ func (req createRunRequest) validate() error {
 	return nil
 }
 
-// validateFacadeSet checks the facade fields that become arguments. A building
-// id is a model feature id, so its spelling is the model's and is not
-// constrained beyond what argv needs: it is passed as `--facade-building=<id>`,
-// so a leading "-" is a value, and a control character is refused. Whether the
-// set is complete, and whether the ids name buildings, is the run command's to
-// decide.
+// validateFacadeSet checks the facade fields that become arguments. An entry
+// is a model feature id or a "<street> <number>" address, so its spelling is
+// the model's and is not constrained beyond what argv needs: it is passed as
+// `--facade-building=<entry>`, so a leading "-" is a value, and a control
+// character is refused. Whether the set is complete, and whether the entries
+// name buildings, is the run command's to decide.
 func (req createRunRequest) validateFacadeSet() error {
 	for _, id := range req.FacadeBuildings {
 		if id == "" {

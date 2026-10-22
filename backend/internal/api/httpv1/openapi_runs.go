@@ -509,7 +509,7 @@ func openapiCreateRunRequestSchema() map[string]any {
 			"facade_buildings": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string", "minLength": 1},
-				"description": "Model building feature ids that carry facade receivers. Required with receiver_mode facade.",
+				"description": "Buildings that carry facade receivers, each a model building feature id or \"<street> <number>\" as its addr:street and addr:housenumber spell it (compared without case and extra spaces; an address shared by two buildings is refused). Required with receiver_mode facade.",
 			},
 			"facade_spacing_m": map[string]any{
 				"type":             "number",
