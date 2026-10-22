@@ -165,6 +165,95 @@ GET  /api/v1/openapi.json
 
 Errors use a single JSON envelope (`code`, `message`, `details`, `hint`).
 
+## MCP Server
+
+`aconiq mcp` serves one project to an AI agent over the
+[Model Context Protocol](https://modelcontextprotocol.io). It speaks MCP over stdin and stdout and
+opens no socket. The project is the one `--project` names, fixed for the life of the process, and
+no tool takes a path. Each tool is a thin adapter over the local HTTP API, served in process: it
+accepts and refuses exactly what the API does and answers with the API's own JSON, error envelope
+included. stdout carries the protocol and nothing else; logs go to stderr.
+
+### Setup
+
+With Claude Code:
+
+```bash
+claude mcp add aconiq -- aconiq mcp --project /path/to/project
+# or, to let the agent save the model and start runs:
+claude mcp add aconiq -- aconiq mcp --project /path/to/project --allow-writes
+```
+
+Any other MCP client (Claude Desktop, IDE extensions) takes the same command in its server
+configuration:
+
+```json
+{
+  "mcpServers": {
+    "aconiq": {
+      "command": "aconiq",
+      "args": ["mcp", "--project", "/path/to/project"]
+    }
+  }
+}
+```
+
+### Tools
+
+Always offered (read-only):
+
+| Tool              | What it answers                                                                                          |
+| ----------------- | -------------------------------------------------------------------------------------------------------- |
+| `project_status`  | Name, CRS, scenario and run counts, open runs with progress, and the model and terrain hashes            |
+| `list_standards`  | The runnable standards with their evidence tier, versions, profiles and parameters (kind, unit, default) |
+| `get_model`       | The saved model as GeoJSON, optionally in another CRS (`crs`), with its hash                             |
+| `transform`       | Project a coordinate batch between two CRS; `target_crs: "auto"` picks the zone `aconiq run` would use   |
+| `list_runs`       | Every run, newest first, with status, standard and artifacts                                             |
+| `get_run`         | One run's summary and, while it computes, its progress — poll it, there is no stream                     |
+| `get_run_log`     | One run's log                                                                                            |
+| `get_run_results` | A finished run's receiver table with units; one over 256 KiB is answered with a link to its artifact     |
+| `get_contours`    | Contour lines from a finished grid run, at an `interval` in dB, in the CRS named in the answer           |
+| `estimate_run`    | What a run with these arguments would cost in time, from a timed probe; it creates no run                |
+
+Only with `--allow-writes`:
+
+| Tool         | What it does                                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `start_run`  | Start a run of the saved model; scenario, standard, version, profile and receiver mode are required, never defaulted |
+| `cancel_run` | Stop a run this server started                                                                                       |
+| `save_model` | Replace the whole model; `confirm` must be the hash of the model being replaced, or `none` on a project without one  |
+
+Resources: `aconiq://project`, `aconiq://standards`, `aconiq://runs/{id}`,
+`aconiq://runs/{id}/provenance` (the run's `provenance.json` as recorded) and
+`aconiq://artifacts/{id}`.
+
+### Safety
+
+- Without `--allow-writes` the tools that change the project are not listed at all, so an agent
+  cannot plan around them.
+- `save_model`'s `confirm` binds the save to the model the agent read: a model that changed since
+  is refused with `hash_mismatch`, not overwritten. A model that fails the GeoJSON schema is refused
+  with its validation issues; nothing is corrected.
+- A scaffold-tier standard is refused unless `start_run` passes `experimental: true`, as on the CLI.
+- Every state-changing call, refused ones included, is appended to `.noise/logs/mcp-audit.jsonl`
+  with a digest of its arguments, never the payload. A write whose audit entry cannot be opened is
+  not attempted.
+- Runs the server started are stopped when it exits.
+
+The boundaries, the security policy and the exposed fields are specified in
+[ADR-002](docs/adr/002-mcp-server-boundaries.md).
+
+### Example prompts
+
+- "Which standards in this project are normative, and which parameters does `rls19-road` take, with
+  their units and defaults?"
+- "Show me the model's receivers in EPSG:4326."
+- "Raise receiver `rcv-3` to 6 m and save the model." (needs `--allow-writes`)
+- "Estimate how long an `rls19-road` run over the model's receivers would take, then start it and
+  list the five loudest receivers by night." (needs `--allow-writes`)
+- "Give me the 5 dB contours of the latest grid run in EPSG:4326."
+- "Why did the last run fail? Read its log."
+
 ## Scope Boundaries
 
 - The local API is designed for local-first GUI and automation use, not multi-user deployment
