@@ -217,11 +217,11 @@ Always offered (read-only):
 
 Only with `--allow-writes`:
 
-| Tool         | What it does                                                                                                         |
-| ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `start_run`  | Start a run of the saved model; scenario, standard, version, profile and receiver mode are required, never defaulted |
-| `cancel_run` | Stop a run this server started                                                                                       |
-| `save_model` | Replace the whole model; `confirm` must be the hash of the model being replaced, or `none` on a project without one  |
+| Tool         | What it does                                                                                                                                             |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start_run`  | Start a run of the saved model; scenario, standard, version, profile and receiver mode (`auto-grid`, `custom` or `facade`) are required, never defaulted |
+| `cancel_run` | Stop a run this server started                                                                                                                           |
+| `save_model` | Replace the whole model; `confirm` must be the hash of the model being replaced, or `none` on a project without one                                      |
 
 Resources: `aconiq://project`, `aconiq://standards`, `aconiq://runs/{id}`,
 `aconiq://runs/{id}/provenance` (the run's `provenance.json` as recorded) and
@@ -235,6 +235,10 @@ Resources: `aconiq://project`, `aconiq://standards`, `aconiq://runs/{id}`,
   is refused with `hash_mismatch`, not overwritten. A model that fails the GeoJSON schema is refused
   with its validation issues; nothing is corrected.
 - A scaffold-tier standard is refused unless `start_run` passes `experimental: true`, as on the CLI.
+- A normative run over facade receivers (`receiver_mode: "facade"`, or model receivers carrying a
+  facade link) that are still proposed, or whose slab height is assumed, is refused unless
+  `start_run` passes `allow_unconfirmed: true`; their counts then go into the run's provenance and
+  report.
 - Every state-changing call, refused ones included, is appended to `.noise/logs/mcp-audit.jsonl`
   with a digest of its arguments, never the payload. A write whose audit entry cannot be opened is
   not attempted.
