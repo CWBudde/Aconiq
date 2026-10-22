@@ -137,6 +137,9 @@ levels breaking, so these belong together, ideally before or with the first tag:
 
 **Behaviour and API**
 
+- The extent of the own facade a facade Immissionsort excludes: its footprint edge, the
+  building's coplanar edges, or the coplanar plane across party walls (P1 §1.9).
+
 - Whether a deleted run's export bundle keeps addressable artifact refs (P8, Phase D).
 - An uncovered DTM query reads 0 m in RLS-19 on both targets; keep it or refuse like Schall 03
   (P2). Either way both targets move in one commit.
@@ -637,6 +640,55 @@ deliberately left undone, because it lives on this branch and the datum fix was 
 Cost: a DTM-attached run is ~28 % slower on the propagation path (25 m nominal sampling, capped at
 64 intervals). Only projects that import a DTM pay it; a geographic project pays more, because every
 sample goes through `terrainInComputeCRS`.
+
+### 1.9 Facade Immissionsorte count their own facade, and Schall 03's is shielded by it — open
+
+Measured 2026-10-22 (#126) and pinned by `own_facade_reflection_test.go` in `rls19/road` and
+`schall03`: tests that assert today's state, each within a tolerance below the smallest effect
+it pins, and must flip when this is fixed. Both rules exclude reflections at the receiver's own
+facade — RLS-19 the paths whose last reflection lies on it (Section 1, Immissionsort,
+Anmerkung), Schall 03 every path that touches it (16. BImSchV Anl. 2 Nr. 2.2.10). Neither
+module knows which facade a receiver belongs to, so neither excludes anything. On a 10 m facade
+20 m from the source:
+
+- **RLS-19, 0.05 m out: +3.29 dB** over free field as a building, which is what every CLI run
+  builds. +2.75 dB is the own facade's image; the rest is the back wall's image reaching the
+  receiver through the building, because the shielding exclusion is per reflector (conformance
+  declaration, Nr. 3.6). Every hand-placed and SoundPLAN-imported facade point is affected.
+- **Schall 03, 0.05 m out: +3.24 dB** (+2.52 dB from the own facade's image), but only for a
+  building with `schall03_reflecting_wall = true`: the CLI always emits the footprint as a
+  shield and the walls as reflectors only under that opt-in. Without it the level is free
+  field's.
+- **Schall 03, on the facade (0 m), its own prescribed position: −19.08 dB** with the footprint
+  alone. The footprint edge the point stands on is a closed segment, so the direct path
+  "crosses" it and the facade shields its own Immissionsort. This direction is unsafe — the
+  level is under-predicted — and it applies in every CLI run, opt-in or not.
+- **Schall 03, on the facade with walls (opt-in): the result depends on the platform**, −8.47 dB
+  on amd64 and −3.11 dB on arm64. The own image's last leg has zero length, `FresnelCheck`
+  refuses `dOR <= 0`, and whether `dOR` comes out 0 or ~1e-15 m is decided by rounding (arm64's
+  fused multiply-add). The fix must not leave a reflection decided by a zero-length leg.
+- **Schall 03 canyon:** of six paths up to third order, five touch the own facade and three end on
+  it. A last-bounce filter (RLS-19's) would keep two that Nr. 2.2.10 drops, so one shared
+  function needs a mode, not one rule.
+- **Coplanar neighbour across a party wall:** as a plain wall it adds only +0.15 dB (RLS-19) /
+  +0.03 to +0.05 dB (Schall 03, arm64 / amd64) within 0.1 m of the party wall and nothing at
+  1 m. As a building it _lowers_ the level, −0.68 / −0.47 to −0.49 dB, because shielding is
+  tested along the whole unfolded image path, including the part behind the facade plane that is
+  only a mirror.
+
+The fix needs the receiver→facade link (A3's `facade` key, produced by P18 B2) and two choices:
+
+- **[Decision]** The extent of "the facade" a point excludes: its own footprint edge, the
+  building's coplanar edges, or every coplanar segment across party walls
+  (`facade-receivers.md` §7, question 4). The measurement makes the plane version cheap to skip
+  for a plain wall and decisive only through the shielding artefact.
+- How a Schall 03 point on its facade stops being shielded by it: exempt the linked facade from
+  screening, or place the point a recorded numerical distance outward (`facade-receivers.md` §6).
+  It must be the same on both targets.
+
+Whether the shielding of an own image by the neighbour building (the unfolded leg behind the
+facade plane) is itself a defect is open; it belongs to the same change, because the exclusion
+reshapes those paths.
 
 ## Priority 2 — Make the CLI run the normative code
 
@@ -2789,17 +2841,6 @@ as it must be.
 Deterministic, no imagery. This is useful by itself (a facade level map per building), and it
 produces the candidates Phase D confirms or rejects.
 
-- [ ] **B1 Measure the own-facade reflection first.** Nothing in the tree associates a receiver
-      with a facade, and no rule drops a path whose last reflection lies on the receiver's own
-      facade. Measure what a receiver 5 cm in front of a reflecting facade gets today against the
-      same receiver with that wall removed. If it is counted, this is a Gate 1 numeric defect in
-      a normative module, affecting every hand-placed and every SoundPLAN-imported facade
-      Immissionsort. It moves to Priority 1 and is fixed there, with the receiver→facade link as
-      its input. Do not build B2 on top of it unmeasured. Measure `schall03` too: Anlage 2
-      Nr. 2.2.10 excludes **every** reflection at the associated facade, a different filter from
-      RLS-19's last-reflection one at the module's third order. Include a coplanar neighbour
-      facade across a party wall: in a block perimeter "the facade" is a plane, not one edge
-      (`facade-receivers.md` Section 6).
 - [ ] **B2 Implement `FacadeReceiverSet`** in `internal/geo`. For each exterior edge of a selected
       building (and courtyard edges when `include_courtyard`): points at a fixed spacing along
       the facade, one per storey, offset outward along the edge normal by the placement rule's
@@ -2818,8 +2859,8 @@ produces the candidates Phase D confirms or rejects.
       its canonicalisation and the receiver properties are that note's "Data model (A3)".
 - [ ] **B3 Wire it into `aconiq run`** as a receiver mode beside `custom` and the auto-grid, and into
       the receiver table, so a result row names its building, facade and storey. RLS-19 uses the
-      facade link for the own-facade exclusion from B1. The run refuses `proposed` and
-      assumed-height points without an opt-in flag, the same flag on CLI, API and MCP, and
+      facade link for the own-facade exclusion of Priority 1 §1.9. The run refuses `proposed`
+      and assumed-height points without an opt-in flag, the same flag on CLI, API and MCP, and
       stamps their count into `provenance.json`, `run-summary.json` and the report. A receiver
       whose `building_ref` no longer resolves, or whose `from` / `to` moved, blocks a normative
       run; re-attachment is an explicit reviewed step (`facade-receivers.md`, Data model). The
@@ -2880,13 +2921,13 @@ windows, which are the user's immediate need.
       B2 candidates for the pilot building, map its windows from own site photos through D1, and run
       RLS-19 on the facade receivers. Report per window: facade, floor, rule, level, evidence,
       review state. Compare against the auto-grid level at the same spot and record the
-      difference (the own-facade term from B1 should be visible in it). Photos and the resulting
-      project stay outside the tree.
+      difference (the own-facade term of Priority 1 §1.9 should be visible in it). Photos and
+      the resulting project stay outside the tree.
 - [ ] **F2 Licence-safe fixture**: a synthetic building in `testdata/` that has the pilot's shape
       class (closed block-perimeter row house, street facade and courtyard facade, four to five
       floors) but invented dimensions. Use it for golden tests of B2 IDs and positions, the C1
-      placement rules, the D1 homography, and the B1 exclusion. It must carry nothing from the
-      real photos.
+      placement rules, the D1 homography, and the §1.9 own-facade exclusion. It must carry
+      nothing from the real photos.
 - [ ] **F3 Document the workflow** in English and German, including what the evidence fields
       claim and what they do not: a confirmed window says a person checked it against an image,
       not that the room behind it is _schutzbedürftig_ in the legal sense.
