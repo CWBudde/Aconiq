@@ -3068,8 +3068,11 @@ change to any of them amends the ADR first.
       `aconiq mcp` already speaks stdio, and `.noise/logs/mcp-audit.jsonl` already records
       `save_model`, `start_run` and `cancel_run` (`internal/mcpserver/audit.go`); `delete_run` and
       `import_terrain` must record into it as they land (ADR-002, Security policy 7).
-- [ ] Cover tool schemas and input validation with automated tests
-- [ ] Document setup, available tools and example prompts in the README
+
+Live constraint (#132): every tool's input schema is pinned in
+`internal/mcpserver/testdata/tools-*.golden.json`, and every tool that takes arguments has its
+refusals in `TestEveryToolRefusesArgumentsItsSchemaDoesNot`, which fails when a listed tool is
+missing from it. A new tool joins both, and the README's MCP Server section lists it.
 
 ## Phase SL-2 — AVV Baulärm assessment ([#112](https://github.com/CWBudde/Aconiq/issues/112))
 
