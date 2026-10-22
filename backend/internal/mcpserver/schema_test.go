@@ -98,13 +98,17 @@ func refusedArguments() map[string]map[string]map[string]any {
 	cancelRefusals["empty run_id"] = map[string]any{"run_id": ""}
 
 	runRequestRefusals := map[string]map[string]any{
-		"missing standard_id":      without(runRequest, "standard_id"),
-		"missing receiver_mode":    without(runRequest, "receiver_mode"),
-		"empty standard_version":   with(runRequest, "standard_version", ""),
-		"empty scenario_id":        with(runRequest, "scenario_id", ""),
-		"experimental as a string": with(runRequest, "experimental", "yes"),
-		"numeric parameter value":  with(runRequest, "params", map[string]any{"grid_resolution_m": 10}),
-		"a model path":             with(runRequest, "model_path", "/tmp/model.geojson"),
+		"missing standard_id":           without(runRequest, "standard_id"),
+		"missing receiver_mode":         without(runRequest, "receiver_mode"),
+		"empty standard_version":        with(runRequest, "standard_version", ""),
+		"empty scenario_id":             with(runRequest, "scenario_id", ""),
+		"experimental as a string":      with(runRequest, "experimental", "yes"),
+		"allow_unconfirmed as a string": with(runRequest, "allow_unconfirmed", "yes"),
+		"facade_buildings as a string":  with(runRequest, "facade_buildings", "b1"),
+		"facade_spacing_m as text":      with(runRequest, "facade_spacing_m", "5"),
+		"facade_include_courtyard as 1": with(runRequest, "facade_include_courtyard", 1),
+		"numeric parameter value":       with(runRequest, "params", map[string]any{"grid_resolution_m": 10}),
+		"a model path":                  with(runRequest, "model_path", "/tmp/model.geojson"),
 	}
 
 	return map[string]map[string]map[string]any{

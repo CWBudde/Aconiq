@@ -9,9 +9,34 @@
     "input_schema": {
       "additionalProperties": false,
       "properties": {
+        "allow_unconfirmed": {
+          "description": "Opt in to a normative run over facade receivers that are still proposed or whose slab height is assumed. Without it such a run is refused; with it their counts are recorded in the run's provenance and report.",
+          "type": "boolean"
+        },
         "experimental": {
           "description": "Opt in to a scaffold-tier standard. A scaffold is not an implementation of the method its name suggests; without this its run is refused.",
           "type": "boolean"
+        },
+        "facade_buildings": {
+          "description": "With receiver_mode facade: the building feature ids, from get_model, whose facades carry receivers.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "facade_include_courtyard": {
+          "description": "With receiver_mode facade: also place receivers on courtyard facades.",
+          "type": "boolean"
+        },
+        "facade_spacing_m": {
+          "description": "With receiver_mode facade: the station spacing along each facade in metres. Required there; there is no default.",
+          "type": [
+            "null",
+            "number"
+          ]
         },
         "params": {
           "additionalProperties": {
@@ -21,7 +46,7 @@
           "type": "object"
         },
         "receiver_mode": {
-          "description": "auto-grid (a receiver grid over the sources or the calc-area) or custom (the model's receiver features).",
+          "description": "auto-grid (a receiver grid over the sources or the calc-area), custom (the model's receiver features) or facade (receivers generated on the facades of facade_buildings; rls19-road and schall03 only).",
           "minLength": 1,
           "type": "string"
         },
