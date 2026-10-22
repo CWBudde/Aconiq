@@ -408,7 +408,7 @@ export interface components {
              * @default false
              */
             experimental?: boolean;
-            /** @description Model building feature ids that carry facade receivers. Required with receiver_mode facade. */
+            /** @description Buildings that carry facade receivers, each a model building feature id or "<street> <number>" as its addr:street and addr:housenumber spell it (compared without case and extra spaces; an address shared by two buildings is refused). Required with receiver_mode facade. */
             facade_buildings?: string[];
             /**
              * @description Also place facade receivers on courtyard (inner-ring) facades.

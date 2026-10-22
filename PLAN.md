@@ -2793,9 +2793,13 @@ Lärm and the 16. BImSchV are amtliche Werke and may be quoted:
 buildings (`geo.FacadeReceiverSet`: `rls19-facade` and `schall03-facade`), and a custom receiver
 may carry the same facade link. The run refuses unconfirmed points in a normative run without
 `--allow-unconfirmed`, and the receiver table names each row's building, facade and storey.
-Propagation does not read the link yet (Priority 1 §1.9). The OSM
-import keeps `building:levels` but no `addr:*` tags, so a building can't be found by its address
-in a model yet. LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
+Propagation does not read the link yet (Priority 1 §1.9). `--facade-building` (and the API's
+and MCP's `facade_buildings`) also takes `"<street> <number>"`, matched exactly, without case and
+extra spaces, against `addr:street` / `addr:housenumber`, which the OSM import keeps and the
+CityGML import reads from `bldg:address` (a part inherits its building's; in the one LGLN tile
+checked, 994 of 2282 buildings carry a street and number); an address two buildings share is
+refused (#133). Validation measures a facade key's move in metres on a geographic project too
+(#133). LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
 (`bldg:Opening`), and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
 as it must be.
@@ -2846,30 +2850,25 @@ as it must be.
 Deterministic, no imagery. This is useful by itself (a facade level map per building), and it
 produces the candidates Phase D confirms or rejects.
 
-- [ ] **B4 Address lookup.** Keep `addr:street` / `addr:housenumber` on OSM buildings, and the
-      LGLN address where LoD2 carries one, so `--facade-building "<street> <number>"` (or the API's
-      `facade_buildings`) selects the pilot building without a hand-picked ID. Today the flag
-      takes model feature ids only.
 - [ ] **B6 Facade mode in browser mode.** The run dialog offers `auto-grid` and `custom` only, and
       `browser-backend.ts` has no third branch, so a browser-mode project cannot place facade
       receivers. The generator stays in Go: the WASM kernel exposes it, the frontend does not
       reimplement it, and the rows it builds carry the same `placement_rule` / `facade` /
-      `storey` as `results.ReceiverRecord`.
+      `storey` as `results.ReceiverRecord`. The browser OSM import keeps no `addr:*` tags yet, so
+      selecting a building by address there needs them too.
 - [ ] **B7 Re-attach facade receivers.** A `receiver.facade.unresolved` or `.moved` finding blocks a
       normative run and `--allow-unconfirmed` does not lift it, but nothing re-attaches such a
       point yet: the explicit, reviewed step (CLI or UI) that proposes matches by footprint overlap
       and the `from` / `to` endpoints and sets the matched points to `proposed`
       (`facade-receivers.md`, Decision: what keys a building). Section 7 question 8, whether
       SoundPLAN-imported receivers get a facade link, belongs here.
-- [ ] **B8 The 1 mm `moved` tolerance is in project-CRS units.** `aconiq run` validates the
-      model again in the compute CRS, so its refusal is right, but `aconiq import` and
-      `aconiq validate` on a geographic project compare `from` / `to` in degrees, where 1e-3 is
-      about 100 m. Compare in a projected CRS there too.
-- [ ] **B9 A zero `height` or `building:levels` gives a 0 m building.** `osmimport` accepts any
-      parseable value of either tag, so `0` (or a negative) yields a `height_m` that model
-      validation refuses (`building` needs `height_m > 0`); the browser import requires > 0 and
-      falls through to the next rule. Match the browser. `aconiq run` already reads levels ≤ 0
-      as unknown storeys.
+- [ ] **B10 Say which CRS a facade key's indices are canonical in.** `part` / `ring` / `edge`
+      depend on the CRS the footprint is canonicalised in: the canonical start vertex is a
+      lexicographic minimum, and grid convergence can move it, so an edge index taken in degrees
+      can name another edge in UTM. The run and validation canonicalise in the compute CRS, but
+      `facade-receivers.md` (Data model) says only that `from` / `to` are in the project CRS.
+      State it there, and check whether a footprint with two vertices tied on x in the compute
+      CRS can renumber its edges after a CRS round trip (canonicalisation compares exactly).
 
 ### Phase C — Windows as model features
 

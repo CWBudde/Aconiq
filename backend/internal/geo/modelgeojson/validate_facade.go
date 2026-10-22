@@ -1,6 +1,7 @@
 package modelgeojson
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -27,12 +28,15 @@ const (
 	CodeReceiverFacadeMoved      = "receiver.facade.moved"
 )
 
-// FacadeMoveToleranceM is how far, in metres of the project CRS, a facade
-// key's stored from / to may lie from the endpoints of the canonical edge it
-// names before the receiver counts as moved. 1 mm is far above what a CRS
-// round trip does to a coordinate (~1e-9 m) and far below any real edit of a
-// footprint, so neither a reprojection nor a re-import of the same building
-// trips it, and any change a person made does.
+// FacadeMoveToleranceM is how far, in metres, a facade key's stored from / to
+// may lie from the endpoints of the canonical edge it names before the
+// receiver counts as moved. The metres are those of the project CRS when it
+// is projected, and of the compute CRS `aconiq run` would project a
+// geographic project into otherwise (see metricFrame), so the check never
+// compares in degrees. 1 mm is far above what a CRS round trip does to a
+// coordinate (~1e-9 m) and far below any real edit of a footprint, so neither
+// a reprojection nor a re-import of the same building trips it, and any change
+// a person made does.
 const FacadeMoveToleranceM = 0.001
 
 // maxFacadeIndex bounds the integers a facade property may carry. Nothing
@@ -88,8 +92,15 @@ func (t *facadeTracker) observe(feature Feature, featureID string, report *Valid
 }
 
 // resolve reports, in feature order, every key that names no building or no
-// longer names the edge it was placed on.
-func (t *facadeTracker) resolve(report *ValidationReport) {
+// longer names the edge it was placed on. The model is only read when there is
+// a key to check, and then only for its CRS and extent.
+func (t *facadeTracker) resolve(model Model, report *ValidationReport) {
+	if len(t.pending) == 0 {
+		return
+	}
+
+	frame := newMetricFrame(model)
+
 	for _, p := range t.pending {
 		building, ok := t.buildings[p.key.BuildingRef]
 		if !ok {
@@ -101,7 +112,7 @@ func (t *facadeTracker) resolve(report *ValidationReport) {
 			continue
 		}
 
-		reason, moved := facadeMoved(building, p.key)
+		reason, moved := frame.facadeMoved(building, p.key)
 		if moved {
 			addWarning(report, CodeReceiverFacadeMoved, p.receiverID, fmt.Sprintf(
 				"receiver %q: facade (part %d, ring %d, edge %d) of building %q %s",
@@ -109,6 +120,112 @@ func (t *facadeTracker) resolve(report *ValidationReport) {
 			))
 		}
 	}
+}
+
+// metricFrame is where a facade key is measured against its edge.
+//
+// A model in a projected CRS, or in one whose kind cannot be determined, is
+// measured as stored, the way `aconiq run` leaves it unprojected. A
+// geographic model is measured in the compute CRS the run would project it
+// into, chosen by the same rule (geo.ComputeCRSForGeographic at the centre of
+// Model.Bounds), so an import or `aconiq validate` reports the receivers the
+// run refuses, and no others.
+//
+// Only the buildings a key names and the keys themselves are projected, not
+// the whole model: Validate runs on every import and save, and a city import
+// carries far more buildings than facade receivers. Each coordinate goes
+// through the transform Reproject applies, so the canonical footprint, and
+// with it every part, ring and edge index, is the one the run builds.
+type metricFrame struct {
+	// pipeline projects into the compute CRS; nil measures as stored.
+	pipeline *geo.TransformPipeline
+	crsID    string
+	// failure, when set, is why a geographic model has no metric frame. Every
+	// key is then reported as one that cannot be checked.
+	failure string
+	// buildings caches each projected building by the building_ref that
+	// named it, the id facadeTracker.buildings files it under.
+	buildings map[string]projectedBuilding
+}
+
+type projectedBuilding struct {
+	feature Feature
+	err     error
+}
+
+func newMetricFrame(model Model) metricFrame {
+	source, err := geo.ParseCRS(model.ProjectCRS)
+	if err != nil || source.Kind != geo.CRSKindGeographic {
+		return metricFrame{}
+	}
+
+	bounds, ok := model.Bounds()
+	if !ok {
+		return metricFrame{failure: "the model has no finite extent to choose a metric CRS from"}
+	}
+
+	target, err := geo.ComputeCRSForGeographic((bounds.MinX+bounds.MaxX)/2, (bounds.MinY+bounds.MaxY)/2)
+	if err != nil {
+		return metricFrame{failure: fmt.Sprintf("%s has no metric CRS to measure in (%v)", source.ID, err)}
+	}
+
+	pipeline, err := geo.BuildTransformPipeline(target, source)
+	if err != nil {
+		return metricFrame{failure: fmt.Sprintf("%s cannot be projected into %s (%v)", source.ID, target.ID, err)}
+	}
+
+	return metricFrame{pipeline: &pipeline, crsID: target.ID, buildings: make(map[string]projectedBuilding)}
+}
+
+// facadeMoved is facadeMoved measured in the frame. A key that cannot be
+// projected cannot be checked, which is reported the way an unreadable
+// footprint is.
+func (f metricFrame) facadeMoved(building Feature, key geo.FacadeKey) (string, bool) {
+	if f.failure != "" {
+		return "cannot be checked: " + f.failure, true
+	}
+
+	if f.pipeline == nil {
+		return facadeMoved(building, key)
+	}
+
+	projected, err := f.building(key.BuildingRef, building)
+	if err != nil {
+		return fmt.Sprintf("cannot be checked: the building's footprint cannot be projected into %s (%v)", f.crsID, err), true
+	}
+
+	from, fromErr := f.pipeline.ApplyPoint(key.From)
+	to, toErr := f.pipeline.ApplyPoint(key.To)
+
+	if err := errors.Join(fromErr, toErr); err != nil {
+		return fmt.Sprintf("cannot be checked: the stored from / to cannot be projected into %s (%v)", f.crsID, err), true
+	}
+
+	key.From, key.To = from, to
+
+	reason, moved := facadeMoved(projected, key)
+	if moved {
+		reason += " (measured in " + f.crsID + ")"
+	}
+
+	return reason, moved
+}
+
+func (f metricFrame) building(ref string, building Feature) (Feature, error) {
+	if cached, ok := f.buildings[ref]; ok {
+		return cached.feature, cached.err
+	}
+
+	projected := building
+
+	coords, err := transformCoordinates(building.Coordinates, f.pipeline)
+	if err == nil {
+		projected.Coordinates = coords
+	}
+
+	f.buildings[ref] = projectedBuilding{feature: projected, err: err}
+
+	return projected, err
 }
 
 // facadeMoved compares a key against its building's canonical footprint, and

@@ -58,7 +58,7 @@ type runRequestInput struct {
 	Params          map[string]string `json:"params,omitempty"       jsonschema:"Parameters of the profile by name, each value as a string. Omitted ones take the default list_standards declares; provenance.json records the values the run resolved."`
 	Experimental    bool              `json:"experimental,omitempty" jsonschema:"Opt in to a scaffold-tier standard. A scaffold is not an implementation of the method its name suggests; without this its run is refused."`
 
-	FacadeBuildings        []string `json:"facade_buildings,omitempty"         jsonschema:"With receiver_mode facade: the building feature ids, from get_model, whose facades carry receivers."`
+	FacadeBuildings        []string `json:"facade_buildings,omitempty"         jsonschema:"With receiver_mode facade: the buildings whose facades carry receivers, each a building feature id from get_model or \"<street> <number>\" as its addr:street and addr:housenumber spell it."`
 	FacadeSpacingM         *float64 `json:"facade_spacing_m,omitempty"         jsonschema:"With receiver_mode facade: the station spacing along each facade in metres. Required there; there is no default."`
 	FacadeIncludeCourtyard bool     `json:"facade_include_courtyard,omitempty" jsonschema:"With receiver_mode facade: also place receivers on courtyard facades."`
 	AllowUnconfirmed       bool     `json:"allow_unconfirmed,omitempty"        jsonschema:"Opt in to a normative run over facade receivers that are still proposed or whose slab height is assumed. Without it such a run is refused; with it their counts are recorded in the run's provenance and report."`
