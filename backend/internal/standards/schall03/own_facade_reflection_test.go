@@ -2,11 +2,11 @@ package schall03_test
 
 import (
 	"math"
+	"runtime"
 	"slices"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
-	"github.com/aconiq/backend/internal/qa/golden"
 	"github.com/aconiq/backend/internal/standards/schall03"
 )
 
@@ -48,8 +48,8 @@ import (
 // solved point differently from amd64. On the facade the last leg of the
 // own-facade image has zero length, FresnelCheck refuses dOR <= 0, and whether
 // dOR comes out 0 or ~1e-15 m decides whether the image is counted: amd64 drops
-// almost all of it, arm64 keeps part. That is a defect of its own (§1.9), and
-// the on-facade wall values are pinned to amd64's result, the one CI checks.
+// almost all of it, arm64 keeps part. That is a defect of its own (§1.9); the
+// on-facade wall values are pinned per architecture, CI checking both.
 
 const (
 	ownFacadeY      = 20.0
@@ -142,7 +142,8 @@ func assertPinned(t *testing.T, what string, got, measured, toleranceDB float64)
 
 	t.Logf("%s: %+.4f dB (pinned at %+.3f)", what, got, measured)
 
-	if math.Abs(got-measured) > toleranceDB {
+	// Written so a NaN or an infinity fails: NaN compares false both ways.
+	if math.IsInf(got, 0) || !(math.Abs(got-measured) <= toleranceDB) {
 		t.Errorf("%s = %+.4f dB, pinned at %+.3f ± %.3f dB: the own-facade behaviour changed; "+
 			"if §1.9 was fixed, flip this test", what, got, measured, toleranceDB)
 	}
@@ -218,19 +219,26 @@ func TestOwnFacade_Schall03_OnTheFacade(t *testing.T) {
 		facadeLevel(t, receiver, track, nil, footprint)-free, -19.075, pinnedToleranceDB)
 
 	// With the walls, the own-facade image's last leg has zero length and
-	// rounding decides whether it is counted (see the file comment): these
-	// two hold amd64's result.
+	// rounding decides whether it is counted (see the file comment), so the
+	// two values are pinned per architecture.
 	withWalls := facadeLevel(t, receiver, track, walls, footprint) - free
 	oneWall := facadeLevel(t, receiver, track, []schall03.ReflectingWall{walls[0]}, nil) - free
 
-	if golden.SkipAMD64Bits(t) {
-		t.Logf("walls and footprint: %+.4f dB, one wall: %+.4f dB on this machine", withWalls, oneWall)
+	var wantWithWalls, wantOneWall float64
+
+	switch runtime.GOARCH {
+	case "amd64":
+		wantWithWalls, wantOneWall = -8.471, 0
+	case "arm64":
+		wantWithWalls, wantOneWall = -3.110, 1.047
+	default:
+		t.Logf("walls and footprint: %+.4f dB, one wall: %+.4f dB; not pinned on %s", withWalls, oneWall, runtime.GOARCH)
 
 		return
 	}
 
-	assertPinned(t, "walls and footprint, receiver on the facade, over free field", withWalls, -8.471, pinnedToleranceDB)
-	assertPinned(t, "own facade as one wall, receiver on it, over free field", oneWall, 0, pinnedToleranceDB)
+	assertPinned(t, "walls and footprint, receiver on the facade, over free field", withWalls, wantWithWalls, pinnedToleranceDB)
+	assertPinned(t, "own facade as one wall, receiver on it, over free field", oneWall, wantOneWall, pinnedToleranceDB)
 }
 
 // A canyon: the own facade on y = 20, an opposite wall on y = −20, the track

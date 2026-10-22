@@ -95,7 +95,8 @@ func assertPinned(t *testing.T, what string, got, measured float64) {
 
 	t.Logf("%s: %+.4f dB (pinned at %+.3f)", what, got, measured)
 
-	if math.Abs(got-measured) > pinnedToleranceDB {
+	// Written so a NaN or an infinity fails: NaN compares false both ways.
+	if math.IsInf(got, 0) || !(math.Abs(got-measured) <= pinnedToleranceDB) {
 		t.Errorf("%s = %+.4f dB, pinned at %+.3f ± %.3f dB: the own-facade behaviour changed; "+
 			"if §1.9 was fixed, flip this test", what, got, measured, pinnedToleranceDB)
 	}
