@@ -39,6 +39,14 @@ var nonGeometricPlacementRules = []string{
 	"talaerm-buildable-edge",
 }
 
+// IsPlacementRule reports whether rule is one of Section 4's identifiers,
+// geometric or not. The comparison is exact, as Validate's is.
+func IsPlacementRule(rule string) bool {
+	_, geometric := geometricPlacementOffsetM[rule]
+
+	return geometric || slices.Contains(nonGeometricPlacementRules, rule)
+}
+
 // ErrPlacementRuleNotGeometric refuses a known placement rule that cannot be
 // applied to a footprint alone.
 var ErrPlacementRuleNotGeometric = errors.New("placement rule needs a window or an area, not a footprint")
@@ -53,9 +61,15 @@ const (
 	SlabHeightAssumed  = "assumed"
 )
 
-// ReviewStatusProposed is the review state of every receiver placed from
-// geometry alone: a person has not checked it against the building.
-const ReviewStatusProposed = "proposed"
+// Review states of a facade receiver (facade-receivers.md, Receiver
+// properties). ReviewStatusProposed is the state of every receiver placed from
+// geometry alone: a person has not checked it against the building. A
+// confirmed point has been checked; a rejected one never enters a run.
+const (
+	ReviewStatusProposed  = "proposed"
+	ReviewStatusConfirmed = "confirmed"
+	ReviewStatusRejected  = "rejected"
+)
 
 // StoreyHeightFallbackM is the storey height used when a building's height
 // says nothing about its storeys. It is the OSM importer's metres per level,
@@ -474,6 +488,32 @@ func storeyHeights(b FacadeBuilding) (storeys, error) {
 	}
 
 	return storeys{z: z, source: source}, nil
+}
+
+// FacadeEdge returns the endpoints of edge `edge` of ring `ring` of part
+// `part` in the canonical footprint of polygons (PointInPolygon's ring
+// format, as FacadeBuilding.Polygons), the indices a FacadeKey stores. It is
+// the edge Generate would stamp on a receiver with that key, so comparing the
+// result with the key's From and To tells whether the building moved since.
+// The edge's end is the ring's next vertex, wrapping to its first. ok is false
+// when an index is out of range or the footprint cannot be canonicalised.
+func FacadeEdge(polygons [][][]Point2D, part, ring, edge int) (from, to Point2D, ok bool) {
+	parts, err := canonicalFootprint(polygons)
+	if err != nil || part < 0 || part >= len(parts) {
+		return Point2D{}, Point2D{}, false
+	}
+
+	rings := parts[part]
+	if ring < 0 || ring >= len(rings) {
+		return Point2D{}, Point2D{}, false
+	}
+
+	vertices := rings[ring]
+	if edge < 0 || edge >= len(vertices) {
+		return Point2D{}, Point2D{}, false
+	}
+
+	return vertices[edge], vertices[(edge+1)%len(vertices)], true
 }
 
 // canonicalFootprint returns a footprint whose part, ring and edge indices do

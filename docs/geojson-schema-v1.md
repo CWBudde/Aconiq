@@ -107,6 +107,69 @@ a single receiver at the project's default receiver height carrying
 `soundplan_floor: 0`, and the import warns naming the point. Such a receiver has
 no usable key and will not match a reference row.
 
+#### Facade receivers
+
+A facade Immissionsort is an ordinary `receiver` feature that also says which
+building edge and storey it stands on and why it has its height. The properties
+and the facade key are specified in
+[`docs/research/facade-receivers.md`](research/facade-receivers.md), section
+Data model. Each one is optional and is checked only where present; a property
+written as `null` counts as absent, so a receiver carrying none of them is
+validated exactly as before.
+
+| property             | shape                                                    |
+| -------------------- | -------------------------------------------------------- |
+| `placement_rule`     | A placement rule id, listed below.                       |
+| `facade`             | The facade key, an object; see below.                    |
+| `storey`             | Integer `>= 0`; 0 is the ground floor.                   |
+| `station_u_m`        | Finite number `>= 0`: metres along the edge from `from`. |
+| `slab_height_source` | `measured`, `levels` or `assumed`.                       |
+| `review_status`      | `proposed`, `confirmed` or `rejected`.                   |
+
+The placement rule ids are `rls19-facade`, `schall03-facade`, `rls19-balcony`,
+`rls19-outdoor-area`, `schall03-outdoor-area`, `talaerm-window` and
+`talaerm-buildable-edge`. The facade key is
+
+```json
+"facade": {
+  "building_ref": "b1",
+  "part": 0,
+  "ring": 0,
+  "edge": 3,
+  "from": [500010.0, 5800020.0],
+  "to": [500018.5, 5800022.5]
+}
+```
+
+`building_ref` is the `id` of a `building` feature. `part`, `ring` and `edge`
+are integers `>= 0` indexing that building's **canonical** footprint, so they do
+not depend on the vertex order, orientation, or part and hole order the building
+was written in. `from` / `to` are the edge's endpoints in the project CRS, kept
+as a check; they must be `[x, y]` arrays of two numbers, the only spelling a
+reprojection moves.
+
+| Code                         | Level   | Raised when                                                       |
+| ---------------------------- | ------- | ----------------------------------------------------------------- |
+| `receiver.facade.invalid`    | error   | A property above does not have its shape; one issue per property. |
+| `receiver.facade.unresolved` | warning | `facade.building_ref` names no `building` feature in the model.   |
+| `receiver.facade.moved`      | warning | The building exists, but the key no longer names its edge.        |
+
+`receiver.facade.invalid` also refuses a `building_ref` of the form
+`citygml-building-<n>`. That is the CityGML import's fallback for a building
+without a `gml:id`, an index into the file that does not survive a re-import,
+so such a building cannot carry facade receivers until it has a stable id.
+
+`receiver.facade.moved` is raised when the building's footprint cannot be read,
+has no edge at (`part`, `ring`, `edge`), or has one whose endpoints lie more
+than 1 mm (Euclidean) from the stored `from` / `to`. 1 mm is far above what a
+CRS round trip does to a coordinate and far below any real edit of a footprint.
+
+The last two are warnings on purpose. Both describe a receiver whose building
+changed under it, which is what re-importing a newer building source does, and
+that import has to succeed. A normative run refuses them instead; re-attaching
+such a receiver to a building is an explicit, reviewed step, never a side
+effect of validation.
+
 ### `calc-area` Features
 
 - Geometry must be `Polygon` — **not** `MultiPolygon`. A disjoint multi-part
