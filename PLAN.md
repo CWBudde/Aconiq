@@ -2783,33 +2783,6 @@ as it must be.
       Nothing the city publishes answers it; ask its Servicecenter Geoinformation whether the
       collections are CC BY 4.0 as the viewer says, and whether an access path exists that gives
       an image id to cite or a file to hash. Until then it is look only.
-- [x] **A4 `data-handling.md` rows** for the A1 sources before any of them is used, as that
-      policy requires: LGLN and city DOP, CC BY-SA street-level imagery (pending the share-alike
-      question), site photos, client plans (covered by the customer rows).
-      (2026-10-22, #123) "Site and imagery evidence for facade Immissionsorte": seven rows, LGLN
-      and city DOP, Hannover 3D oblique, CC BY-SA street-level, Google, site photos and client
-      plans. Sending a site photo to a hosted vision model is a transmission, decided per
-      engagement.
-- [x] **A2 Placement rules per standard**, in `docs/research/facade-receivers.md`: the RLS-19 and
-      TA Lärm passages summarised above, the Schall 03 and 16. BImSchV equivalents, and the 5 cm vs
-      0.5 m offsets as **per-standard rules**, not one global `offset_m`. Settle what "Höhe der
-      Geschossdecke" means numerically when only `building:levels` is known.
-      (2026-10-22, #123) Seven `placement_rule` identifiers; the ceiling slab,
-      `z(n) = h_EG + (n + 1) · s`, with `s` per building from a height not derived from levels
-      and the importer's 3.0 m otherwise, recorded in `slab_height_source`. Still live: `h_EG`
-      defaults to 0, and the note's Section 7 questions (balconies, the extent of the own facade,
-      TA Lärm's own-facade practice, SoundPLAN receivers) bind B1–B3 and C1.
-- [x] **A3 Facade coordinate frame and data model.** A window is a rectangle in a facade's own
-      frame: `u` along the edge from its start vertex, `z` above ground, width and height. World
-      coordinates follow from it through one deterministic function in `internal/geo`. Specify
-      the GeoJSON v1 receiver properties, decide whether they are additive to schema v1 or need a
-      migration, and decide what keys a building so a facade survives re-import.
-      (2026-10-22, #123) "Data model (A3)" in `facade-receivers.md`. Additive, no migration. The
-      one property shape is `placement_rule`, `facade` (`building_ref`, `part`, `ring`, `edge`,
-      `from` / `to`), `storey`, `station_u_m`, `window`, `slab_height_source`, `evidence`,
-      `review_status`. Parts, holes and vertices are canonicalised before indexing. A building
-      is keyed by its feature `id`; a dangling or moved reference blocks a normative run, and
-      re-attachment is an explicit reviewed step.
 
 ### Phase B — Facade receivers from geometry alone
 
@@ -2830,32 +2803,40 @@ produces the candidates Phase D confirms or rejects.
 - [ ] **B2 Implement `FacadeReceiverSet`** in `internal/geo`. For each exterior edge of a selected
       building (and courtyard edges when `include_courtyard`): points at a fixed spacing along
       the facade, one per storey, offset outward along the edge normal by the placement rule's
-      distance. Each point carries the A3 properties: `placement_rule`, the `facade` key and
+      distance. Each point carries the data-model properties: `placement_rule`, the `facade` key and
       `storey`. IDs follow `(building_ref, part, ring, edge, station, storey)` in a fixed order,
       so the same building always yields the same IDs and the same `output_hash`; without `part`
       and `ring` a courtyard edge 0 collides with exterior edge 0. The outward normal must come
       from the ring's orientation, never from a test against the footprint: a point 5 cm from a
       facade is where `PointInPolygon` and its interior variant disagree. Two prerequisites from
-      A3: `propertyGeometries` gains a singleton-object form so `facade.from` / `to` reproject
+      the data model: `propertyGeometries` gains a singleton-object form so `facade.from` / `to` reproject
       (it only walks arrays of objects today), and `osmimport` records a levels-derived height
       as `height_source: levels`, without which `slab_height_source` cannot tell `measured` from
-      `levels`.
+      `levels`. Heights follow the slab rule of `facade-receivers.md` Section 5:
+      `z(n) = h_EG + (n + 1) · s`, `s` per building from a height not derived from levels and the
+      importer's 3.0 m otherwise, recorded in `slab_height_source`; `h_EG` defaults to 0. The key,
+      its canonicalisation and the receiver properties are that note's "Data model (A3)".
 - [ ] **B3 Wire it into `aconiq run`** as a receiver mode beside `custom` and the auto-grid, and into
       the receiver table, so a result row names its building, facade and storey. RLS-19 uses the
       facade link for the own-facade exclusion from B1. The run refuses `proposed` and
       assumed-height points without an opt-in flag, the same flag on CLI, API and MCP, and
-      stamps their count into `provenance.json`, `run-summary.json` and the report.
+      stamps their count into `provenance.json`, `run-summary.json` and the report. A receiver
+      whose `building_ref` no longer resolves, or whose `from` / `to` moved, blocks a normative
+      run; re-attachment is an explicit reviewed step (`facade-receivers.md`, Data model). The
+      note's Section 7 questions on the extent of the own facade, TA Lärm's own-facade practice
+      and SoundPLAN receivers are open here.
 - [ ] **B4 Address lookup.** Keep `addr:street` / `addr:housenumber` on OSM buildings, and the
       LGLN address where LoD2 carries one, so `--buildings "<street> <number>"` (or an API field)
       selects the pilot building without a hand-picked ID.
 
 ### Phase C — Windows as model features
 
-- [ ] **C1 A window list per facade**, imported from JSON/CSV in the A3 frame, and from CityGML LoD3
+- [ ] **C1 A window list per facade**, imported from JSON/CSV in the facade frame, and from CityGML LoD3
       `bldg:Opening` where a client supplies LoD3. A window marked as belonging to a _schutzbedürftiger
       Raum_ produces its Immissionsort through the placement rule. Under TA Lärm that is the window
       centre 0.5 m out. Under RLS-19 it is the floor's slab height, 5 cm out, at the window's `u`.
-      The other windows are kept as context.
+      The other windows are kept as context. Balconies and loggias wait on `facade-receivers.md`
+      Section 7, questions 2 and 3.
 - [ ] **C2 Facade elevation view in the frontend**: pick a building, unfold a facade to its
       elevation (edge length × building height, floors drawn from `building:levels`), and draw,
       move or delete window rectangles. The conversion stays in the Go kernel, behind a WASM
@@ -2874,7 +2855,9 @@ produces the candidates Phase D confirms or rejects.
       on `aconiq mcp` (SL-1) reads the image on the client side, proposes window rectangles in
       the facade frame, and writes them as `review_status: proposed` through a write tool under
       `--allow-writes`, recorded in `.noise/logs/mcp-audit.jsonl` (ADR-002). Confirmation stays a
-      human act in C2. The tool schema rejects a proposal without `evidence`.
+      human act in C2. The tool schema rejects a proposal without `evidence`. Sending a site
+      photo to a hosted vision model is a transmission of personal data, decided per engagement
+      (`docs/policies/data-handling.md`, site and imagery evidence).
 - [ ] **D3 Cross-check against the geometry**: flag a window outside its facade's extent, a floor
       count that disagrees with `building:levels`, or a facade with windows in the photo but no
       candidate from B2. These are review flags, not automatic corrections.
@@ -2886,7 +2869,7 @@ windows, which are the user's immediate need.
 
 - [ ] **E1 Road sources**: overlay OSM road lines on an orthophoto in the map, and let the user
       split roads into Fahrstreifen and correct lane count and position, with evidence recorded
-      as in A3. RLS-19 computes per Fahrstreifen, and OSM's `lanes=` is often missing in Linden.
+      as in the data model. RLS-19 computes per Fahrstreifen, and OSM's `lanes=` is often missing in Linden.
 - [ ] **E2 Parking areas and rooftop plant**: draw RLS-19 Parkplätze and ISO 9613-2 / TA Lärm point
       sources (Rückkühler, Lüftungsanlagen) from the orthophoto, with `review_status`, so a
       source someone mapped from imagery is distinguishable from one taken from plans.
