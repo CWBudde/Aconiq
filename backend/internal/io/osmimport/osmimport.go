@@ -5,6 +5,7 @@ package osmimport
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -297,12 +298,17 @@ func setHeight(props map[string]any, h height) {
 // a tag, but the 3 m a storey is not, so a levels-derived height is an
 // estimate. A reader that divides it again — a facade receiver placing one
 // point per storey — has to be able to tell it from a tagged height.
+//
+// A tag that parses but is zero, negative or not finite is no height at all:
+// taking it gave a building model validation refuses (height_m must be > 0),
+// so it falls through to the next step, as the browser import's
+// osmBuildingHeight does.
 func buildingHeight(tags map[string]string) height {
-	if h, ok := parseHeightTag(tags["height"]); ok {
+	if h, ok := positive(parseHeightTag(tags["height"])); ok {
 		return height{meters: h}
 	}
 
-	if levels, ok := parseTagFloat(tags["building:levels"]); ok {
+	if levels, ok := positive(parseTagFloat(tags["building:levels"])); ok {
 		return height{meters: levels * metersPerLevel, source: heightSourceLevels}
 	}
 
@@ -311,13 +317,23 @@ func buildingHeight(tags map[string]string) height {
 
 // barrierHeight tries the height tag; if not found returns 2.0 m, which is a
 // reasonable default for walls and fences — marked assumed for the same reason
-// a building's default is.
+// a building's default is. A non-positive tag is ignored, as for a building.
 func barrierHeight(tags map[string]string) height {
-	if h, ok := parseHeightTag(tags["height"]); ok {
+	if h, ok := positive(parseHeightTag(tags["height"])); ok {
 		return height{meters: h}
 	}
 
 	return height{meters: defaultBarrierHeightM, source: heightSourceAssumed}
+}
+
+// positive passes on a parsed value only when it is a usable height or storey
+// count: finite and greater than zero.
+func positive(v float64, ok bool) (float64, bool) {
+	if !ok || !(v > 0) || math.IsInf(v, 1) {
+		return 0, false
+	}
+
+	return v, true
 }
 
 // parseHeightTag strips " m" and "m" suffix, then parses as float64.

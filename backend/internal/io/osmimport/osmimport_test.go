@@ -370,6 +370,42 @@ func TestBuildingHeight(t *testing.T) {
 	})
 }
 
+// A tag that parses but is not a positive, finite number says nothing about
+// the building. Taking it gave a 0 m (or negative) building that model
+// validation refuses, which made the whole import unsaveable. It falls
+// through to the next rule instead, as the browser import does
+// (osmBuildingHeight in frontend/src/api/browser-backend.ts).
+func TestBuildingHeightIgnoresANonPositiveTag(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		tags   map[string]string
+		meters float64
+		source string
+	}{
+		{"zero height falls through to levels", map[string]string{"height": "0", "building:levels": "4"}, 12, heightSourceLevels},
+		{"zero metre height falls through to levels", map[string]string{"height": "0 m", "building:levels": "2"}, 6, heightSourceLevels},
+		{"negative height falls through to the default", map[string]string{"height": "-3"}, defaultBuildingHeightM, heightSourceAssumed},
+		{"infinite height falls through to the default", map[string]string{"height": "Inf"}, defaultBuildingHeightM, heightSourceAssumed},
+		{"zero levels fall through to the default", map[string]string{"building:levels": "0"}, defaultBuildingHeightM, heightSourceAssumed},
+		{"negative levels fall through to the default", map[string]string{"building:levels": "-1"}, defaultBuildingHeightM, heightSourceAssumed},
+		{"NaN levels fall through to the default", map[string]string{"building:levels": "NaN"}, defaultBuildingHeightM, heightSourceAssumed},
+		{"zero height and zero levels give the default", map[string]string{"height": "0", "building:levels": "0"}, defaultBuildingHeightM, heightSourceAssumed},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := buildingHeight(tc.tags)
+			if h.meters != tc.meters || h.source != tc.source {
+				t.Errorf("buildingHeight(%v) = %+v, want %g m with source %q", tc.tags, h, tc.meters, tc.source)
+			}
+		})
+	}
+}
+
 func TestBarrierHeight(t *testing.T) {
 	t.Parallel()
 
@@ -386,6 +422,17 @@ func TestBarrierHeight(t *testing.T) {
 		t.Parallel()
 
 		h := barrierHeight(map[string]string{"barrier": "wall"})
+		if h.meters != defaultBarrierHeightM || h.source != heightSourceAssumed {
+			t.Errorf("expected an assumed %g, got %+v", defaultBarrierHeightM, h)
+		}
+	})
+
+	// A barrier needs height_m > 0 as a building does, so a zero tag is
+	// no height at all.
+	t.Run("assumed 2m when the tag is zero", func(t *testing.T) {
+		t.Parallel()
+
+		h := barrierHeight(map[string]string{"barrier": "wall", "height": "0"})
 		if h.meters != defaultBarrierHeightM || h.source != heightSourceAssumed {
 			t.Errorf("expected an assumed %g, got %+v", defaultBarrierHeightM, h)
 		}
