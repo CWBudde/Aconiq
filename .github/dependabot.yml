@@ -11,9 +11,15 @@ version: 2
 #
 # Monthly and grouped into a single pull request, because the whole point is one
 # small, reviewable bump rather than a stream of them.
+#
+# `/` covers `.github/workflows` only; the composite actions under
+# `.github/actions/` pin actions of their own (wasm-kernel pins setup-go) and are
+# scanned only when listed, hence the glob.
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: monthly
     groups:
