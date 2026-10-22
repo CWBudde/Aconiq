@@ -266,7 +266,7 @@ describe("overpassWayToFeature", () => {
     { lon: 7, lat: 50 },
   ];
 
-  it("reads building:levels when the way carries no height tag", () => {
+  it("reads building:levels when the way carries no height tag, and says so", () => {
     const feature = overpassWayToFeature({
       type: "way",
       id: 43,
@@ -275,7 +275,9 @@ describe("overpassWayToFeature", () => {
     });
 
     expect(feature?.properties["height_m"]).toBe(12);
-    expect(feature?.properties["height_source"]).toBeUndefined();
+    // Facade receivers place one point per storey from this, so a
+    // levels-derived height must not read as a measured one.
+    expect(feature?.properties["height_source"]).toBe("levels");
   });
 
   it("marks an assumed building height rather than passing it off as read", () => {

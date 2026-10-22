@@ -455,18 +455,15 @@ values:
 - `assumed` — the height on this feature is the importer's assumption and
   nothing else.
 
-`aconiq import --from-osm` sets `levels` on
+`aconiq import --from-osm` and the browser's OSM import both set `levels` on
 
 - a **building** whose way carries `building:levels` but no parseable `height`.
 
-`aconiq import --from-osm` and the browser's OSM import both set `assumed` on
+They both set `assumed` on
 
 - a **building** whose way carries neither `height` nor `building:levels`, and
 - a **barrier** (wall or fence) with no `height` tag, which has always been
   assumed to be 2 m — silently, until this property existed.
-
-The browser's OSM import does not write `levels` yet: a levels-derived building
-it imports carries no `height_source`, like one read from a `height` tag.
 
 Its **absence records no provenance**, not "read from the source". An ordinary
 GeoJSON import carries the property only if its own source wrote it, so absence
