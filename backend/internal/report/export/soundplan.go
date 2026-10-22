@@ -11,7 +11,6 @@ package export
 
 import (
 	"bufio"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -23,6 +22,7 @@ import (
 	"time"
 
 	"github.com/aconiq/backend/internal/atomicfile"
+	"github.com/aconiq/backend/internal/jsonio"
 )
 
 // SoundPLANOptions carries what the mapping needs beyond the features.
@@ -238,12 +238,12 @@ func ExportSoundPLANShapefiles(dir string, features []ModelFeature, opts SoundPL
 
 // Write stores the report as indented JSON.
 func (r SoundPLANReport) Write(path string) error {
-	data, err := json.MarshalIndent(r, "", "  ")
+	data, err := jsonio.Marshal(r)
 	if err != nil {
 		return fmt.Errorf("encode %s: %w", filepath.Base(path), err)
 	}
 
-	err = atomicfile.WriteFile(path, append(data, '\n'))
+	err = atomicfile.WriteFile(path, data)
 	if err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
@@ -847,12 +847,15 @@ func truncateASCII(s string, n int) string {
 // them. It streams rather than collects, because a DTM at native resolution is
 // millions of points.
 func WriteSoundPLANTerrain(path string, each func(emit func(x, y, z float64) error) error) (SoundPLANTerrainReport, error) {
-	tmp := path + ".tmp"
-
-	file, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	// A temporary name unique per call, as atomicfile.Stage uses: two exports
+	// into one bundle must not truncate and rename each other's stream. The
+	// stream is why Stage itself does not fit — it takes a finished buffer.
+	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
-		return SoundPLANTerrainReport{}, fmt.Errorf("create %s: %w", tmp, err)
+		return SoundPLANTerrainReport{}, fmt.Errorf("create temporary %s: %w", filepath.Base(path), err)
 	}
+
+	tmp := file.Name()
 
 	w := bufio.NewWriter(file)
 	count := 0
