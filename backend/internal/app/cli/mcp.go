@@ -33,6 +33,11 @@ Each tool is a thin adapter over the local HTTP API, served in process, so a
 tool accepts and refuses exactly what the API does and answers with the API's
 own JSON.
 
+The read tools are always offered: project_status, list_standards (with each
+standard's evidence tier and parameter units), get_model and transform. So are
+the resources aconiq://project, aconiq://standards, aconiq://runs/{id} and
+aconiq://runs/{id}/provenance (the run's provenance.json, as recorded).
+
 Without --allow-writes the server is read-only and lists no tool that changes
 the project. With it, save_model is offered: it replaces the whole model, and
 its confirm argument must be the hash of the model being replaced (or "none"),

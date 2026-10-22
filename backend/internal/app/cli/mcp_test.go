@@ -337,3 +337,64 @@ func TestMCPRefusesArguments(t *testing.T) {
 		t.Fatal("aconiq mcp accepted a positional argument")
 	}
 }
+
+// A run's provenance reaches the agent through the real command as the run
+// recorded it, with the CRS pair and the build beside the standard, and a
+// read-only server offers it.
+func TestMCPServesARunsProvenance(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "MCP", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", testdataPath(t, "phase8", "model.geojson"))
+	mustRunCLI(t, "--project", projectDir, "run", "--standard", "dummy-freefield")
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+
+	proj, err := store.Load()
+	if err != nil || len(proj.Runs) != 1 {
+		t.Fatalf("load: %d runs (%v)", len(proj.Runs), err)
+	}
+
+	run := proj.Runs[0]
+
+	want, err := os.ReadFile(filepath.Join(projectDir, filepath.FromSlash(run.ProvenancePath)))
+	if err != nil {
+		t.Fatalf("read provenance: %v", err)
+	}
+
+	session, done := runMCPInProcess(t, "--project", projectDir, "mcp")
+	session.initialize(t)
+
+	uri := "aconiq://runs/" + run.ID + "/provenance"
+	contents, _ := session.request(t, "resources/read", map[string]any{"uri": uri})["contents"].([]any)
+
+	if len(contents) != 1 {
+		t.Fatalf("%s: %d contents", uri, len(contents))
+	}
+
+	first, _ := contents[0].(map[string]any)
+	if text, _ := first["text"].(string); text != string(want) {
+		t.Fatalf("%s differs from provenance.json:\n got %s\nwant %s", uri, text, want)
+	}
+
+	var provenance project.ProvenanceManifest
+
+	err = json.Unmarshal(want, &provenance)
+	if err != nil {
+		t.Fatalf("decode provenance: %v", err)
+	}
+
+	if provenance.Metadata["project_crs"] != "EPSG:25832" || provenance.Metadata["compute_crs"] == "" ||
+		provenance.Metadata["evidence_tier"] == "" || provenance.ToolVersion == "" {
+		t.Fatalf("provenance lacks the CRS pair, tier or build: %+v", provenance)
+	}
+
+	rest, err := session.finish(t, done)
+	if err != nil || len(rest) != 0 {
+		t.Fatalf("aconiq mcp: %v, trailing stdout %q", err, rest)
+	}
+}

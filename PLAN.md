@@ -2999,7 +2999,6 @@ change to any of them amends the ADR first.
       editing exist: `aconiq mcp` serves `project_status`, `get_model` and, under `--allow-writes`,
       the audited `save_model`. The scenario tools wrap the routes the item below adds; until
       then an agent sees only `scenario_count`.
-- [ ] Expose applicable standards, units, CRS and provenance as resources or tool results
 - [ ] List, create and update scenarios. Nothing does today: `projectfs.Store.Init` seeds `default`
       and no CLI or API path appends to `Project.Scenarios`. Needs a `projectfs` path and an API
       route before an MCP tool can wrap it (ADR-002, Consequences). Open before it starts: what a

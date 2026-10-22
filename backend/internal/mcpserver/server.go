@@ -25,7 +25,9 @@ import (
 // them.
 const (
 	toolProjectStatus = "project_status"
+	toolListStandards = "list_standards"
 	toolGetModel      = "get_model"
+	toolTransform     = "transform"
 	toolSaveModel     = "save_model"
 )
 
@@ -98,10 +100,27 @@ func New(handler http.Handler, opts Options) (*mcp.Server, error) {
 	}, t.projectStatus)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: toolListStandards,
+		Description: "The standards this server can run, with each one's evidence tier (normative, preview, scaffold or test-fixture), versions, profiles, supported source types and indicators, and parameters — each parameter with its kind, unit, default, enum and bounds. " +
+			"A scaffold-tier standard is not an implementation of the method its name suggests, and start_run refuses it without experimental: true.",
+		Annotations: readOnly,
+	}, t.listStandards)
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        toolGetModel,
 		Description: "The saved model — every source, building, barrier, receiver and calc-area feature — as a GeoJSON FeatureCollection, with the CRS it is expressed in (crs), the project CRS (project_crs), its feature count and its hash. Heights are metres (height_m).",
 		Annotations: readOnly,
 	}, t.getModel)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: toolTransform,
+		Description: "Project a batch of coordinates between two CRS; this is the only projection to use. " +
+			"target_crs \"auto\" (or omitted) picks the ETRS89 / UTM zone `aconiq run` would compute in, and refuses a site no supported zone covers in the same words. " +
+			"The answer names the CRS the coordinates are in (target_crs) and whether anything moved (applied). It reads and changes nothing in the project.",
+		Annotations: readOnly,
+	}, t.transform)
+
+	addResources(server, t.api)
 
 	if opts.AllowWrites {
 		schema, resolved, err := saveModelSchema()
@@ -130,7 +149,9 @@ func New(handler http.Handler, opts Options) (*mcp.Server, error) {
 func instructions(allowWrites bool) string {
 	const common = "Aconiq environmental noise modelling, for the one project this server was started on. " +
 		"Tool results are the local API's JSON answers, verbatim; a refused call returns the API's error envelope (code, message, details, hint). " +
-		"Coordinates are in the CRS named beside them."
+		"Coordinates are in the CRS named beside them. " +
+		"Resources: aconiq://project (status), aconiq://standards (the catalogue, with evidence tiers and parameter units), " +
+		"aconiq://runs/{id} (a run's summary and progress) and aconiq://runs/{id}/provenance (its provenance.json, as recorded)."
 
 	if !allowWrites {
 		return common + " This server was started read-only (without --allow-writes): no tool changes the project, and none is listed."
@@ -150,6 +171,17 @@ type projectStatusInput struct{}
 
 type getModelInput struct {
 	CRS string `json:"crs,omitempty" jsonschema:"EPSG identifier to answer in, such as EPSG:4326. Omitted, the model is returned in the project CRS, byte-identical to what is stored."`
+}
+
+type listStandardsInput struct{}
+
+// transformInput carries the fields of the API's transform request, which
+// judges them: an odd count, an unknown CRS or an unprojectable site is the
+// API's refusal, not this layer's.
+type transformInput struct {
+	SourceCRS   string    `json:"source_crs"           jsonschema:"EPSG identifier the coordinates are in, such as EPSG:4326 or EPSG:25832."`
+	TargetCRS   string    `json:"target_crs,omitempty" jsonschema:"EPSG identifier to project into, or auto (the default) for the zone aconiq run would compute in."`
+	Coordinates []float64 `json:"coordinates"          jsonschema:"Flat and interleaved: x0, y0, x1, y1, … — longitude before latitude in a geographic CRS."`
 }
 
 type saveModelInput struct {
@@ -183,6 +215,29 @@ func saveModelSchema() (*jsonschema.Schema, *jsonschema.Resolved, error) {
 
 func (t tools) projectStatus(ctx context.Context, _ *mcp.CallToolRequest, _ projectStatusInput) (*mcp.CallToolResult, any, error) {
 	resp, err := t.api.get(ctx, "/api/v1/project/status")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return resp.toolResult(), nil, nil
+}
+
+func (t tools) listStandards(ctx context.Context, _ *mcp.CallToolRequest, _ listStandardsInput) (*mcp.CallToolResult, any, error) {
+	resp, err := t.api.get(ctx, "/api/v1/standards")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return resp.toolResult(), nil, nil
+}
+
+func (t tools) transform(ctx context.Context, _ *mcp.CallToolRequest, in transformInput) (*mcp.CallToolResult, any, error) {
+	body, err := json.Marshal(in)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode transform request: %w", err)
+	}
+
+	resp, err := t.api.postJSON(ctx, "/api/v1/transform", body)
 	if err != nil {
 		return nil, nil, err
 	}
