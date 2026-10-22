@@ -2,6 +2,7 @@ package geo
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -100,13 +101,64 @@ type FacadeBuilding struct {
 // FacadeKey names the footprint edge a receiver belongs to, by its indices in
 // the canonical footprint. From and To are that edge's endpoints, kept as a
 // check that the building has not moved since.
+//
+// In JSON, From and To are [x, y] positions, the shape facade-receivers.md
+// documents and modelgeojson reprojects, not Point2D's {"x", "y"} object.
 type FacadeKey struct {
-	BuildingRef string  `json:"building_ref"`
-	Part        int     `json:"part"`
-	Ring        int     `json:"ring"`
-	Edge        int     `json:"edge"`
-	From        Point2D `json:"from"`
-	To          Point2D `json:"to"`
+	BuildingRef string
+	Part        int
+	Ring        int
+	Edge        int
+	From        Point2D
+	To          Point2D
+}
+
+// facadeKeyJSON is FacadeKey as the model stores it.
+type facadeKeyJSON struct {
+	BuildingRef string     `json:"building_ref"`
+	Part        int        `json:"part"`
+	Ring        int        `json:"ring"`
+	Edge        int        `json:"edge"`
+	From        [2]float64 `json:"from"`
+	To          [2]float64 `json:"to"`
+}
+
+// MarshalJSON writes the key in the model's shape.
+func (k FacadeKey) MarshalJSON() ([]byte, error) {
+	data, err := json.Marshal(facadeKeyJSON{
+		BuildingRef: k.BuildingRef,
+		Part:        k.Part,
+		Ring:        k.Ring,
+		Edge:        k.Edge,
+		From:        [2]float64{k.From.X, k.From.Y},
+		To:          [2]float64{k.To.X, k.To.Y},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode facade key of %q: %w", k.BuildingRef, err)
+	}
+
+	return data, nil
+}
+
+// UnmarshalJSON reads the key from the model's shape.
+func (k *FacadeKey) UnmarshalJSON(data []byte) error {
+	var raw facadeKeyJSON
+
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
+		return fmt.Errorf("decode facade key: %w", err)
+	}
+
+	*k = FacadeKey{
+		BuildingRef: raw.BuildingRef,
+		Part:        raw.Part,
+		Ring:        raw.Ring,
+		Edge:        raw.Edge,
+		From:        Point2D{X: raw.From[0], Y: raw.From[1]},
+		To:          Point2D{X: raw.To[0], Y: raw.To[1]},
+	}
+
+	return nil
 }
 
 // FacadeReceiver is one generated facade Immissionsort. HeightM is the slab
@@ -123,10 +175,16 @@ type FacadeReceiver struct {
 	ReviewStatus     string    `json:"review_status"`
 }
 
-// Validate checks the set's own fields, without the buildings.
+// Validate checks the set's own fields, without the buildings. Neither the set
+// id nor a building id may contain '/', the separator of the receiver ids
+// <set>/<building>/p…r…e…/s…/f… they are spelled into.
 func (f FacadeReceiverSet) Validate() error {
 	if strings.TrimSpace(f.ID) == "" {
 		return errors.New("facade receiver set id is required")
+	}
+
+	if strings.Contains(f.ID, "/") {
+		return fmt.Errorf("facade receiver set id %q must not contain '/'", f.ID)
 	}
 
 	if len(f.BuildingIDs) == 0 {
@@ -137,6 +195,10 @@ func (f FacadeReceiverSet) Validate() error {
 	for i, id := range f.BuildingIDs {
 		if strings.TrimSpace(id) == "" {
 			return fmt.Errorf("facade receiver set building_ids[%d] is empty", i)
+		}
+
+		if strings.Contains(id, "/") {
+			return fmt.Errorf("facade receiver set building_ids[%d] %q must not contain '/'", i, id)
 		}
 
 		if _, dup := seen[id]; dup {
@@ -207,12 +269,6 @@ func (f FacadeReceiverSet) Generate(buildings []FacadeBuilding) ([]FacadeReceive
 	}
 
 	slices.SortFunc(kept, compareFacadeReceivers)
-
-	for i := 1; i < len(kept); i++ {
-		if kept[i].ID == kept[i-1].ID {
-			return nil, fmt.Errorf("facade receiver id %q is not unique: a building id must not contain '/'", kept[i].ID)
-		}
-	}
 
 	return kept, nil
 }
@@ -340,14 +396,14 @@ func FacadePoint(a, b Point2D, u, d float64) Point2D {
 	}
 }
 
-// facadeStations splits an edge into n = ceil(L / spacing) equal parts and
-// returns the u of each part's centre, so every edge gets at least one
-// station and none stands on a corner. It reports false, allocating nothing,
-// when n would exceed limit.
+// facadeStations splits an edge into n = max(1, ceil(L / spacing)) equal parts
+// and returns the u of each part's centre, so every edge gets at least one
+// station, even when L / spacing underflows to 0, and none stands on a
+// corner. It reports false, allocating nothing, when n would exceed limit.
 func facadeStations(a, b Point2D, spacingM float64, limit int) ([]float64, bool) {
 	length := math.Hypot(b.X-a.X, b.Y-a.Y)
 
-	count := math.Ceil(length / spacingM)
+	count := max(math.Ceil(length/spacingM), 1)
 	if !(count <= float64(limit)) {
 		return nil, false
 	}

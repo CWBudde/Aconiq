@@ -1,6 +1,7 @@
 package geo
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"reflect"
@@ -422,6 +423,10 @@ func TestFacadeReceiverSetValidate(t *testing.T) {
 		"nan spacing":   facadeSet(PlacementRLS19Facade, math.NaN(), "b1"),
 		"inf spacing":   facadeSet(PlacementRLS19Facade, math.Inf(1), "b1"),
 		"negative step": facadeSet(PlacementRLS19Facade, -1, "b1"),
+		// '/' separates the parts of a receiver id, so it may stand in
+		// neither the set's id nor a building's.
+		"slash in id":       {ID: "set/x", BuildingIDs: []string{"b1"}, PlacementRule: PlacementRLS19Facade, SpacingM: 3},
+		"slash in building": facadeSet(PlacementRLS19Facade, 3, "b/x"),
 	}
 
 	for name, tc := range cases {
@@ -495,5 +500,71 @@ func TestFacadeReceiverSetGenerateRefuses(t *testing.T) {
 	if _, err := facadeSet("talaerm-window", 3, "b1").Generate([]FacadeBuilding{ok}); err == nil ||
 		!strings.Contains(err.Error(), "talaerm-window") {
 		t.Errorf("non-geometric rule: err = %v, want it named", err)
+	}
+}
+
+// An edge far shorter than the spacing, so short that L / spacing underflows
+// to 0, still gets its one station, at its centre.
+func TestFacadeStationsKeepOneOnAnUnderflowingEdge(t *testing.T) {
+	t.Parallel()
+
+	b := Point2D{X: 5e-324}
+
+	stations, ok := facadeStations(Point2D{}, b, 1e300, MaxFacadeReceivers)
+	if !ok || len(stations) != 1 {
+		t.Fatalf("stations = %v, %v; want one", stations, ok)
+	}
+}
+
+// The facade key is written in the model's shape, from and to as [x, y], and
+// reads back unchanged.
+func TestFacadeKeyJSONIsTheModelShape(t *testing.T) {
+	t.Parallel()
+
+	key := FacadeKey{
+		BuildingRef: "osm-way-123456", Part: 1, Ring: 2, Edge: 3,
+		From: Point2D{X: 500010.25, Y: 5800020.5}, To: Point2D{X: 500018.5, Y: 5800022.75},
+	}
+
+	data, err := json.Marshal(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const want = `{"building_ref":"osm-way-123456","part":1,"ring":2,"edge":3,` +
+		`"from":[500010.25,5800020.5],"to":[500018.5,5800022.75]}`
+	if string(data) != want {
+		t.Fatalf("JSON = %s, want %s", data, want)
+	}
+
+	var back FacadeKey
+
+	err = json.Unmarshal(data, &back)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if back != key {
+		t.Fatalf("round trip = %+v, want %+v", back, key)
+	}
+
+	// A generated receiver carries the key in that shape too.
+	receivers := mustGenerate(t, facadeSet(PlacementRLS19Facade, 3, "b1"), house("b1", rect(0, 0, 10, 8)))
+
+	data, err = json.Marshal(receivers[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var doc struct {
+		Facade struct {
+			From []float64 `json:"from"`
+			To   []float64 `json:"to"`
+		} `json:"facade"`
+	}
+
+	err = json.Unmarshal(data, &doc)
+	if err != nil || len(doc.Facade.From) != 2 || len(doc.Facade.To) != 2 {
+		t.Fatalf("receiver JSON %s: facade endpoints are not [x, y] (err %v)", data, err)
 	}
 }
