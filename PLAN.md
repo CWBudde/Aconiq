@@ -643,30 +643,38 @@ sample goes through `terrainInComputeCRS`.
 
 ### 1.9 Facade Immissionsorte count their own facade, and Schall 03's is shielded by it — open
 
-Found by P18 B1 (2026-10-22) and pinned by `own_facade_reflection_test.go` in `rls19/road` and
-`schall03`: tests that assert today's state with a ±0.25 dB band and must flip when this is
-fixed. Both rules exclude reflections at the receiver's own facade — RLS-19 the paths whose last
-reflection lies on it (Section 1, Immissionsort, Anmerkung), Schall 03 every path that touches it
-(16. BImSchV Anl. 2 Nr. 2.2.10). Neither module knows which facade a receiver belongs to, so
-neither excludes anything. On a 10 m facade 20 m from the source:
+Measured 2026-10-22 (#126) and pinned by `own_facade_reflection_test.go` in `rls19/road` and
+`schall03`: tests that assert today's state, each within a tolerance below the smallest effect
+it pins, and must flip when this is fixed. Both rules exclude reflections at the receiver's own
+facade — RLS-19 the paths whose last reflection lies on it (Section 1, Immissionsort,
+Anmerkung), Schall 03 every path that touches it (16. BImSchV Anl. 2 Nr. 2.2.10). Neither
+module knows which facade a receiver belongs to, so neither excludes anything. On a 10 m facade
+20 m from the source:
 
 - **RLS-19, 0.05 m out: +3.29 dB** over free field as a building, which is what every CLI run
   builds. +2.75 dB is the own facade's image; the rest is the back wall's image reaching the
   receiver through the building, because the shielding exclusion is per reflector (conformance
   declaration, Nr. 3.6). Every hand-placed and SoundPLAN-imported facade point is affected.
-- **Schall 03, 0.05 m out: +3.24 dB** (+2.52 dB from the own facade's image).
+- **Schall 03, 0.05 m out: +3.24 dB** (+2.52 dB from the own facade's image), but only for a
+  building with `schall03_reflecting_wall = true`: the CLI always emits the footprint as a
+  shield and the walls as reflectors only under that opt-in. Without it the level is free
+  field's.
 - **Schall 03, on the facade (0 m), its own prescribed position: −19.08 dB** with the footprint
-  alone, −3.11 dB with walls and footprint. The footprint edge the point stands on is a closed
-  segment, so the direct path "crosses" it and the facade shields its own Immissionsort. This
-  direction is unsafe — the level is under-predicted — and it applies in every CLI run, whether or
-  not the building is a `schall03_reflecting_wall`.
+  alone. The footprint edge the point stands on is a closed segment, so the direct path
+  "crosses" it and the facade shields its own Immissionsort. This direction is unsafe — the
+  level is under-predicted — and it applies in every CLI run, opt-in or not.
+- **Schall 03, on the facade with walls (opt-in): the result depends on the platform**, −8.47 dB
+  on amd64 and −3.11 dB on arm64. The own image's last leg has zero length, `FresnelCheck`
+  refuses `dOR <= 0`, and whether `dOR` comes out 0 or ~1e-15 m is decided by rounding (arm64's
+  fused multiply-add). The fix must not leave a reflection decided by a zero-length leg.
 - **Schall 03 canyon:** of six paths up to third order, five touch the own facade and three end on
   it. A last-bounce filter (RLS-19's) would keep two that Nr. 2.2.10 drops, so one shared
   function needs a mode, not one rule.
 - **Coplanar neighbour across a party wall:** as a plain wall it adds only +0.15 dB (RLS-19) /
-  +0.03 dB (Schall 03) within 0.1 m of the party wall and nothing at 1 m. As a building it
-  _lowers_ the level, −0.68 / −0.47 dB, because shielding is tested along the whole unfolded image
-  path, including the part behind the facade plane that is only a mirror.
+  +0.03 to +0.05 dB (Schall 03, arm64 / amd64) within 0.1 m of the party wall and nothing at
+  1 m. As a building it _lowers_ the level, −0.68 / −0.47 to −0.49 dB, because shielding is
+  tested along the whole unfolded image path, including the part behind the facade plane that is
+  only a mirror.
 
 The fix needs the receiver→facade link (A3's `facade` key, produced by P18 B2) and two choices:
 
