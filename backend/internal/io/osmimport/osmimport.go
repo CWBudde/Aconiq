@@ -29,11 +29,15 @@ const (
 	metersPerLevel         = 3.0
 	minPolygonPoints       = 4
 
-	// propertyHeightSource records that this feature's height_m was assumed
-	// rather than read from a tag. It is written only in the assumed case:
-	// its absence records no provenance, not "read from OSM".
+	// propertyHeightSource records that this feature's height_m was not read
+	// from a `height` tag: either derived from the storey count or assumed.
+	// It is written only in those two cases: its absence records no
+	// provenance, not "read from OSM".
 	propertyHeightSource = "height_source"
-	// heightSourceAssumed is propertyHeightSource's only value today.
+	// heightSourceLevels marks a height derived as building:levels ×
+	// metersPerLevel — an estimate from the storey count, not a measurement.
+	heightSourceLevels = "levels"
+	// heightSourceAssumed marks a height that is a default and nothing else.
 	heightSourceAssumed = "assumed"
 
 	// contactURL is the project the Overpass usage policy asks a caller to be
@@ -259,17 +263,20 @@ func applyBarrierProps(tags map[string]string, props map[string]any) {
 }
 
 // height is a height_m together with where it came from.
+//
+// source is a propertyHeightSource value, or "" for a height read from a tag.
 type height struct {
-	meters  float64
-	assumed bool
+	meters float64
+	source string
 }
 
-// setHeight writes the height and, when it was assumed, says so on the feature.
+// setHeight writes the height and, when it was not read from a tag, says how
+// it was arrived at.
 func setHeight(props map[string]any, h height) {
 	props["height_m"] = h.meters
 
-	if h.assumed {
-		props[propertyHeightSource] = heightSourceAssumed
+	if h.source != "" {
+		props[propertyHeightSource] = h.source
 	}
 }
 
@@ -285,16 +292,21 @@ func setHeight(props map[string]any, h height) {
 // choice was never "assume or do not"; it was "assume once, here, on the
 // record" against "assume twice, in two places, silently". A caller that must
 // not compute over an assumed height reads propertyHeightSource.
+//
+// The middle step is recorded too, as heightSourceLevels: the storey count is
+// a tag, but the 3 m a storey is not, so a levels-derived height is an
+// estimate. A reader that divides it again — a facade receiver placing one
+// point per storey — has to be able to tell it from a tagged height.
 func buildingHeight(tags map[string]string) height {
 	if h, ok := parseHeightTag(tags["height"]); ok {
 		return height{meters: h}
 	}
 
 	if levels, ok := parseTagFloat(tags["building:levels"]); ok {
-		return height{meters: levels * metersPerLevel}
+		return height{meters: levels * metersPerLevel, source: heightSourceLevels}
 	}
 
-	return height{meters: defaultBuildingHeightM, assumed: true}
+	return height{meters: defaultBuildingHeightM, source: heightSourceAssumed}
 }
 
 // barrierHeight tries the height tag; if not found returns 2.0 m, which is a
@@ -305,7 +317,7 @@ func barrierHeight(tags map[string]string) height {
 		return height{meters: h}
 	}
 
-	return height{meters: defaultBarrierHeightM, assumed: true}
+	return height{meters: defaultBarrierHeightM, source: heightSourceAssumed}
 }
 
 // parseHeightTag strips " m" and "m" suffix, then parses as float64.
