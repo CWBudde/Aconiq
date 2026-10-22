@@ -132,6 +132,11 @@ func executeRunEstimate(cmd *cobra.Command, state commandState, req runCommandRe
 		return err
 	}
 
+	receivers, err := resolveRunReceivers(req.receiverMode, req.facade, standard, inputs.model)
+	if err != nil {
+		return err
+	}
+
 	standardID := standard.StandardID
 	log := newRunLog()
 
@@ -141,15 +146,15 @@ func executeRunEstimate(cmd *cobra.Command, state commandState, req runCommandRe
 
 	if estimator, ok := runEstimatorTable[standardID]; ok {
 		estimate, err = estimator(cmd.Context(), runModuleInput{
-			standard:     standard,
-			params:       params,
-			model:        inputs.model,
-			terrain:      inputs.terrain,
-			receiverMode: req.receiverMode,
-			workers:      req.workers,
-			cacheDir:     state.Config.CacheDir,
-			log:          log,
-			projection:   inputs.projection,
+			standard:   standard,
+			params:     params,
+			model:      inputs.model,
+			terrain:    inputs.terrain,
+			receivers:  receivers,
+			workers:    req.workers,
+			cacheDir:   state.Config.CacheDir,
+			log:        log,
+			projection: inputs.projection,
 		}, runestimate.Options{Budget: req.estimateBudget})
 		if err != nil {
 			var before beforeRunError

@@ -31,6 +31,9 @@ import (
 //     silently start from different tables.
 //   - receiver_table.golden.csv is the frontend's *expectation*, byte for byte.
 //
+// receiver_table_facade.golden.{json,csv} are the same pair for the optional
+// facade columns; receiver_table_facade_test.go writes them.
+//
 // Regenerate both with `just update-golden`.
 
 // csvParityTable exercises every clause a *valid* ReceiverTable can reach.

@@ -1,0 +1,4 @@
+id,x,y,height_m,LrDay,LrNight,building_ref,part,ring,edge,storey,placement_rule
+R1,500030,5800040,4,58.3,49.9,,,,,,
+F1,500012.05,5800019.95,3,61.2,52.4,"osm-way-1,""a""",0,0,3,0,rls19-facade
+F2,500101.25,5800202.75,12,55,47.05,osm-way-2,1,2,5,3,schall03-facade

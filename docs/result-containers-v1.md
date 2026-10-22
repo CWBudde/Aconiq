@@ -156,8 +156,55 @@ Implemented in `backend/internal/results`:
 
 - `ReceiverTable` with ordered indicators and a unit **per indicator**
 - `ReceiverRecord` with coordinates, height, and per-indicator values
-- Validation for duplicate IDs, required indicators, and finite numeric values
+- Optional facade attributes per record — see below
+- Validation for duplicate IDs, required indicators, finite numeric values,
+  and complete facade attributes
 - Writers for JSON and CSV outputs
+
+### Facade attributes
+
+A facade receiver names its building, facade and storey, so a result row can be
+traced back to the Immissionsort it stands for
+(`docs/research/facade-receivers.md`, "Data model (A3)"). Three optional fields
+on a record carry that, and they come **as a set**: all three or none.
+
+```json
+{
+  "id": "F1",
+  "x": 500012.05,
+  "y": 5800019.95,
+  "height_m": 3,
+  "values": { "LrDay": 61.2 },
+  "placement_rule": "rls19-facade",
+  "facade": {
+    "building_ref": "osm-way-1",
+    "part": 0,
+    "ring": 0,
+    "edge": 3,
+    "from": [500010, 5800020],
+    "to": [500018.5, 5800022.5]
+  },
+  "storey": 0
+}
+```
+
+- `placement_rule` — the rule the point was placed under.
+- `facade` — the facade key, in the shape the model's `facade` property and
+  `geo.FacadeKey` use: `building_ref`, the `part`, `ring` and `edge` indices in
+  the canonical footprint, and the edge's endpoints `from` / `to` as `[x, y]`.
+  `results.ReceiverFacade` declares it, so `results` does not import `geo`.
+- `storey` — the storey index, 0 being the ground floor.
+
+`ReceiverTable.Validate` refuses a record that carries some of the three but not
+all, an empty `building_ref`, a negative `part`, `ring`, `edge` or `storey`, and
+a non-finite `from` or `to`. It does not check `placement_rule` against a list
+of identifiers: the table records what the run placed.
+
+The fields are omitted when absent, so a record without them has exactly the
+bytes it had before they existed. **A grid table never carries them**: grid
+points are not Immissionsorte. A custom table may mix facade receivers with
+plain ones. In the CSV the fields become columns, under the rule in the byte
+contract below.
 
 ## Units are per channel
 
@@ -200,7 +247,8 @@ canonical.** The TypeScript side mirrors it; where they disagree, Go is right.
   `WriteReceiverTableCSV`, a thin shell around `csv.Writer`.
 - `frontend/src/model/receiver-csv.ts` — `buildReceiverTableCSV`, the mirror.
 - `backend/internal/results/testdata/csv-parity/` — the fixtures. Written
-  by `receiver_table_csv_test.go`, read by
+  by `receiver_table_csv_test.go` and, for the facade columns
+  (`receiver_table_facade.golden.*`), `receiver_table_facade_test.go`; read by
   `frontend/src/model/receiver-csv.parity.test.ts`.
 
 The contract, in full:
@@ -210,7 +258,17 @@ The contract, in full:
   records — so an empty table is exactly `id,x,y,height_m,Lden\n`. No BOM.
 - Header: `id`, `x`, `y`, `height_m`, then every entry of `indicator_order` in
   order. Data fields follow the same order. The units are not represented in the
-  CSV at all — see "Units are per channel" below.
+  CSV at all — see "Units are per channel" above.
+- **Facade columns, only when present.** When at least one record carries a
+  `facade`, the header continues after the indicators with `building_ref`,
+  `part`, `ring`, `edge`, `storey`, `placement_rule`. A record without facade
+  attributes writes the empty field in each of the six. When no record carries
+  a `facade` — every grid table, and a custom table of plain receivers — the
+  columns are absent and the file has the bytes it had before they existed.
+  The decision is taken over all records, not the first. `building_ref` and
+  `placement_rule` are quoted under the rules below; the four integers are
+  `strconv.Itoa`. The edge endpoints `from` / `to` are a check on the model, not
+  a property of the result, and stay in the JSON only.
 - A field is written verbatim unless one of these holds:
   - it is empty — then it is zero bytes, **not** `""`;
   - it is exactly the two characters `\.`, the Postgres-COPY end-of-data
@@ -235,6 +293,9 @@ The contract, in full:
   `SaveReceiverTableCSV` validates before it opens the file — but the browser
   has no such gate, and an empty field keeps "not measured" distinguishable from
   a measured zero.
+- Likewise, a facade row missing its `storey` or `placement_rule` writes the
+  empty field there. `Validate` refuses that state in Go; the browser writes
+  what it has.
 
 Browser runs already stored in IndexedDB keep whatever bytes they were written
 with; only new runs get the canonical spelling. `PERSISTED_STATE_VERSION` is

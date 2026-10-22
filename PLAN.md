@@ -677,7 +677,8 @@ module knows which facade a receiver belongs to, so neither excludes anything. O
   only a mirror.
 
 The fix needs the receiver→facade link (the `facade` key `geo.FacadeReceiverSet` generates,
-which P18 B3 carries into a run) and two choices:
+which `aconiq run` now carries into the receiver set and the receiver table, P18 B3) and two
+choices:
 
 - **[Decision]** The extent of "the facade" a point excludes: its own footprint edge, the
   building's coplanar edges, or every coplanar segment across party walls
@@ -2788,8 +2789,11 @@ Lärm and the 16. BImSchV are amtliche Werke and may be quoted:
   given as 0.2 m above the window head, and **all** reflections at the associated facade are
   excluded, not only the last one. The 16. BImSchV main text has no rule of its own.
 
-**What exists:** receivers are bare `Point`s with `height_m` above ground, linked to no building
-and no facade. `geo.FacadeReceiverSet` is a stub (`IsImplemented()` returns false). The OSM
+**What exists:** `aconiq run --receiver-mode facade` places receivers on the facades of named
+buildings (`geo.FacadeReceiverSet`: `rls19-facade` and `schall03-facade`), and a custom receiver
+may carry the same facade link. The run refuses unconfirmed points in a normative run without
+`--allow-unconfirmed`, and the receiver table names each row's building, facade and storey.
+Propagation does not read the link yet (Priority 1 §1.9). The OSM
 import keeps `building:levels` but no `addr:*` tags, so a building can't be found by its address
 in a model yet. LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
 (`bldg:Opening`), and Lower Saxony does not publish LoD3. The footprint mask
@@ -2842,32 +2846,30 @@ as it must be.
 Deterministic, no imagery. This is useful by itself (a facade level map per building), and it
 produces the candidates Phase D confirms or rejects.
 
-- [ ] **B3 Wire it into `aconiq run`** as a receiver mode beside `custom` and the auto-grid, and into
-      the receiver table, so a result row names its building, facade and storey. RLS-19 uses the
-      facade link for the own-facade exclusion of Priority 1 §1.9. The run refuses `proposed`
-      and assumed-height points without an opt-in flag, the same flag on CLI, API and MCP, and
-      stamps their count into `provenance.json`, `run-summary.json` and the report. A receiver
-      whose `building_ref` no longer resolves, or whose `from` / `to` moved, blocks a normative
-      run; re-attachment is an explicit reviewed step (`facade-receivers.md`, Data model). The
-      note's Section 7 questions on the extent of the own facade, TA Lärm's own-facade practice
-      and SoundPLAN receivers are open here.
-      The generator is `geo.FacadeReceiverSet.Generate`: `rls19-facade` and `schall03-facade`
-      only (the other rules need C1's windows or an area); stations at the centres of
-      ceil(L / `spacing_m`) equal parts, `spacing_m` required; a station dropped when a probe
-      0.1 m out lies strictly inside any building, which is what keeps party walls bare; IDs
-      `<set>/<building_ref>/p<part>r<ring>e<edge>/s<station>/f<storey>`; every point `proposed`.
-      B3 maps model features onto `geo.FacadeBuilding`, and a building with `building:levels`
-      but no `height_source` is `levels`, never `measured`: projects imported before the
-      importer wrote `levels` carry none. It also adds the `facade` shape check to model
-      validation, because reprojection carries a malformed key through for validation to report.
 - [ ] **B4 Address lookup.** Keep `addr:street` / `addr:housenumber` on OSM buildings, and the
-      LGLN address where LoD2 carries one, so `--buildings "<street> <number>"` (or an API field)
-      selects the pilot building without a hand-picked ID.
-- [ ] **B5 Browser OSM import writes `height_source: levels`.** `osmBuildingHeight` in
-      `frontend/src/api/browser-backend.ts` still returns a levels-derived height as read from a
-      tag, so a project imported in browser mode cannot tell `levels` from `measured`, and its
-      facade points would be stamped `measured`. Match `internal/io/osmimport`, then drop the
-      sentence saying so from `docs/geojson-schema-v1.md`, Height provenance.
+      LGLN address where LoD2 carries one, so `--facade-building "<street> <number>"` (or the API's
+      `facade_buildings`) selects the pilot building without a hand-picked ID. Today the flag
+      takes model feature ids only.
+- [ ] **B6 Facade mode in browser mode.** The run dialog offers `auto-grid` and `custom` only, and
+      `browser-backend.ts` has no third branch, so a browser-mode project cannot place facade
+      receivers. The generator stays in Go: the WASM kernel exposes it, the frontend does not
+      reimplement it, and the rows it builds carry the same `placement_rule` / `facade` /
+      `storey` as `results.ReceiverRecord`.
+- [ ] **B7 Re-attach facade receivers.** A `receiver.facade.unresolved` or `.moved` finding blocks a
+      normative run and `--allow-unconfirmed` does not lift it, but nothing re-attaches such a
+      point yet: the explicit, reviewed step (CLI or UI) that proposes matches by footprint overlap
+      and the `from` / `to` endpoints and sets the matched points to `proposed`
+      (`facade-receivers.md`, Decision: what keys a building). Section 7 question 8, whether
+      SoundPLAN-imported receivers get a facade link, belongs here.
+- [ ] **B8 The 1 mm `moved` tolerance is in project-CRS units.** `aconiq run` validates the
+      model again in the compute CRS, so its refusal is right, but `aconiq import` and
+      `aconiq validate` on a geographic project compare `from` / `to` in degrees, where 1e-3 is
+      about 100 m. Compare in a projected CRS there too.
+- [ ] **B9 A zero `height` or `building:levels` gives a 0 m building.** `osmimport` accepts any
+      parseable value of either tag, so `0` (or a negative) yields a `height_m` that model
+      validation refuses (`building` needs `height_m > 0`); the browser import requires > 0 and
+      falls through to the next rule. Match the browser. `aconiq run` already reads levels ≤ 0
+      as unknown storeys.
 
 ### Phase C — Windows as model features
 
@@ -2876,7 +2878,8 @@ produces the candidates Phase D confirms or rejects.
       Raum_ produces its Immissionsort through the placement rule. Under TA Lärm that is the window
       centre 0.5 m out. Under RLS-19 it is the floor's slab height, 5 cm out, at the window's `u`.
       The other windows are kept as context. Balconies and loggias wait on `facade-receivers.md`
-      Section 7, questions 2 and 3.
+      Section 7, questions 2 and 3, and TA Lärm's own-facade practice on question 6. A normative
+      run already refuses a point whose `placement_rule` belongs to another standard.
 - [ ] **C2 Facade elevation view in the frontend**: pick a building, unfold a facade to its
       elevation (edge length × building height, floors drawn from `building:levels`), and draw,
       move or delete window rectangles. The conversion stays in the Go kernel, behind a WASM

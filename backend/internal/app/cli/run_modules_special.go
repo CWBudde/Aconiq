@@ -111,7 +111,7 @@ func prepareRLS19RoadRun(input runModuleInput) (rls19RoadRun, error) {
 		return rls19RoadRun{}, err
 	}
 
-	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receivers, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildRLS19RoadReceivers(roadSources, scene.parkingExtent, calcArea, options)
 	})
 	if err != nil {
@@ -125,8 +125,8 @@ func prepareRLS19RoadRun(input runModuleInput) (rls19RoadRun, error) {
 	input.log.addf("rls19_barriers=%d", len(scene.barriers))
 	input.log.addf("rls19_buildings=%d", len(scene.buildings))
 	input.log.addf("rls19_parking_sources=%d", len(scene.parkingSources))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea, layout)
+	input.log.addReceiverCount(input.receivers, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receivers, calcArea, layout)
 
 	return rls19RoadRun{
 		roadSources:         roadSources,
@@ -163,7 +163,7 @@ func runRLS19RoadModule(ctx context.Context, input runModuleInput) (runModuleRes
 
 	persisted, outputHash, finishedAt, err := persistRLS19RoadRunOutputs(
 		input.runDir, receiverOutputs, layout, len(roadSources), sourceOverrideCount,
-		len(parkingSources), input.receiverMode, input.standard.EvidenceTier, input.projection,
+		len(parkingSources), input.receivers, input.standard.EvidenceTier, input.projection,
 	)
 	if err != nil {
 		input.log.addf("failed to persist outputs: %v", err)
@@ -239,7 +239,7 @@ func runSchall03Module(ctx context.Context, input runModuleInput) (runModuleResu
 		result.Outputs,
 		result.Layout,
 		result.SourceCount,
-		input.receiverMode,
+		input.receivers,
 		result.Engine,
 		input.standard.EvidenceTier,
 		input.projection,
@@ -261,9 +261,9 @@ func runSchall03Module(ctx context.Context, input runModuleInput) (runModuleResu
 // receiver levels, so its "receivers" are buildings and its sources come from
 // whichever mapping standard it sits downstream of.
 func runBEBExposureModule(ctx context.Context, input runModuleInput) (runModuleResult, error) {
-	if input.receiverMode == receiverModeCustom {
+	if input.receivers.isListed() {
 		return runModuleResult{}, beforeRunError{err: domainerrors.New(
-			domainerrors.KindUserInput, "cli.run", "custom receiver mode is not supported for building exposure runs", nil,
+			domainerrors.KindUserInput, "cli.run", input.receivers.mode+" receiver mode is not supported for building exposure runs", nil,
 		)}
 	}
 
@@ -434,7 +434,7 @@ func prepareISO9613Run(input runModuleInput) (iso9613Run, error) {
 		return iso9613Run{}, err
 	}
 
-	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receivers, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildISO9613Receivers(sources, calcArea, options)
 	})
 	if err != nil {
@@ -446,8 +446,8 @@ func prepareISO9613Run(input runModuleInput) (iso9613Run, error) {
 	input.log.addf("iso9613_sources=%d", len(sources))
 	input.log.addf("iso9613_barriers=%d", len(barriers))
 	input.log.addf("iso9613_ground_zones=%d", len(groundZones))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea, layout)
+	input.log.addReceiverCount(input.receivers, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receivers, calcArea, layout)
 
 	config := options.PropagationConfig()
 	config.Barriers = barriers
@@ -479,7 +479,7 @@ func runISO9613Module(ctx context.Context, input runModuleInput) (runModuleResul
 	}
 
 	persisted, outputHash, finishedAt, err := persistISO9613RunOutputs(
-		input.runDir, outputs, layout, len(sources), input.receiverMode, input.standard.EvidenceTier,
+		input.runDir, outputs, layout, len(sources), input.receivers, input.standard.EvidenceTier,
 		input.projection,
 	)
 	if err != nil {

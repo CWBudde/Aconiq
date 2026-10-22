@@ -191,6 +191,39 @@ func TestEstimateCommandArgsAskForJSONAndNoRun(t *testing.T) {
 	}
 }
 
+// The facade receiver fields and the unconfirmed opt-in reach argv for a run
+// and an estimate alike. A building id goes in the `--flag=value` form, so one
+// that starts with "-" is the flag's value and never a flag of its own.
+func TestRunCommandArgsCarryFacadeModeAndAllowUnconfirmed(t *testing.T) {
+	t.Parallel()
+
+	spacing := 2.5
+	req := createRunRequest{
+		StandardID:             "rls19-road",
+		ReceiverMode:           "facade",
+		FacadeBuildings:        []string{"osm-way-2", "-b1"},
+		FacadeSpacingM:         &spacing,
+		FacadeIncludeCourtyard: true,
+		AllowUnconfirmed:       true,
+	}
+
+	want := []string{
+		"--standard", "rls19-road", "--receiver-mode", "facade",
+		"--facade-building=osm-way-2", "--facade-building=-b1",
+		"--facade-spacing-m", "2.5", "--facade-courtyard", "--allow-unconfirmed",
+	}
+
+	run := runCommandArgs("/p", "run-1", req)
+	if got := run[5:]; !slices.Equal(got, want) {
+		t.Fatalf("run args %v, want %v", got, want)
+	}
+
+	estimate := estimateCommandArgs("/p", req)
+	if got := estimate[4 : len(estimate)-1]; !slices.Equal(got, want) {
+		t.Fatalf("estimate args %v, want %v", got, want)
+	}
+}
+
 // stdout under --json is the command's output and nothing else, so it is
 // decoded as one document.
 func TestReadEstimateOutputDecodesOneDocument(t *testing.T) {

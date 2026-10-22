@@ -630,5 +630,5 @@ is refused without `--experimental`. An explicit opt-in flag lets it run. The ru
 number of proposed and of assumed-height points into `provenance.json` and `run-summary.json`,
 and the report states them, so the result carries its own caveat to a reader who never sees the
 model. A `rejected` point never enters a run, with or without the flag. A non-normative standard
-runs over proposed points without the flag. Where the flag lives (`aconiq run`, the API, MCP) and
-its name are B3's to settle; they must be the same on every surface.
+runs over proposed points without the flag. The flag is `--allow-unconfirmed` on `aconiq run`
+and `allow_unconfirmed` on the API and MCP (P18 B3).

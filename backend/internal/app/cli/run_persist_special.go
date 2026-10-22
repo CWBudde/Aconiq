@@ -25,7 +25,7 @@ func persistRLS19RoadRunOutputs(
 	sourceCount int,
 	sourceOverrideCount int,
 	parkingSourceCount int,
-	receiverMode string,
+	receivers receiverSet,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
@@ -59,7 +59,7 @@ func persistRLS19RoadRunOutputs(
 		export: exportBundle(scope, "export RLS-19 road results", rls19road.ExportResultBundle, outputs, layout),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
+	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receivers, tier, projection)
 }
 
 func persistSchall03RunOutputs(
@@ -67,7 +67,7 @@ func persistSchall03RunOutputs(
 	outputs []schall03.ReceiverOutput,
 	layout results.GridLayout,
 	sourceCount int,
-	receiverMode string,
+	receivers receiverSet,
 	engine string,
 	tier framework.EvidenceTier,
 	projection computeProjection,
@@ -107,7 +107,7 @@ func persistSchall03RunOutputs(
 		export: exportBundle(scope, "export Schall 03 results", schall03.ExportResultBundle, outputs, layout),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
+	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receivers, tier, projection)
 }
 
 func persistISO9613RunOutputs(
@@ -115,7 +115,7 @@ func persistISO9613RunOutputs(
 	outputs []iso9613.ReceiverOutput,
 	layout results.GridLayout,
 	sourceCount int,
-	receiverMode string,
+	receivers receiverSet,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
@@ -143,7 +143,7 @@ func persistISO9613RunOutputs(
 		export: exportBundle(scope, "export iso9613 results", iso9613.ExportResultBundle, outputs, layout),
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
+	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receivers, tier, projection)
 }
 
 func persistBEBExposureRunOutputs(

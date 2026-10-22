@@ -28,6 +28,10 @@ type runCommandRequest struct {
 	inputPaths      []string
 	experimental    bool
 
+	// facade is the facade receiver set of --receiver-mode facade, and the
+	// --allow-unconfirmed opt-in that applies to custom receivers too.
+	facade facadeRequest
+
 	// workers is --workers: how many goroutines the compute walks receivers
 	// over, 0 meaning one per available CPU.
 	//
@@ -87,6 +91,7 @@ type preparedRun struct {
 	runDir       string
 	log          *runLog
 	inputs       runInputs
+	receivers    receiverSet
 }
 
 func executeRunCommand(cmd *cobra.Command, req runCommandRequest) error {
@@ -164,6 +169,14 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		return preparedRun{}, err
 	}
 
+	// The receivers too: a facade set the standard has no rule for, and a
+	// normative run over facade points nobody confirmed, are refused before
+	// the row exists.
+	receivers, err := resolveRunReceivers(req.receiverMode, req.facade, resolvedStandard, inputs.model)
+	if err != nil {
+		return preparedRun{}, err
+	}
+
 	run, provenance, err := store.CreateRun(projectfs.CreateRunSpec{
 		RunID:      req.runID,
 		ScenarioID: req.scenarioID,
@@ -176,7 +189,7 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		ReceiverMode:  req.receiverMode,
 		ReceiverSetID: receiverSetID(req.receiverMode),
 		Parameters:    resolvedParams,
-		Metadata:      buildRunProvenanceMetadata(resolvedStandard, resolvedParams, req.receiverMode),
+		Metadata:      mergeMetadata(buildRunProvenanceMetadata(resolvedStandard, resolvedParams, req.receiverMode), receivers.metadata),
 		StandardData:  standardData,
 		InputPaths:    mergeInputPaths(append([]string{relModelPath}, req.inputPaths...)),
 		Status:        project.RunStatusRunning,
@@ -215,6 +228,7 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		runDir:       filepath.Join(store.Root(), ".noise", "runs", run.ID),
 		log:          log,
 		inputs:       inputs,
+		receivers:    receivers,
 	}, nil
 }
 
@@ -340,18 +354,18 @@ func computeRun(ctx context.Context, prepared preparedRun, state commandState, r
 	}
 
 	result, err := prepared.inputs.module(ctx, runModuleInput{
-		standard:     prepared.standard,
-		params:       prepared.params,
-		model:        prepared.inputs.model,
-		terrain:      prepared.inputs.terrain,
-		receiverMode: req.receiverMode,
-		workers:      req.workers,
-		runDir:       prepared.runDir,
-		runID:        prepared.run.ID,
-		cacheDir:     state.Config.CacheDir,
-		log:          prepared.log,
-		progress:     newRunProgress(ctx, prepared.store, prepared.run.ID, prepared.log),
-		projection:   projection,
+		standard:   prepared.standard,
+		params:     prepared.params,
+		model:      prepared.inputs.model,
+		terrain:    prepared.inputs.terrain,
+		receivers:  prepared.receivers,
+		workers:    req.workers,
+		runDir:     prepared.runDir,
+		runID:      prepared.run.ID,
+		cacheDir:   state.Config.CacheDir,
+		log:        prepared.log,
+		progress:   newRunProgress(ctx, prepared.store, prepared.run.ID, prepared.log),
+		projection: projection,
 		mergeProvenance: func(metadata map[string]string) error {
 			return prepared.store.MergeRunProvenanceMetadata(prepared.run.ID, metadata)
 		},

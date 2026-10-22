@@ -66,6 +66,18 @@ const (
 	PropertyGroundFactor = "ground_factor"
 )
 
+// Facade receiver properties (docs/research/facade-receivers.md, Receiver
+// properties). They ride on ordinary receiver features and are checked only
+// where present; see validate_facade.go.
+const (
+	PropertyPlacementRule    = "placement_rule"
+	PropertyFacade           = "facade"
+	PropertyStorey           = "storey"
+	PropertyStationUM        = "station_u_m"
+	PropertySlabHeightSource = "slab_height_source"
+	PropertyReviewStatus     = "review_status"
+)
+
 // Source geometry classes accepted by model schema v1 (Feature.SourceType).
 const (
 	SourceTypePoint = "point"
