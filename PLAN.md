@@ -1949,7 +1949,7 @@ before the pages they protect are cut apart.
       the 404 is certain. One correction to the wording above: **the test is on `ref.Kind`, not on
       the path** — `exportArtifactKindPrefix` is deliberate, because `aconiq export --out` writes
       bundles anywhere and a path test would recognise only the ones that landed in the default
-      directory. The affected kinds are the five `export.format_*` ones.
+      directory. The affected kinds are the six `export.format_*` ones.
 - [x] **An OSM import saves, and the geometry check answers the same in every CRS**
       (2026-09-20, #76). Four constraints stay live; the reasoning is in that PR's commit message.
       **`orientation`'s tolerance is relative, and must stay relative.** It compared a cross product
@@ -3177,19 +3177,38 @@ change to any of them amends the ADR first.
 
 ### Subphase SL-7.1 — Research and specification
 
-- [ ] Research SoundPLANnoise/essential version-specific supported import formats
+Settled for the model hand-off by `docs/research/soundplan-export.md`: ESRI Shapefile, because
+both editions import it with attribute assignment and it can be checked without SoundPLAN.
+Live constraint: QSI (DIN 45687) is the second target once the standard text is held — not
+before, since a mapping nobody can check against the text is a guess.
+
+- [ ] Import an `aconiq export --format soundplan-shp` bundle into licensed SoundPLANnoise and
+      SoundPLANessential, and record the versions, dialogs and deviations in the note. Nothing in
+      it has met SoundPLAN yet: whether the `.prj` and `.cpg` are read, and whether `terrain.txt`
+      imports without a column definition, are open.
 
 ### Subphase SL-7.2 — Implementation
 
-- [ ] Define explicit geometry, source, receiver, CRS and units mappings
+The model mapping exists (`report/export/soundplan.go`): one layer per kind, fixed columns for
+heights and the ISO 9613-2 source set, every other scalar property passed through, and
+`soundplan-mapping.json` naming each column and each loss. Two constraints are live. **The
+layers are written in the run's compute CRS**, not the project's: a geographic project goes
+over in the UTM zone the run chose, and Web Mercator is refused. **Sum levels only** — the
+model carries no octave bands.
+
+- [ ] Map phase and scenario membership of construction sources, once SL-6 defines it.
+- [ ] Carry the route geometry, once SL-3 delivers it.
 
 ### Subphase SL-7.3 — Integration and validation
 
-- [ ] Export acoustical source parameters and separate construction phases
+- [ ] Export acoustical source parameters of construction phases: AVV Baulärm operating
+      periods and duty cycles once SL-2 defines them, and one export per phase rather than every
+      candidate position as simultaneously active.
 
 ### Subphase SL-7.4 — Evidence and documentation
 
-- [ ] Detect lossy/unsupported attributes and validate a round-trip sample
+- [ ] Validate a round trip through SoundPLAN with the ~100 m moving-site example from SL-6. The
+      lossy report and the Shapefile structure are tested; the SoundPLAN side is not.
 
 ## Pilot acceptance and dependencies
 
