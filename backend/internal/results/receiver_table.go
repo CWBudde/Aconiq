@@ -8,12 +8,38 @@ import (
 )
 
 // ReceiverRecord stores one receiver location and indicator values.
+//
+// PlacementRule, Facade and Storey name the building, facade and storey of a
+// facade receiver (docs/research/facade-receivers.md, "Receiver properties").
+// They come as a set: a facade receiver carries all three, any other receiver
+// none of them. All three are omitted from the JSON when absent, so a grid or
+// custom table without them keeps the bytes it had before they existed.
 type ReceiverRecord struct {
 	ID      string             `json:"id"`
 	X       float64            `json:"x"`
 	Y       float64            `json:"y"`
 	HeightM float64            `json:"height_m"`
 	Values  map[string]float64 `json:"values"`
+
+	PlacementRule string          `json:"placement_rule,omitempty"`
+	Facade        *ReceiverFacade `json:"facade,omitempty"`
+	// Storey is the storey index, 0 being the ground floor.
+	Storey *int `json:"storey,omitempty"`
+}
+
+// ReceiverFacade names the footprint edge a facade receiver belongs to: the
+// building, the polygon within it, the ring and the edge, by their indices in
+// the canonical footprint, plus the edge's endpoints as a check.
+//
+// It has the JSON shape of geo.FacadeKey, with From and To as [x, y] arrays,
+// and is declared here rather than imported so that results stays free of geo.
+type ReceiverFacade struct {
+	BuildingRef string     `json:"building_ref"`
+	Part        int        `json:"part"`
+	Ring        int        `json:"ring"`
+	Edge        int        `json:"edge"`
+	From        [2]float64 `json:"from"`
+	To          [2]float64 `json:"to"`
 }
 
 // ReceiverTable stores tabular receiver output for one run.
@@ -96,7 +122,51 @@ func (t ReceiverTable) validateRecord(i int, record ReceiverRecord, seenReceiver
 		return fmt.Errorf("receiver record %q has invalid coordinates or height", record.ID)
 	}
 
+	err := validateRecordFacade(record)
+	if err != nil {
+		return err
+	}
+
 	return t.validateRecordValues(record)
+}
+
+// validateRecordFacade checks the optional facade attributes of a record:
+// all present or all absent, and well-formed when present.
+func validateRecordFacade(record ReceiverRecord) error {
+	hasFacade := record.Facade != nil
+	hasStorey := record.Storey != nil
+	hasRule := record.PlacementRule != ""
+
+	if !hasFacade && !hasStorey && !hasRule {
+		return nil
+	}
+
+	if !hasFacade || !hasStorey || !hasRule {
+		return fmt.Errorf("receiver record %q has incomplete facade attributes: placement_rule, facade and storey come together", record.ID)
+	}
+
+	if *record.Storey < 0 {
+		return fmt.Errorf("receiver record %q has a negative storey", record.ID)
+	}
+
+	return validateFacade(record.ID, *record.Facade)
+}
+
+// validateFacade checks the facade key of the record named id.
+func validateFacade(id string, facade ReceiverFacade) error {
+	if facade.BuildingRef == "" {
+		return fmt.Errorf("receiver record %q facade building_ref is required", id)
+	}
+
+	if facade.Part < 0 || facade.Ring < 0 || facade.Edge < 0 {
+		return fmt.Errorf("receiver record %q facade has a negative part, ring or edge", id)
+	}
+
+	if !isFinite(facade.From[0]) || !isFinite(facade.From[1]) || !isFinite(facade.To[0]) || !isFinite(facade.To[1]) {
+		return fmt.Errorf("receiver record %q facade has a non-finite from or to", id)
+	}
+
+	return nil
 }
 
 // validateRecordValues checks that a record carries a finite value for every ordered indicator.

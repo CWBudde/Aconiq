@@ -8,6 +8,7 @@
  *   - states `ReceiverTable.Validate` refuses on the Go side, so no Go golden
  *     can ever contain them — an empty field, an empty record list, a missing
  *     indicator, NaN, ±Infinity;
+ *   - facade rows the Go side refuses: a facade without its storey or rule;
  *   - the shortest-digit property over a few thousand pseudo-random doubles,
  *     which is the half of the spelling risk no finite fixture covers.
  */
@@ -244,5 +245,55 @@ describe("buildReceiverTableCSV", () => {
     });
 
     expect(csv).toBe("id,x,y,height_m,Lden,Lnight\nR1,NaN,+Inf,-1,-Inf,-0\n");
+  });
+
+  it("adds no facade columns when no record carries a facade", () => {
+    // Keyed on `facade` alone, as in Go: a stray storey or rule on a record
+    // without a facade (which Validate refuses) does not add the columns.
+    const csv = buildReceiverTableCSV({
+      indicator_order: ["Lden"],
+      records: [
+        {
+          id: "R1",
+          x: 1,
+          y: 2,
+          height_m: 3,
+          values: { Lden: 60 },
+          storey: 2,
+          placement_rule: "rls19-facade",
+        },
+      ],
+    });
+
+    expect(csv).toBe("id,x,y,height_m,Lden\nR1,1,2,3,60\n");
+  });
+
+  it("leaves a facade row's missing storey and rule empty", () => {
+    // Unreachable from Go: Validate requires facade, storey and rule together.
+    const csv = buildReceiverTableCSV({
+      indicator_order: ["Lden"],
+      records: [
+        {
+          id: "F1",
+          x: 1,
+          y: 2,
+          height_m: 3,
+          values: { Lden: 60 },
+          facade: {
+            building_ref: "osm-way-1",
+            part: 0,
+            ring: 1,
+            edge: 2,
+            from: [0, 0],
+            to: [1, 0],
+          },
+        },
+      ],
+    });
+
+    expect(csv).toBe(
+      "id,x,y,height_m,Lden,building_ref,part,ring,edge,storey,placement_rule\n" +
+        "F1,1,2,3,60,osm-way-1,0,1,2,,\n",
+    );
   });
 });

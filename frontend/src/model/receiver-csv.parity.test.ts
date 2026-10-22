@@ -7,10 +7,12 @@
  * bytes ought to be. It reads what the CLI actually produced and asserts the
  * browser builder produces the same thing.
  *
- * Two fixtures, for the two ways the spellings can diverge:
+ * Three fixtures, for the ways the spellings can diverge:
  *
  *   - receiver_table.golden.json / .csv pin the quoting rules over a table
  *     built to hit every clause of `csv.Writer.fieldNeedsQuotes`;
+ *   - receiver_table_facade.golden.json / .csv pin the facade columns, which
+ *     follow the indicators only when some record carries a facade;
  *   - float_spelling.golden.json pins `strconv.FormatFloat(v, 'f', -1, 64)`,
  *     keyed on IEEE-754 bit patterns so each double is reconstructed exactly
  *     rather than routed through a JS decimal parser first.
@@ -41,6 +43,19 @@ describe("receiver CSV parity with the Go writer", () => {
       readFixture("receiver_table.golden.json"),
     );
     const expected = readFixture("receiver_table.golden.csv");
+
+    const got = buildReceiverTableCSV(
+      table as Parameters<typeof buildReceiverTableCSV>[0],
+    );
+
+    expect(got).toBe(expected);
+  });
+
+  it("reproduces the CLI's bytes for a table with facade receivers", () => {
+    const table: unknown = JSON.parse(
+      readFixture("receiver_table_facade.golden.json"),
+    );
+    const expected = readFixture("receiver_table_facade.golden.csv");
 
     const got = buildReceiverTableCSV(
       table as Parameters<typeof buildReceiverTableCSV>[0],
