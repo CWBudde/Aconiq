@@ -534,6 +534,10 @@ type ModelFeature struct {
 	HeightM      float64 // 0 if not applicable
 	GeometryType string  // Point, LineString, Polygon
 	Coordinates  any     // parsed GeoJSON coordinates
+	// Properties is the feature's full property map, as decoded from the
+	// model GeoJSON. The GeoPackage export reads the fields above only; the
+	// SoundPLAN export carries every property, or reports why it cannot.
+	Properties map[string]any
 }
 
 // ExportModelFeaturesGeoPackage writes model features (sources, buildings, barriers)
