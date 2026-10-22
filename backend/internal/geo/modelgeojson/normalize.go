@@ -45,7 +45,8 @@ func buildCRSPipeline(projCRS, impCRS string) (*geo.TransformPipeline, bool, err
 }
 
 // NormalizeWithCRS decodes raw GeoJSON and maps it into the normalized project model.
-// When importCRS differs from projectCRS, all coordinates are reprojected into the project CRS.
+// When importCRS differs from projectCRS, all coordinates are reprojected into the project CRS,
+// those embedded in properties (propertyGeometries) included.
 func NormalizeWithCRS(data []byte, projectCRS string, importCRS string, sourcePath string) (Model, error) {
 	var collection FeatureCollection
 
@@ -99,12 +100,9 @@ func NormalizeWithCRS(data []byte, projectCRS string, importCRS string, sourcePa
 			featureHeight = &heightM
 		}
 
-		coords := raw.Geometry.Coordinates
-		if pipeline != nil {
-			coords, err = transformCoordinates(coords, pipeline)
-			if err != nil {
-				return Model{}, fmt.Errorf("feature[%d] (%s): CRS transform: %w", idx, id, err)
-			}
+		coords, properties, err := transformFeature(raw.Geometry.Coordinates, normalizeProperties(raw.Properties), pipeline)
+		if err != nil {
+			return Model{}, fmt.Errorf("feature[%d] (%s): CRS transform: %w", idx, id, err)
 		}
 
 		features = append(features, Feature{
@@ -112,7 +110,7 @@ func NormalizeWithCRS(data []byte, projectCRS string, importCRS string, sourcePa
 			Kind:         kind,
 			SourceType:   sourceType,
 			HeightM:      featureHeight,
-			Properties:   normalizeProperties(raw.Properties),
+			Properties:   properties,
 			GeometryType: geometryType,
 			Coordinates:  coords,
 		})
@@ -127,6 +125,27 @@ func NormalizeWithCRS(data []byte, projectCRS string, importCRS string, sourcePa
 		SourcePath:       filepath.ToSlash(strings.TrimSpace(sourcePath)),
 		Features:         features,
 	}, nil
+}
+
+// transformFeature moves one feature's geometry and the coordinates embedded
+// in its properties (propertyGeometries) together, as Reproject does. A nil
+// pipeline moves nothing.
+func transformFeature(coords any, properties map[string]any, pipeline *geo.TransformPipeline) (any, map[string]any, error) {
+	if pipeline == nil {
+		return coords, properties, nil
+	}
+
+	moved, err := transformCoordinates(coords, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	properties, err = reprojectProperties(properties, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return moved, properties, nil
 }
 
 // transformCoordinates recursively walks GeoJSON coordinate structures and

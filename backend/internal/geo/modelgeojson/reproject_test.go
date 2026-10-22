@@ -531,3 +531,82 @@ func TestReprojectCarriesAMalformedFacadeThrough(t *testing.T) {
 		})
 	}
 }
+
+// An import or a save in another CRS goes through NormalizeWithCRS, not
+// Reproject. The coordinates embedded in properties must move there too, or
+// the model's facade endpoints, directional centerlines and track features
+// stay in the import CRS while the geometry beside them moves.
+func TestNormalizeWithCRSMovesCoordinatesEmbeddedInProperties(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "rcv-1", "kind": "receiver", "height_m": 4,
+        "facade": {"building_ref": "osm-way-123456", "part": 0, "ring": 0, "edge": 3,
+                   "from": [10.0, 53.55], "to": [10.0001, 53.55002]}
+      },
+      "geometry": {"type": "Point", "coordinates": [10.0, 53.55]}
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "road-1", "kind": "source", "source_type": "line",
+        "rls19_directional_sources": [{"centerline": [[10.0, 53.55], [10.001, 53.55]]}],
+        "schall03_track_features": [{"kind": "haltestelle", "x": 10.0, "y": 53.55}]
+      },
+      "geometry": {"type": "LineString", "coordinates": [[10.0, 53.55], [10.001, 53.55]]}
+    }
+  ]
+}`)
+
+	model, err := modelgeojson.NormalizeWithCRS(payload, "EPSG:25832", "EPSG:4326", "test.geojson")
+	if err != nil {
+		t.Fatalf("NormalizeWithCRS: %v", err)
+	}
+
+	want := func(x, y float64) geo.Point2D { return project(t, "EPSG:4326", "EPSG:25832", x, y) }
+
+	expectPair := func(label string, raw any, at geo.Point2D) {
+		t.Helper()
+
+		x, y := coordinatePair(t, label, raw)
+		if x != at.X || y != at.Y {
+			t.Fatalf("%s = (%v, %v), want (%v, %v)", label, x, y, at.X, at.Y)
+		}
+	}
+
+	facade, ok := model.Features[0].Properties["facade"].(map[string]any)
+	if !ok {
+		t.Fatalf("facade = %#v, want an object", model.Features[0].Properties["facade"])
+	}
+
+	expectPair("facade.from", facade["from"], want(10.0, 53.55))
+	expectPair("facade.to", facade["to"], want(10.0001, 53.55002))
+	expectPair("receiver point", model.Features[0].Coordinates, want(10.0, 53.55))
+
+	props := model.Features[1].Properties
+
+	directional, _ := props["rls19_directional_sources"].([]any)
+	if len(directional) != 1 {
+		t.Fatalf("rls19_directional_sources = %#v", props["rls19_directional_sources"])
+	}
+
+	centerline, _ := directional[0].(map[string]any)["centerline"].([]any)
+	if len(centerline) != 2 {
+		t.Fatalf("centerline = %#v", directional[0])
+	}
+
+	expectPair("centerline[1]", centerline[1], want(10.001, 53.55))
+
+	tracks, _ := props["schall03_track_features"].([]any)
+	if len(tracks) != 1 {
+		t.Fatalf("schall03_track_features = %#v", props["schall03_track_features"])
+	}
+
+	track, _ := tracks[0].(map[string]any)
+	expectPair("track feature", []any{track["x"], track["y"]}, want(10.0, 53.55))
+}
