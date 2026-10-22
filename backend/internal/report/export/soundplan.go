@@ -343,8 +343,14 @@ func buildSoundPLANLayer(spec soundPLANLayerSpec, members []ModelFeature) (Shape
 			// own at the feature's Lw, and names it <id>-NN the same way.
 			for i, part := range parts {
 				partValues := slices.Clone(values)
-				if len(parts) > 1 {
-					partValues[0] = fmt.Sprintf("%s-%02d", f.ID, i+1)
+				if len(parts) > 1 && values[0] != nil {
+					// The suffix can push an ID that fits past the limit.
+					partID, reason := soundPLANCell(f.ID, columns[0], fmt.Sprintf("%s-%02d", f.ID, i+1))
+					if reason != "" {
+						lossy = append(lossy, SoundPLANLossyEntry{FeatureID: f.ID, Property: "id", Reason: reason})
+					}
+
+					partValues[0] = partID
 				}
 
 				partValues = append(partValues, float64(i+1))
@@ -565,15 +571,18 @@ func soundPLANValues(f ModelFeature, columns []soundPLANColumn) ([]any, []SoundP
 	for i, c := range columns {
 		inColumn[c.property] = true
 
-		if c.property == "id" {
-			values[i] = f.ID
+		// The ID goes through the same cell rule as any other text: one too
+		// long for a character field is left empty and reported, rather than
+		// failing the whole export.
+		var v any = f.ID
 
-			continue
-		}
+		if c.property != "id" {
+			var ok bool
 
-		v, ok := f.Properties[c.property]
-		if !ok || v == nil {
-			continue
+			v, ok = f.Properties[c.property]
+			if !ok || v == nil {
+				continue
+			}
 		}
 
 		value, reason := soundPLANCell(f.ID, c, v)

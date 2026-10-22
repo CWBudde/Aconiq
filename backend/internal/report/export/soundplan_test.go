@@ -213,6 +213,56 @@ func TestExportSoundPLANReportsWhatItCannotCarry(t *testing.T) {
 	}
 }
 
+// An ID longer than a character field holds costs its feature the ID cell,
+// reported, rather than failing the export — and so does a MultiPoint part
+// whose -NN suffix pushes an ID that fit past the limit.
+func TestExportSoundPLANReportsAnOverlongID(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("r", MaxDBFCharBytes+1)
+	edge := strings.Repeat("s", MaxDBFCharBytes-1)
+
+	features := []ModelFeature{
+		{
+			ID: long, Kind: "receiver", GeometryType: geoJSONPoint,
+			Coordinates: []any{500000.0, 5800000.0},
+			Properties:  map[string]any{"id": long, "kind": "receiver", "height_m": 4.0},
+		},
+		{
+			ID: edge, Kind: kindSource, SourceType: "point", GeometryType: geoJSONMultiPoint,
+			Coordinates: []any{[]any{500010.0, 5800000.0}, []any{500020.0, 5800000.0}},
+			Properties:  map[string]any{"id": edge, "kind": kindSource, "source_type": "point", "iso9613_sound_power_level_db": 90.0},
+		},
+	}
+
+	dir := t.TempDir()
+
+	report, _, err := ExportSoundPLANShapefiles(dir, features, SoundPLANOptions{CRS: "EPSG:25832", Date: testDate()})
+	if err != nil {
+		t.Fatalf("an overlong ID failed the export: %v", err)
+	}
+
+	idLosses := map[string]int{}
+
+	for _, e := range report.Lossy {
+		if e.Property == "id" {
+			idLosses[e.FeatureID]++
+		}
+	}
+
+	if idLosses[long] != 1 || idLosses[edge] != 1 || len(idLosses) != 2 {
+		t.Errorf("ID losses %v, want one for each feature: %v", idLosses, report.Lossy)
+	}
+
+	for _, layer := range []string{"receivers", "sources_point"} {
+		for _, row := range readDBFFile(t, filepath.Join(dir, layer+".dbf")).rows {
+			if row[0] != "" {
+				t.Errorf("%s writes ID %q, want it left empty", layer, row[0])
+			}
+		}
+	}
+}
+
 func TestExportSoundPLANRefusesPlanesSoundPLANWouldMismeasure(t *testing.T) {
 	t.Parallel()
 

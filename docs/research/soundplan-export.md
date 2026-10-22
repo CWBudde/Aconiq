@@ -141,7 +141,8 @@ Coordinates are written as IEEE doubles and are not rounded.
 **Lost, and reported** as `feature_id`, `property` and `reason`:
 
 - structured values (arrays, objects, e.g. `rls19_directional_sources`, `schall03_operations`);
-- strings over 254 bytes, whose cell is left empty;
+- strings over 254 bytes, whose cell is left empty — the feature ID included, and a MultiPoint
+  part's `<id>-NN`;
 - a property whose values differ in type across one layer's features;
 - vertex z coordinates;
 - features of kinds without a layer;
