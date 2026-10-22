@@ -138,39 +138,3 @@ func (g GridReceiverSet) Generate() ([]PointReceiver, error) {
 
 	return points, nil
 }
-
-// FacadeReceiverSet is a deferred data model for facade-oriented receivers.
-// Full geometric generation is intentionally deferred beyond Phase 5.
-type FacadeReceiverSet struct {
-	ID               string   `json:"id"`
-	BuildingIDs      []string `json:"building_ids"`
-	OffsetM          float64  `json:"offset_m"`
-	VerticalStepM    float64  `json:"vertical_step_m"`
-	IncludeCourtyard bool     `json:"include_courtyard"`
-}
-
-// IsImplemented reports whether facade receiver generation is currently implemented.
-func (f FacadeReceiverSet) IsImplemented() bool {
-	return false
-}
-
-// Validate validates basic facade set shape without generating points.
-func (f FacadeReceiverSet) Validate() error {
-	if f.ID == "" {
-		return errors.New("facade receiver set id is required")
-	}
-
-	if len(f.BuildingIDs) == 0 {
-		return errors.New("facade receiver set must reference at least one building id")
-	}
-
-	if f.OffsetM < 0 || math.IsNaN(f.OffsetM) || math.IsInf(f.OffsetM, 0) {
-		return errors.New("facade offset must be finite and >= 0")
-	}
-
-	if f.VerticalStepM <= 0 || math.IsNaN(f.VerticalStepM) || math.IsInf(f.VerticalStepM, 0) {
-		return errors.New("facade vertical_step_m must be finite and > 0")
-	}
-
-	return nil
-}
