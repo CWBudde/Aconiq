@@ -1,0 +1,269 @@
+[
+  {
+    "name": "estimate_run",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_unconfirmed": {
+          "description": "Opt in to a normative run over facade receivers that are still proposed or whose slab height is assumed. Without it such a run is refused; with it their counts are recorded in the run's provenance and report.",
+          "type": "boolean"
+        },
+        "experimental": {
+          "description": "Opt in to a scaffold-tier standard. A scaffold is not an implementation of the method its name suggests; without this its run is refused.",
+          "type": "boolean"
+        },
+        "facade_buildings": {
+          "description": "With receiver_mode facade: the building feature ids, from get_model, whose facades carry receivers.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "facade_include_courtyard": {
+          "description": "With receiver_mode facade: also place receivers on courtyard facades.",
+          "type": "boolean"
+        },
+        "facade_spacing_m": {
+          "description": "With receiver_mode facade: the station spacing along each facade in metres. Required there; there is no default.",
+          "type": [
+            "null",
+            "number"
+          ]
+        },
+        "params": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Parameters of the profile by name, each value as a string. Omitted ones take the default list_standards declares; provenance.json records the values the run resolved.",
+          "type": "object"
+        },
+        "receiver_mode": {
+          "description": "auto-grid (a receiver grid over the sources or the calc-area), custom (the model's receiver features) or facade (receivers generated on the facades of facade_buildings; rls19-road and schall03 only).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "scenario_id": {
+          "description": "The scenario to run; default in a new project.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "standard_id": {
+          "description": "A standard id from list_standards.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "standard_profile": {
+          "description": "One of that version's profiles, from list_standards.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "standard_version": {
+          "description": "One of the standard's versions, from list_standards.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "scenario_id",
+        "standard_id",
+        "standard_version",
+        "standard_profile",
+        "receiver_mode"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_contours",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "crs": {
+          "description": "EPSG identifier to answer in, such as EPSG:4326. Omitted, the run's compute_crs.",
+          "type": "string"
+        },
+        "interval": {
+          "description": "Contour step in dB. Omitted, the API's default step.",
+          "type": [
+            "null",
+            "number"
+          ]
+        },
+        "run_id": {
+          "description": "The run's id, as list_runs or start_run returned it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_model",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "crs": {
+          "description": "EPSG identifier to answer in, such as EPSG:4326. Omitted, the model is returned in the project CRS, byte-identical to what is stored.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_run",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "description": "The run's id, as list_runs or start_run returned it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_run_log",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "description": "The run's id, as list_runs or start_run returned it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_run_results",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "description": "The run's id, as list_runs or start_run returned it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_runs",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_standards",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  {
+    "name": "project_status",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  {
+    "name": "transform",
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "coordinates": {
+          "description": "Flat and interleaved: x0, y0, x1, y1, … — longitude before latitude in a geographic CRS.",
+          "items": {
+            "type": "number"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "source_crs": {
+          "description": "EPSG identifier the coordinates are in, such as EPSG:4326 or EPSG:25832.",
+          "type": "string"
+        },
+        "target_crs": {
+          "description": "EPSG identifier to project into, or auto (the default) for the zone aconiq run would compute in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_crs",
+        "coordinates"
+      ],
+      "type": "object"
+    }
+  }
+]
