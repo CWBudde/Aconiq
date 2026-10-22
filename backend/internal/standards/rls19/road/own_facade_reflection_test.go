@@ -1,13 +1,13 @@
 package road
 
 import (
+	"math"
 	"testing"
 
 	"github.com/aconiq/backend/internal/geo"
 )
 
-// Own-facade reflections at a facade receiver (PLAN.md Priority 18 B1,
-// Priority 1 §1.9).
+// Own-facade reflections at a facade receiver (PLAN.md Priority 1 §1.9).
 //
 // RLS-19 puts the Immissionsort at a building 0.05 m in front of the outer
 // facade, at the height of the storey's slab, and does not count a path whose
@@ -16,26 +16,31 @@ import (
 // links a receiver to a facade, so the source's image in the receiver's own
 // facade is counted like any other reflection.
 //
-// These tests measure what that adds and PIN it. The bands are NOT a
+// These tests measure what that adds and PIN it. The tolerances are NOT a
 // conformance tolerance and must never be read as one: they hold today's
-// defective state, about ±0.25 dB around the measured value, so it cannot
-// change unnoticed. When §1.9 is fixed, each test flips to asserting that the
+// defective state so it cannot change unnoticed. Each is smaller than the
+// smallest effect its case pins, so removing any one of them fails the test
+// rather than passing inside the band. Every value below is the same on amd64
+// and arm64. When §1.9 is fixed, each test flips to asserting that the
 // own-facade paths are gone.
 //
 // Measured on 2026-10-22, LrDay, sampleSource traffic:
 //
 //	single facade, as a Building (what the CLI builds)  +3.293 dB over free field
-//	single facade, as a reflector line                   +2.749 dB
+//	single facade, as a reflector line                   +2.750 dB
 //	canyon, own facade removed                           −2.758 dB
 //	coplanar neighbour line, 0.10 m from the party wall  +0.147 dB on top of the own facade
-//	coplanar neighbour Building                          −0.682 dB (it shields the own image)
+//	coplanar neighbour Building                          −0.681 dB (it shields the own image)
 
 const (
 	ownFacadeY        = 20.0 // the receiver's own facade lies on y = 20
 	facadeOffsetM     = 0.05 // RLS-19: 5 cm in front of the outer facade
 	facadeReceiverZ   = 3.0  // ceiling slab of the ground floor at s = 3.0 m
 	facadeBuildingTop = 10.0
-	pinnedBandDB      = 0.25
+
+	// pinnedToleranceDB is below the smallest nonzero effect pinned here,
+	// the +0.012 dB a barrier-shielded image keeps.
+	pinnedToleranceDB = 0.005
 )
 
 // facadeBuilding is a 10 m deep, 10 m high block whose street facade lies on
@@ -88,11 +93,11 @@ func facadeReceiverLevel(t *testing.T, receiver geo.Point2D, sources []RoadSourc
 func assertPinned(t *testing.T, what string, got, measured float64) {
 	t.Helper()
 
-	t.Logf("%s: %+.3f dB (pinned at %+.3f)", what, got, measured)
+	t.Logf("%s: %+.4f dB (pinned at %+.3f)", what, got, measured)
 
-	if got < measured-pinnedBandDB || got > measured+pinnedBandDB {
-		t.Errorf("%s = %+.3f dB, pinned at %+.3f ± %.2f dB: the own-facade behaviour changed; "+
-			"if §1.9 was fixed, flip this test", what, got, measured, pinnedBandDB)
+	if math.Abs(got-measured) > pinnedToleranceDB {
+		t.Errorf("%s = %+.4f dB, pinned at %+.3f ± %.3f dB: the own-facade behaviour changed; "+
+			"if §1.9 was fixed, flip this test", what, got, measured, pinnedToleranceDB)
 	}
 }
 
@@ -110,7 +115,7 @@ func TestOwnFacade_RLS19_SingleFacade(t *testing.T) {
 	// The facade alone: its image is almost as strong as the direct sound,
 	// 0.5 dB down and 0.1 m further away, so the level nearly doubles.
 	line := facadeReceiverLevel(t, receiver, sources, facadeScene{reflectors: []Reflector{front}})
-	assertPinned(t, "own facade as a reflector line, over free field", line-free, 2.749)
+	assertPinned(t, "own facade as a reflector line, over free field", line-free, 2.750)
 
 	// The facade as a Building, which is what the CLI builds from a model.
 	// A path never shields itself on its own reflector, and that exclusion
@@ -152,7 +157,7 @@ func TestOwnFacade_RLS19_SingleFacade(t *testing.T) {
 		reflectors: []Reflector{front},
 		barriers:   []Barrier{house.asBarrier()},
 	})
-	assertPinned(t, "reflector line in front of its own building as a barrier, over free field", shielded-free, 0.011)
+	assertPinned(t, "reflector line in front of its own building as a barrier, over free field", shielded-free, 0.012)
 }
 
 // A street canyon: the own facade on y = 20, an opposite facade on y = −20,
@@ -236,5 +241,5 @@ func TestOwnFacade_RLS19_CoplanarNeighbour(t *testing.T) {
 	block := facadeReceiverLevel(t, nearWall, sources, facadeScene{
 		buildings: []Building{facadeBuilding("house", -5, 5), facadeBuilding("neighbour", 5, 15)},
 	})
-	assertPinned(t, "neighbour Building on top of the own Building, 0.10 m from the party wall", block-ownBuilding, -0.682)
+	assertPinned(t, "neighbour Building on top of the own Building, 0.10 m from the party wall", block-ownBuilding, -0.681)
 }
