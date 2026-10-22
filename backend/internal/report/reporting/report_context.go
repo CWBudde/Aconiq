@@ -311,34 +311,39 @@ func appendContextNotes(ctx *reportContext) {
 }
 
 // unconfirmedFacadeNote says how many of the run's facade receivers nobody
-// confirmed, or "" when there were none to mention.
+// confirmed, and how many rejected ones it left out, or "" when there were
+// none to mention. Each part is stated only when its count is: a run over
+// confirmed points that left rejected ones out computed at nothing
+// unconfirmed, and must not say so.
 func unconfirmedFacadeNote(ctx reportContext) string {
-	if ctx.FacadeProposedCount == "" && ctx.FacadeAssumedHeightCount == "" && ctx.FacadeRejectedCount == "" {
-		return ""
+	var computed []string
+
+	if ctx.FacadeProposedCount != "" {
+		computed = append(computed, ctx.FacadeProposedCount+" proposed facade receiver(s)")
 	}
 
-	orZero := func(count string) string {
-		if count == "" {
-			return "0"
+	if ctx.FacadeAssumedHeightCount != "" {
+		computed = append(computed, ctx.FacadeAssumedHeightCount+" facade receiver(s) with an assumed slab height")
+	}
+
+	var sentences []string
+
+	if len(computed) > 0 {
+		sentences = append(sentences, fmt.Sprintf(
+			"This run computed at %s: nobody has confirmed where these Immissionsorte are, so their levels are not an assessment of them.",
+			strings.Join(computed, " and "),
+		))
+
+		if ctx.AllowUnconfirmed {
+			sentences = append(sentences, "The run was started with --allow-unconfirmed.")
 		}
-
-		return count
-	}
-
-	note := fmt.Sprintf(
-		"This run computed at %s proposed facade receiver(s) and %s with an assumed slab height: nobody has confirmed where these Immissionsorte are, so their levels are not an assessment of them.",
-		orZero(ctx.FacadeProposedCount), orZero(ctx.FacadeAssumedHeightCount),
-	)
-
-	if ctx.AllowUnconfirmed {
-		note += " The run was started with --allow-unconfirmed."
 	}
 
 	if ctx.FacadeRejectedCount != "" {
-		note += fmt.Sprintf(" %s rejected facade receiver(s) were left out.", ctx.FacadeRejectedCount)
+		sentences = append(sentences, ctx.FacadeRejectedCount+" rejected facade receiver(s) were left out.")
 	}
 
-	return note
+	return strings.Join(sentences, " ")
 }
 
 func normalizeQASuites(in []QASuiteStatus) []qaSuiteView {

@@ -742,7 +742,7 @@ func TestBuildRunReportStatesUnconfirmedFacadeReceivers(t *testing.T) {
 			t.Fatalf("read %s: %v", path, err)
 		}
 
-		for _, part := range []string{"48 proposed facade receiver", "24 with an assumed slab height", "--allow-unconfirmed", "2 rejected"} {
+		for _, part := range []string{"48 proposed facade receiver", "24 facade receiver(s) with an assumed slab height", "--allow-unconfirmed", "2 rejected"} {
 			if !strings.Contains(string(rendered), part) {
 				t.Fatalf("%s does not state %q:\n%s", filepath.Base(path), part, rendered)
 			}
@@ -764,5 +764,59 @@ func TestBuildRunReportStatesUnconfirmedFacadeReceivers(t *testing.T) {
 	if context["facade_proposed_count"] != "48" || context["facade_assumed_height_count"] != "24" ||
 		context["facade_rejected_count"] != "2" || context["allow_unconfirmed"] != true {
 		t.Fatalf("report context = %v", context)
+	}
+}
+
+// The note states only the counts a run has. A run over confirmed points that
+// left rejected ones out computed at nothing unconfirmed, and must not read as
+// if it had.
+func TestUnconfirmedFacadeNoteStatesOnlyItsCounts(t *testing.T) {
+	t.Parallel()
+
+	const caveat = "nobody has confirmed"
+
+	for _, tc := range []struct {
+		name       string
+		ctx        reportContext
+		want       []string
+		wantNoneOf []string
+	}{
+		{name: "nothing", ctx: reportContext{}},
+		{
+			name:       "rejected only",
+			ctx:        reportContext{FacadeRejectedCount: "2", AllowUnconfirmed: true},
+			want:       []string{"2 rejected facade receiver(s) were left out."},
+			wantNoneOf: []string{caveat, "proposed", "assumed", "--allow-unconfirmed"},
+		},
+		{
+			name:       "assumed only",
+			ctx:        reportContext{FacadeAssumedHeightCount: "6"},
+			want:       []string{"computed at 6 facade receiver(s) with an assumed slab height:", caveat},
+			wantNoneOf: []string{"proposed", "rejected"},
+		},
+		{
+			name:       "proposed only",
+			ctx:        reportContext{FacadeProposedCount: "4", AllowUnconfirmed: true},
+			want:       []string{"computed at 4 proposed facade receiver(s):", caveat, "--allow-unconfirmed"},
+			wantNoneOf: []string{"assumed", "rejected"},
+		},
+	} {
+		note := unconfirmedFacadeNote(tc.ctx)
+
+		if len(tc.want) == 0 && note != "" {
+			t.Fatalf("%s: note = %q, want none", tc.name, note)
+		}
+
+		for _, part := range tc.want {
+			if !strings.Contains(note, part) {
+				t.Fatalf("%s: note %q does not state %q", tc.name, note, part)
+			}
+		}
+
+		for _, part := range tc.wantNoneOf {
+			if strings.Contains(note, part) {
+				t.Fatalf("%s: note %q states %q", tc.name, note, part)
+			}
+		}
 	}
 }
