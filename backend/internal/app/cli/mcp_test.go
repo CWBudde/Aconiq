@@ -398,3 +398,187 @@ func TestMCPServesARunsProvenance(t *testing.T) {
 		t.Fatalf("aconiq mcp: %v, trailing stdout %q", err, rest)
 	}
 }
+
+// mcpRunTimeout bounds how long a test polls get_run for a run to finish.
+const mcpRunTimeout = 60 * time.Second
+
+// A run started over MCP is a real `aconiq run` child of the server, and an
+// agent follows it to its results with the read tools alone: get_run until it
+// has finished, then its receiver table, contours and log.
+func TestMCPStartsARunAndReadsItsResults(t *testing.T) {
+	// The API spawns the run as a child of this process, and the stand-in
+	// makes this test binary that child. t.Setenv rules out t.Parallel.
+	t.Setenv(cliStandInEnv, "1")
+
+	projectDir := t.TempDir()
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "MCP", "--crs", "EPSG:25832")
+	mustRunCLI(t, "--project", projectDir, "import", "--input", testdataPath(t, "phase8", "model.geojson"))
+
+	session, done := runMCPInProcess(t, "--project", projectDir, "mcp", "--allow-writes")
+	session.initialize(t)
+
+	request := map[string]any{
+		"scenario_id":      "default",
+		"standard_id":      "dummy-freefield",
+		"standard_version": "v0",
+		"standard_profile": "default",
+		"receiver_mode":    "auto-grid",
+	}
+
+	text, isError := session.callTool(t, "start_run", request)
+	if isError {
+		t.Fatalf("start_run: %s", text)
+	}
+
+	var started struct {
+		ID string `json:"id"`
+	}
+
+	err := json.Unmarshal([]byte(text), &started)
+	if err != nil || started.ID == "" {
+		t.Fatalf("start_run answered %s (%v)", text, err)
+	}
+
+	status := awaitMCPRun(t, session, started.ID)
+	if status != project.RunStatusCompleted {
+		log, _ := session.callTool(t, "get_run_log", map[string]any{"run_id": started.ID})
+		t.Fatalf("run %s ended %s:\n%s", started.ID, status, log)
+	}
+
+	text, isError = session.callTool(t, "get_run_results", map[string]any{"run_id": started.ID})
+
+	var table struct {
+		IndicatorOrder []string          `json:"indicator_order"`
+		Units          map[string]string `json:"units"`
+		Records        []json.RawMessage `json:"records"`
+	}
+
+	err = json.Unmarshal([]byte(text), &table)
+	if isError || err != nil || len(table.IndicatorOrder) == 0 || len(table.Records) == 0 ||
+		table.Units[table.IndicatorOrder[0]] == "" {
+		t.Fatalf("get_run_results (is_error %v, %v): %.300s", isError, err, text)
+	}
+
+	text, isError = session.callTool(t, "get_contours", map[string]any{"run_id": started.ID, "interval": 5})
+
+	var contours struct {
+		CRS   string            `json:"crs"`
+		Lines []json.RawMessage `json:"lines"`
+	}
+
+	err = json.Unmarshal([]byte(text), &contours)
+	if isError || err != nil || contours.CRS == "" {
+		t.Fatalf("get_contours (is_error %v, %v): %.300s", isError, err, text)
+	}
+
+	for _, tool := range []string{"get_run_log", "list_runs"} {
+		args := map[string]any{"run_id": started.ID}
+		if tool == "list_runs" {
+			args = map[string]any{}
+		}
+
+		if text, isError := session.callTool(t, tool, args); isError || !strings.Contains(text, started.ID) {
+			t.Fatalf("%s (is_error %v): %.300s", tool, isError, text)
+		}
+	}
+
+	// A finished run has nothing left to stop; the refusal is the API's.
+	if text, isError := session.callTool(t, "cancel_run", map[string]any{"run_id": started.ID}); !isError || !strings.Contains(text, "run_not_running") {
+		t.Fatalf("cancel_run of a finished run (is_error %v): %s", isError, text)
+	}
+
+	// An estimate's timings are measured and differ between calls (ADR-002,
+	// Deterministic outputs), so only what is stable is asserted: which
+	// standard it priced, whether it could, and that it created no run.
+	text, isError = session.callTool(t, "estimate_run", request)
+
+	var estimate struct {
+		StandardID string `json:"standard_id"`
+		Available  *bool  `json:"available"`
+	}
+
+	err = json.Unmarshal([]byte(text), &estimate)
+	if isError || err != nil || estimate.StandardID != "dummy-freefield" || estimate.Available == nil {
+		t.Fatalf("estimate_run (is_error %v, %v): %s", isError, err, text)
+	}
+
+	if text, _ := session.callTool(t, "list_runs", map[string]any{}); strings.Count(text, `"log_path"`) != 1 {
+		t.Fatalf("an estimate created a run: %.300s", text)
+	}
+
+	rest, err := session.finish(t, done)
+	if err != nil || len(rest) != 0 {
+		t.Fatalf("aconiq mcp: %v, trailing stdout %q", err, rest)
+	}
+
+	assertAuditedRunTools(t, projectDir, started.ID)
+}
+
+// awaitMCPRun polls get_run, as an agent does, until the run has ended, and
+// returns its final status.
+func awaitMCPRun(t *testing.T, session *mcpSession, runID string) string {
+	t.Helper()
+
+	deadline := time.Now().Add(mcpRunTimeout)
+
+	for time.Now().Before(deadline) {
+		text, isError := session.callTool(t, "get_run", map[string]any{"run_id": runID})
+		if isError {
+			t.Fatalf("get_run: %s", text)
+		}
+
+		var run struct {
+			Status string `json:"status"`
+		}
+
+		err := json.Unmarshal([]byte(text), &run)
+		if err != nil {
+			t.Fatalf("get_run answered %s (%v)", text, err)
+		}
+
+		if run.Status != project.RunStatusPending && run.Status != project.RunStatusRunning {
+			return run.Status
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	t.Fatalf("run %s did not finish within %s", runID, mcpRunTimeout)
+
+	return ""
+}
+
+// assertAuditedRunTools checks the audit log recorded the start, with the run
+// it started, and the refused cancel, with the code it was refused with.
+func assertAuditedRunTools(t *testing.T, projectDir string, runID string) {
+	t.Helper()
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+
+	data, err := os.ReadFile(store.MCPAuditLogPath())
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+
+	var entries []map[string]any
+
+	for line := range strings.Lines(string(data)) {
+		var entry map[string]any
+
+		err := json.Unmarshal([]byte(line), &entry)
+		if err != nil {
+			t.Fatalf("audit line is not JSON: %q (%v)", line, err)
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if len(entries) != 2 ||
+		entries[0]["tool"] != "start_run" || entries[0]["outcome"] != "ok" || entries[0]["run_id"] != runID ||
+		entries[1]["tool"] != "cancel_run" || entries[1]["outcome"] != "run_not_running" || entries[1]["run_id"] != runID {
+		t.Fatalf("audit = %v", entries)
+	}
+}

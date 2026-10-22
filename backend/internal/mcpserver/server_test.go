@@ -54,6 +54,14 @@ type fixture struct {
 func newFixture(t *testing.T, allowWrites bool) fixture {
 	t.Helper()
 
+	return newFixtureWrapped(t, allowWrites, nil)
+}
+
+// newFixtureWrapped is newFixture with the server's handler wrapped by wrap,
+// for a test that must answer one route itself; nil wraps nothing.
+func newFixtureWrapped(t *testing.T, allowWrites bool, wrap func(http.Handler) http.Handler) fixture {
+	t.Helper()
+
 	store, err := projectfs.New(t.TempDir())
 	if err != nil {
 		t.Fatalf("new store: %v", err)
@@ -71,7 +79,12 @@ func newFixture(t *testing.T, allowWrites bool) fixture {
 
 	handler := httpv1.NewServeHandler(store, func() time.Time { return fixedNow }, registry, httpv1.ServeOptions{})
 
-	server, err := mcpserver.New(handler, mcpserver.Options{
+	served := http.Handler(handler)
+	if wrap != nil {
+		served = wrap(handler)
+	}
+
+	server, err := mcpserver.New(served, mcpserver.Options{
 		AllowWrites: allowWrites,
 		Version:     "test",
 		AuditPath:   store.MCPAuditLogPath(),
@@ -251,7 +264,10 @@ func TestToolsListedFollowTheWriteGate(t *testing.T) {
 
 	readOnly := listTools(t, newFixture(t, false).session)
 
-	if names := slices.Sorted(maps.Keys(readOnly)); !slices.Equal(names, []string{"get_model", "list_standards", "project_status", "transform"}) {
+	if names := slices.Sorted(maps.Keys(readOnly)); !slices.Equal(names, []string{
+		"estimate_run", "get_contours", "get_model", "get_run", "get_run_log", "get_run_results",
+		"list_runs", "list_standards", "project_status", "transform",
+	}) {
 		t.Fatalf("read-only server lists %v", names)
 	}
 
@@ -263,7 +279,10 @@ func TestToolsListedFollowTheWriteGate(t *testing.T) {
 
 	writable := listTools(t, newFixture(t, true).session)
 
-	if names := slices.Sorted(maps.Keys(writable)); !slices.Equal(names, []string{"get_model", "list_standards", "project_status", "save_model", "transform"}) {
+	if names := slices.Sorted(maps.Keys(writable)); !slices.Equal(names, []string{
+		"cancel_run", "estimate_run", "get_contours", "get_model", "get_run", "get_run_log", "get_run_results",
+		"list_runs", "list_standards", "project_status", "save_model", "start_run", "transform",
+	}) {
 		t.Fatalf("writable server lists %v", names)
 	}
 

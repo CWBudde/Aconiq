@@ -36,6 +36,16 @@ type auditEntry struct {
 	Outcome string `json:"outcome"`
 	// ModelHash is the model a successful save_model left in place.
 	ModelHash string `json:"model_hash,omitempty"`
+	// RunID is the run a run tool started or asked to stop, as the call named
+	// it.
+	RunID string `json:"run_id,omitempty"`
+}
+
+// affected is what a state-changing call touched, for its audit entry: the
+// model a save left in place, or the run a run tool acted on.
+type affected struct {
+	modelHash string
+	runID     string
 }
 
 // auditLog appends entries to one file. Each entry is one write of one line
@@ -74,13 +84,14 @@ func (a *auditLog) open() (*pendingEntry, error) {
 
 // finish writes the entry and closes the log. It is called exactly once per
 // opened entry, whatever the call's outcome.
-func (p *pendingEntry) finish(tool string, arguments json.RawMessage, outcome string, modelHash string) error {
+func (p *pendingEntry) finish(tool string, arguments json.RawMessage, outcome string, touched affected) error {
 	line, err := json.Marshal(auditEntry{
 		Time:       p.log.clock().UTC().Format(time.RFC3339),
 		Tool:       tool,
 		ArgsSHA256: argumentsDigest(arguments),
 		Outcome:    outcome,
-		ModelHash:  modelHash,
+		ModelHash:  touched.modelHash,
+		RunID:      touched.runID,
 	})
 	if err != nil {
 		_ = p.file.Close()

@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,6 +20,8 @@ const (
 	resourceRunProvenance  = "aconiq://runs/{id}/provenance"
 	runResourcePrefix      = "aconiq://runs/"
 	provenanceResourceTail = "/provenance"
+	resourceArtifact       = "aconiq://artifacts/{id}"
+	artifactResourcePrefix = "aconiq://artifacts/"
 )
 
 const jsonMIMEType = "application/json"
@@ -46,7 +49,7 @@ func addResources(server *mcp.Server, api apiClient) {
 		Description: "One run's summary: status, standard, project_crs and compute_crs, output_hash, source and receiver counts, and progress while it computes.",
 		MIMEType:    jsonMIMEType,
 	}, api.resource(func(uri string) (string, bool) {
-		id, ok := runID(strings.TrimPrefix(uri, runResourcePrefix))
+		id, ok := pathSegment(strings.TrimPrefix(uri, runResourcePrefix))
 
 		return "/api/v1/runs/" + id, ok
 	}))
@@ -58,17 +61,28 @@ func addResources(server *mcp.Server, api apiClient) {
 		MIMEType:    jsonMIMEType,
 	}, api.resource(func(uri string) (string, bool) {
 		segment, found := strings.CutSuffix(strings.TrimPrefix(uri, runResourcePrefix), provenanceResourceTail)
-		id, ok := runID(segment)
+		id, ok := pathSegment(segment)
 
 		return "/api/v1/runs/" + id + provenanceResourceTail, found && ok
 	}))
+
+	server.AddResourceTemplate(&mcp.ResourceTemplate{
+		URITemplate: resourceArtifact,
+		Name:        "artifact",
+		Description: "One artifact's content by the id a run's artifacts list names, byte for byte: a receiver table (JSON or CSV), the raster sidecar (units, band names, grid) and its float64 .bin, a report. Text formats are returned as text, the others as a blob; the MIME type is the artifact's own.",
+	}, api.resource(func(uri string) (string, bool) {
+		id, ok := pathSegment(strings.TrimPrefix(uri, artifactResourcePrefix))
+
+		return "/api/v1/artifacts/" + id + "/content", ok
+	}))
 }
 
-// runID decodes the run id a resource URI carries and re-escapes it as one
-// path segment of the API route, so no spelling of it — an encoded slash, a
-// dot segment — can make the read reach a different route. Whether a run of
-// that id exists is the API's to answer.
-func runID(segment string) (string, bool) {
+// pathSegment decodes a run or artifact id — as a resource URI or a tool
+// argument carries it — and re-escapes it as one path segment of the API
+// route, so no spelling of it — an encoded slash, a dot segment — can make the
+// read reach a different route. Whether a run or artifact of that id exists is
+// the API's to answer.
+func pathSegment(segment string) (string, bool) {
 	id, err := url.PathUnescape(segment)
 	if err != nil || id == "" || id == "." || id == ".." || strings.Contains(id, "/") {
 		return "", false
@@ -97,11 +111,7 @@ func (c apiClient) resource(path func(uri string) (string, bool)) mcp.ResourceHa
 
 		switch {
 		case resp.ok():
-			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{
-				URI:      uri,
-				MIMEType: jsonMIMEType,
-				Text:     string(resp.body),
-			}}}, nil
+			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{resp.contents(uri)}}, nil
 		case resp.status == http.StatusNotFound:
 			return nil, mcp.ResourceNotFoundError(uri)
 		default:
@@ -112,6 +122,41 @@ func (c apiClient) resource(path func(uri string) (string, bool)) mcp.ResourceHa
 			}
 		}
 	}
+}
+
+// contents is a resource read's answer as the API wrote it: text for a JSON
+// or text media type, the bytes as a blob for anything else, under the media
+// type the API declared.
+func (r apiResponse) contents(uri string) *mcp.ResourceContents {
+	contents := &mcp.ResourceContents{URI: uri, MIMEType: r.contentType}
+
+	mediaType, _, err := mime.ParseMediaType(r.contentType)
+	if err != nil {
+		contents.MIMEType = "application/octet-stream"
+		contents.Blob = r.body
+
+		return contents
+	}
+
+	// The API declares JSON with a charset; a resource is listed, and read,
+	// under the bare type.
+	if mediaType == jsonMIMEType {
+		contents.MIMEType = jsonMIMEType
+	}
+
+	if isText(mediaType) {
+		contents.Text = string(r.body)
+	} else {
+		contents.Blob = r.body
+	}
+
+	return contents
+}
+
+// isText reports whether a media type is read as text: text/*, JSON and the
+// +json types such as application/geo+json.
+func isText(mediaType string) bool {
+	return strings.HasPrefix(mediaType, "text/") || mediaType == jsonMIMEType || strings.HasSuffix(mediaType, "+json")
 }
 
 // envelopeData is the API's error body as JSON-RPC error data, when it is
