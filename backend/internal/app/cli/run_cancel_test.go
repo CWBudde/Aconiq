@@ -112,7 +112,7 @@ func TestACancellationDuringTheLastReceiverPersistsNothing(t *testing.T) {
 
 			return []struct{}{{}}, nil
 		},
-		persist: func(string, []struct{}, results.GridLayout, int, string, framework.EvidenceTier, computeProjection) (persistedRunOutputs, string, time.Time, error) {
+		persist: func(string, []struct{}, results.GridLayout, int, receiverSet, framework.EvidenceTier, computeProjection) (persistedRunOutputs, string, time.Time, error) {
 			persisted = true
 
 			return persistedRunOutputs{}, "", time.Time{}, nil
@@ -120,8 +120,8 @@ func TestACancellationDuringTheLastReceiverPersistsNothing(t *testing.T) {
 	}
 
 	_, err := module.run(ctx, runModuleInput{
-		receiverMode: receiverModeAutoGrid,
-		log:          newRunLog(),
+		receivers: receiverSet{mode: receiverModeAutoGrid},
+		log:       newRunLog(),
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)

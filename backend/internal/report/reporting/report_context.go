@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,6 +33,16 @@ type reportContext struct {
 	GridWidth          string `json:"grid_width,omitempty"`
 	GridHeight         string `json:"grid_height,omitempty"`
 	OutputHash         string `json:"output_hash,omitempty"`
+
+	// FacadeProposedCount, FacadeAssumedHeightCount and FacadeRejectedCount
+	// are the run's facade receivers nobody confirmed and the rejected ones
+	// it left out; AllowUnconfirmed says the run opted in to computing at the
+	// first two. The report states them, so a result carries its caveat to a
+	// reader who never sees the model.
+	FacadeProposedCount      string `json:"facade_proposed_count,omitempty"`
+	FacadeAssumedHeightCount string `json:"facade_assumed_height_count,omitempty"`
+	FacadeRejectedCount      string `json:"facade_rejected_count,omitempty"`
+	AllowUnconfirmed         bool   `json:"allow_unconfirmed,omitempty"`
 
 	InputFiles      []inputFileView `json:"input_files"`
 	ModelSourcePath string          `json:"model_source_path,omitempty"`
@@ -216,6 +227,8 @@ func applyProvenance(ctx *reportContext, provenancePath string) error {
 			ctx.StandardProfile = provenance.Standard.Profile
 		}
 
+		ctx.AllowUnconfirmed = provenance.Metadata["allow_unconfirmed"] == "true"
+
 		tier := strings.TrimSpace(provenance.Metadata[ProvenanceEvidenceTierKey])
 		if tier != "" {
 			ctx.EvidenceTier = tier
@@ -276,6 +289,10 @@ func appendContextNotes(ctx *reportContext) {
 		ctx.Notes = append(ctx.Notes, "This run used a scaffold-tier standards module: it carries no normative coefficients, its base levels are invented, and its levels are not usable for assessment.")
 	}
 
+	if note := unconfirmedFacadeNote(*ctx); note != "" {
+		ctx.Notes = append(ctx.Notes, note)
+	}
+
 	if len(ctx.Maps) == 0 {
 		ctx.Notes = append(ctx.Notes, "No raster map artifacts were found in the export bundle.")
 	}
@@ -291,6 +308,37 @@ func appendContextNotes(ctx *reportContext) {
 	if ctx.Assessment == nil && (ctx.StandardID == "rls19-road" || ctx.StandardID == "schall03") {
 		ctx.Notes = append(ctx.Notes, "No 16. BImSchV assessment artifact was generated. This usually means the run used no explicit receivers with area-category properties.")
 	}
+}
+
+// unconfirmedFacadeNote says how many of the run's facade receivers nobody
+// confirmed, or "" when there were none to mention.
+func unconfirmedFacadeNote(ctx reportContext) string {
+	if ctx.FacadeProposedCount == "" && ctx.FacadeAssumedHeightCount == "" && ctx.FacadeRejectedCount == "" {
+		return ""
+	}
+
+	orZero := func(count string) string {
+		if count == "" {
+			return "0"
+		}
+
+		return count
+	}
+
+	note := fmt.Sprintf(
+		"This run computed at %s proposed facade receiver(s) and %s with an assumed slab height: nobody has confirmed where these Immissionsorte are, so their levels are not an assessment of them.",
+		orZero(ctx.FacadeProposedCount), orZero(ctx.FacadeAssumedHeightCount),
+	)
+
+	if ctx.AllowUnconfirmed {
+		note += " The run was started with --allow-unconfirmed."
+	}
+
+	if ctx.FacadeRejectedCount != "" {
+		note += fmt.Sprintf(" %s rejected facade receiver(s) were left out.", ctx.FacadeRejectedCount)
+	}
+
+	return note
 }
 
 func normalizeQASuites(in []QASuiteStatus) []qaSuiteView {

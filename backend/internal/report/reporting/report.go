@@ -146,6 +146,9 @@ func applyRunSummary(ctx *reportContext, summary runSummaryEnvelope) {
 	ctx.GridWidth = optionalIntString(summary.GridWidth)
 	ctx.GridHeight = optionalIntString(summary.GridHeight)
 	ctx.OutputHash = summary.OutputHash
+	ctx.FacadeProposedCount = optionalIntString(summary.FacadeProposedCount)
+	ctx.FacadeAssumedHeightCount = optionalIntString(summary.FacadeAssumedHeightCount)
+	ctx.FacadeRejectedCount = optionalIntString(summary.FacadeRejectedCount)
 }
 
 func formatTime(value time.Time) string {

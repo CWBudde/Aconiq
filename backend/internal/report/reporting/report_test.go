@@ -691,3 +691,78 @@ func TestBuildRunReportReadsAReceiverTableWrittenBeforePerIndicatorUnits(t *test
 		t.Fatalf("markdown does not name the expanded unit:\n%s", markdown)
 	}
 }
+
+// A run over facade receivers nobody confirmed carries that caveat to a reader
+// who never sees the model: the counts reach the report context and a note in
+// every rendering.
+func TestBuildRunReportStatesUnconfirmedFacadeReceivers(t *testing.T) {
+	t.Parallel()
+
+	bundleDir := t.TempDir()
+	provenancePath := filepath.Join(bundleDir, "provenance.json")
+	runSummaryPath := filepath.Join(bundleDir, "run-summary.json")
+
+	err := writeJSONFile(provenancePath, map[string]any{
+		"standard": map[string]any{
+			"id":      "rls19-road",
+			"version": "2019",
+			"profile": "default",
+		},
+		"metadata":     map[string]string{"evidence_tier": "normative", "allow_unconfirmed": "true"},
+		"input_hashes": map[string]string{},
+	})
+	if err != nil {
+		t.Fatalf("write provenance: %v", err)
+	}
+
+	err = writeJSONFile(runSummaryPath, map[string]any{
+		"receiver_count":              48,
+		"facade_proposed_count":       48,
+		"facade_assumed_height_count": 24,
+		"facade_rejected_count":       2,
+	})
+	if err != nil {
+		t.Fatalf("write run summary: %v", err)
+	}
+
+	report, err := BuildRunReport(BuildOptions{
+		BundleDir:      bundleDir,
+		Project:        project.Project{ProjectID: "proj-7", Name: "Facade"},
+		Run:            project.Run{ID: "run-7", ScenarioID: "default", Status: "completed"},
+		ProvenancePath: provenancePath,
+		RunSummaryPath: runSummaryPath,
+	})
+	if err != nil {
+		t.Fatalf("build report: %v", err)
+	}
+
+	for _, path := range []string{report.MarkdownPath, report.HTMLPath, report.TypstPath} {
+		rendered, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+
+		for _, part := range []string{"48 proposed facade receiver", "24 with an assumed slab height", "--allow-unconfirmed", "2 rejected"} {
+			if !strings.Contains(string(rendered), part) {
+				t.Fatalf("%s does not state %q:\n%s", filepath.Base(path), part, rendered)
+			}
+		}
+	}
+
+	payload, err := os.ReadFile(report.ContextPath)
+	if err != nil {
+		t.Fatalf("read report context: %v", err)
+	}
+
+	var context map[string]any
+
+	err = json.Unmarshal(payload, &context)
+	if err != nil {
+		t.Fatalf("decode context json: %v", err)
+	}
+
+	if context["facade_proposed_count"] != "48" || context["facade_assumed_height_count"] != "24" ||
+		context["facade_rejected_count"] != "2" || context["allow_unconfirmed"] != true {
+		t.Fatalf("report context = %v", context)
+	}
+}

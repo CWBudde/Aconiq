@@ -480,6 +480,11 @@ a facade receiver placing one point per storey — needs `levels` as much as
 `assumed`, because a levels-derived height only restates the storey count, so
 every slab height read off it is an estimate too.
 
+`aconiq run --receiver-mode facade` reads a building with `building:levels` and
+no `height_source` as `levels`, never as a measured height: a project imported
+before the importers wrote `levels` carries none, and its levels-derived heights
+are estimates all the same.
+
 ## Geometry Sanity Checks
 
 - Coordinates must be finite numbers.

@@ -30,7 +30,7 @@ func newRunSummary(
 	runDir string,
 	outputHash string,
 	modelVersion string,
-	receiverMode string,
+	receivers receiverSet,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 	sourceCount int,
@@ -42,11 +42,12 @@ func newRunSummary(
 		"output_hash":    outputHash,
 		"source_count":   sourceCount,
 		"receiver_count": receiverCount,
-		"receiver_mode":  receiverMode,
+		"receiver_mode":  receivers.mode,
 		evidenceTierKey:  string(tier),
 	}
 
 	addComputeCRS(summary, projection)
+	receivers.decorateSummary(summary)
 
 	if modelVersion != "" {
 		summary["model_version"] = modelVersion
@@ -202,7 +203,8 @@ type receiverPersistPlan[Output any] struct {
 
 // persistReceiverRunOutputs writes one standard's receiver outputs under runDir
 // and returns the paths, the output hash and the finish time the run manifest
-// records. In custom-receiver mode it writes a receiver table only; otherwise it
+// records. For a listed receiver set (custom or facade) it writes a receiver
+// table only, each row carrying its facade attributes; otherwise it
 // writes the standard's full grid bundle beside a grid run summary.
 func persistReceiverRunOutputs[Output any](
 	plan receiverPersistPlan[Output],
@@ -210,7 +212,7 @@ func persistReceiverRunOutputs[Output any](
 	outputs []Output,
 	layout results.GridLayout,
 	sourceCount int,
-	receiverMode string,
+	receivers receiverSet,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
@@ -227,12 +229,12 @@ func persistReceiverRunOutputs[Output any](
 		return persistedRunOutputs{}, "", time.Time{}, domainerrors.New(domainerrors.KindInternal, plan.scope, plan.hashErrMessage, err)
 	}
 
-	summary := newRunSummary(runDir, outputHash, plan.modelVersion, receiverMode, tier, projection, sourceCount, len(outputs))
+	summary := newRunSummary(runDir, outputHash, plan.modelVersion, receivers, tier, projection, sourceCount, len(outputs))
 	if plan.decorateSummary != nil {
 		plan.decorateSummary(summary)
 	}
 
-	if receiverMode == receiverModeCustom {
+	if receivers.isListed() {
 		table := results.ReceiverTable{
 			IndicatorOrder: plan.indicatorOrder,
 			Units:          results.UniformUnits(plan.indicatorOrder, results.UnitDecibel),
@@ -241,13 +243,13 @@ func persistReceiverRunOutputs[Output any](
 
 		for _, output := range outputs {
 			receiver := plan.receiver(output)
-			table.Records = append(table.Records, results.ReceiverRecord{
+			table.Records = append(table.Records, receivers.tableRecord(results.ReceiverRecord{
 				ID:      receiver.ID,
 				X:       receiver.Point.X,
 				Y:       receiver.Point.Y,
 				HeightM: receiver.HeightM,
 				Values:  plan.values(output),
-			})
+			}))
 		}
 
 		persisted, err := persistReceiverTableOnly(resultsDir, table, summary)

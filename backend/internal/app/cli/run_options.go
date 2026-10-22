@@ -30,6 +30,7 @@ const (
 	maxDummyReceivers     = geo.MaxGridReceivers
 	receiverModeAutoGrid  = "auto-grid"
 	receiverModeCustom    = "custom"
+	receiverModeFacade    = "facade"
 	explicitReceiverSetID = "explicit-manual"
 
 	// evidenceTierKey names the tier field in provenance metadata, run
@@ -237,7 +238,7 @@ func mergeMetadata(base map[string]string, extra map[string]string) map[string]s
 
 func validateReceiverMode(mode string) error {
 	switch mode {
-	case receiverModeAutoGrid, receiverModeCustom:
+	case receiverModeAutoGrid, receiverModeCustom, receiverModeFacade:
 		return nil
 	default:
 		return domainerrors.New(domainerrors.KindUserInput, "cli.run", fmt.Sprintf("invalid receiver mode %q", mode), nil)
@@ -245,11 +246,14 @@ func validateReceiverMode(mode string) error {
 }
 
 func receiverSetID(mode string) string {
-	if mode == receiverModeCustom {
+	switch mode {
+	case receiverModeCustom:
 		return explicitReceiverSetID
+	case receiverModeFacade:
+		return facadeReceiverSetID
+	default:
+		return ""
 	}
-
-	return ""
 }
 
 // dummyParamBindings binds the dummy-freefield parameter schema.

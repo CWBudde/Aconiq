@@ -314,7 +314,7 @@ func TestCustomReceiverModeIgnoresTheCalcArea(t *testing.T) {
 
 	gridBuilt := false
 
-	receivers, layout, calcArea, err := resolveGridReceivers(model, receiverModeCustom, func(*geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(model, mustCustomReceiverSet(t, model), func(*geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		gridBuilt = true
 
 		return nil, results.GridLayout{}, nil

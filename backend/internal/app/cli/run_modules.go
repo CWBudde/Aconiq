@@ -117,9 +117,14 @@ func appendLines(path string, lines []string) error {
 
 // addReceiverCount records how the receiver set was arrived at, which differs
 // between an explicit set and a generated grid.
-func (l *runLog) addReceiverCount(receiverMode string, receiverCount int, gridWidth int, gridHeight int) {
-	if receiverMode == receiverModeCustom {
-		l.addf("receivers=%d set=%s", receiverCount, explicitReceiverSetID)
+func (l *runLog) addReceiverCount(receivers receiverSet, receiverCount int, gridWidth int, gridHeight int) {
+	if receivers.isListed() {
+		l.addf("receivers=%d set=%s", receiverCount, receiverSetID(receivers.mode))
+
+		if receivers.proposed+receivers.assumedHeight+receivers.rejected > 0 {
+			l.addf("facade_proposed=%d facade_assumed_height=%d facade_rejected=%d (rejected receivers are not computed)",
+				receivers.proposed, receivers.assumedHeight, receivers.rejected)
+		}
 
 		return
 	}
@@ -129,9 +134,9 @@ func (l *runLog) addReceiverCount(receiverMode string, receiverCount int, gridWi
 
 // addGridExtent records which extent the automatic receiver grid was built
 // over. It is the line a user reads to answer "did it use the area I drew?".
-// Custom receiver mode builds no grid, so there is nothing to record.
-func (l *runLog) addGridExtent(receiverMode string, calcArea *geo.BBox, layout results.GridLayout) {
-	for _, line := range gridExtentLines(receiverMode, calcArea, layout) {
+// A listed receiver set builds no grid, so there is nothing to record.
+func (l *runLog) addGridExtent(receivers receiverSet, calcArea *geo.BBox, layout results.GridLayout) {
+	for _, line := range gridExtentLines(receivers, calcArea, layout) {
 		l.addf("%s", line)
 	}
 }
@@ -139,8 +144,8 @@ func (l *runLog) addGridExtent(receiverMode string, calcArea *geo.BBox, layout r
 // gridExtentLines is the grid's run.log record: the extent, and — only when a
 // building masked any cell, so a model without buildings logs what it always
 // did — how many cells the raster leaves at nodata.
-func gridExtentLines(receiverMode string, calcArea *geo.BBox, layout results.GridLayout) []string {
-	if receiverMode == receiverModeCustom {
+func gridExtentLines(receivers receiverSet, calcArea *geo.BBox, layout results.GridLayout) []string {
+	if receivers.isListed() {
 		return nil
 	}
 
@@ -164,16 +169,20 @@ func (l *runLog) all() []string {
 // here is a module the pipeline does not yet support, which is a decision to
 // take rather than a field to add to one case.
 type runModuleInput struct {
-	standard     framework.ResolvedProfile
-	params       map[string]string
-	model        modelgeojson.Model
-	terrain      terrain.Model
-	receiverMode string
-	workers      int
-	runDir       string
-	runID        string
-	cacheDir     string
-	log          *runLog
+	standard framework.ResolvedProfile
+	params   map[string]string
+	model    modelgeojson.Model
+	terrain  terrain.Model
+	workers  int
+	runDir   string
+	runID    string
+	cacheDir string
+	log      *runLog
+
+	// receivers is the run's receiver set: its mode, and for custom and
+	// facade receivers the points themselves, settled before the module runs
+	// (resolveRunReceivers).
+	receivers receiverSet
 
 	// progress is the run's progress feed. A module whose compute can count
 	// receivers as it goes hands progress.report to it, and may call
@@ -245,7 +254,7 @@ type receiverRunModule[Opt any, Src any, Out any] struct {
 	extract        func(modelgeojson.Model, Opt, []string) ([]Src, error)
 	buildReceivers func([]Src, *geo.BBox, Opt) ([]geo.PointReceiver, results.GridLayout, error)
 	compute        func(context.Context, []geo.PointReceiver, []Src, Opt, func(done, total int)) ([]Out, error)
-	persist        func(runDir string, outputs []Out, layout results.GridLayout, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error)
+	persist        func(runDir string, outputs []Out, layout results.GridLayout, sourceCount int, receivers receiverSet, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error)
 }
 
 func (m receiverRunModule[Opt, Src, Out]) run(ctx context.Context, input runModuleInput) (runModuleResult, error) {
@@ -264,7 +273,7 @@ func (m receiverRunModule[Opt, Src, Out]) run(ctx context.Context, input runModu
 	// The calculation area comes off input.model, which runModuleInput already
 	// carries. Adding a field for it would be a decision about all thirteen
 	// standards (see the comment on runModuleInput); this does not need one.
-	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receivers, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return m.buildReceivers(sources, calcArea, options)
 	})
 	if err != nil {
@@ -274,8 +283,8 @@ func (m receiverRunModule[Opt, Src, Out]) run(ctx context.Context, input runModu
 	}
 
 	input.log.addf("%s=%d", m.sourceCountKey, len(sources))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea, layout)
+	input.log.addReceiverCount(input.receivers, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receivers, calcArea, layout)
 
 	input.progress.start(len(receivers))
 
@@ -292,7 +301,7 @@ func (m receiverRunModule[Opt, Src, Out]) run(ctx context.Context, input runModu
 	}
 
 	persisted, outputHash, finishedAt, err := m.persist(
-		input.runDir, outputs, layout, len(sources), input.receiverMode, input.standard.EvidenceTier,
+		input.runDir, outputs, layout, len(sources), input.receivers, input.standard.EvidenceTier,
 		input.projection,
 	)
 	if err != nil {
@@ -329,9 +338,9 @@ func stopBeforePersist(ctx context.Context, log *runLog) error {
 // endPersist binds the shared END persist path to one standard, so a table
 // entry names its standard once. Every END module computes
 // acoustics.ReceiverOutput, which is what lets one persist function serve them.
-func endPersist(standardID string) func(string, []acoustics.ReceiverOutput, results.GridLayout, int, string, framework.EvidenceTier, computeProjection) (persistedRunOutputs, string, time.Time, error) {
-	return func(runDir string, outputs []acoustics.ReceiverOutput, layout results.GridLayout, sourceCount int, receiverMode string, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error) {
-		return persistENDRunOutputs(standardID, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
+func endPersist(standardID string) func(string, []acoustics.ReceiverOutput, results.GridLayout, int, receiverSet, framework.EvidenceTier, computeProjection) (persistedRunOutputs, string, time.Time, error) {
+	return func(runDir string, outputs []acoustics.ReceiverOutput, layout results.GridLayout, sourceCount int, receivers receiverSet, tier framework.EvidenceTier, projection computeProjection) (persistedRunOutputs, string, time.Time, error) {
+		return persistENDRunOutputs(standardID, runDir, outputs, layout, sourceCount, receivers, tier, projection)
 	}
 }
 
@@ -352,7 +361,7 @@ func runDummyModule(ctx context.Context, input runModuleInput) (runModuleResult,
 		return runModuleResult{}, err
 	}
 
-	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receivers, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildDummyReceivers(sources, calcArea, options)
 	})
 	if err != nil {
@@ -362,8 +371,8 @@ func runDummyModule(ctx context.Context, input runModuleInput) (runModuleResult,
 	}
 
 	input.log.addf("sources=%d", len(sources))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea, layout)
+	input.log.addReceiverCount(input.receivers, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receivers, calcArea, layout)
 
 	engineRunner := engine.NewRunner(func(event engine.ProgressEvent) {
 		if event.Stage == "compute" && event.Message == "chunk_done" {
@@ -411,7 +420,7 @@ func runDummyModule(ctx context.Context, input runModuleInput) (runModuleResult,
 	}
 
 	persisted, err := persistDummyRunOutputs(
-		input.runDir, runOutput, receivers, layout,
+		input.runDir, runOutput, receivers, input.receivers, layout,
 		firstIndicator(input.standard.SupportedIndicators), input.standard.EvidenceTier, input.projection,
 	)
 	if err != nil {

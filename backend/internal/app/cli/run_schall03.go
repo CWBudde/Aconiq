@@ -167,7 +167,7 @@ func prepareSchall03Normative(input runModuleInput, options schall03RunOptions) 
 		return schall03Prepared{}, err
 	}
 
-	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receivers, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildSchall03NormativeReceivers(scene.Segments, calcArea, options)
 	})
 	if err != nil {
@@ -178,8 +178,8 @@ func prepareSchall03Normative(input runModuleInput, options schall03RunOptions) 
 	// panel per outer-ring edge, so this count is no longer the number of
 	// barrier features in the model.
 	input.log.addf("schall03_segments=%d walls=%d barrier_panels=%d", len(scene.Segments), len(scene.Walls), len(scene.Barriers))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea, layout)
+	input.log.addReceiverCount(input.receivers, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receivers, calcArea, layout)
 
 	receiverInputs, sampled, err := schall03ReceiverInputs(receivers, terrainModel)
 	if err != nil {
@@ -217,7 +217,7 @@ func prepareSchall03Preview(input runModuleInput, options schall03RunOptions) (s
 		return schall03Prepared{}, err
 	}
 
-	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receiverMode, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, calcArea, err := resolveGridReceivers(input.model, input.receivers, func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildSchall03Receivers(railSources, calcArea, options)
 	})
 	if err != nil {
@@ -225,8 +225,8 @@ func prepareSchall03Preview(input runModuleInput, options schall03RunOptions) (s
 	}
 
 	input.log.addf("schall03_sources=%d", len(railSources))
-	input.log.addReceiverCount(input.receiverMode, len(receivers), layout.Width, layout.Height)
-	input.log.addGridExtent(input.receiverMode, calcArea, layout)
+	input.log.addReceiverCount(input.receivers, len(receivers), layout.Width, layout.Height)
+	input.log.addGridExtent(input.receivers, calcArea, layout)
 
 	return schall03Prepared{
 		result: schall03RunResult{
