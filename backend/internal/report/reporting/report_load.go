@@ -30,6 +30,12 @@ type runSummaryEnvelope struct {
 	GridWidth          *int
 	GridHeight         *int
 	OutputHash         string
+
+	// The facade receivers nobody confirmed, and the rejected ones the run
+	// left out; absent when a run had none.
+	FacadeProposedCount      *int
+	FacadeAssumedHeightCount *int
+	FacadeRejectedCount      *int
 }
 
 type modelDumpEnvelope struct {
@@ -158,6 +164,10 @@ func loadRunSummary(path string) (runSummaryEnvelope, bool, error) {
 		ReceiverCount:      optionalInt(parsed["receiver_count"]),
 		GridWidth:          optionalInt(parsed["grid_width"]),
 		GridHeight:         optionalInt(parsed["grid_height"]),
+
+		FacadeProposedCount:      optionalInt(parsed["facade_proposed_count"]),
+		FacadeAssumedHeightCount: optionalInt(parsed["facade_assumed_height_count"]),
+		FacadeRejectedCount:      optionalInt(parsed["facade_rejected_count"]),
 	}
 	if hashText, ok := parsed["output_hash"].(string); ok {
 		out.OutputHash = strings.TrimSpace(hashText)

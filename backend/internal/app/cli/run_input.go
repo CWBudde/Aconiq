@@ -166,11 +166,12 @@ func calcAreaExtent(model modelgeojson.Model) (*geo.BBox, error) {
 // drew rather than over whatever happens to emit. The extent is returned so the
 // caller can record it in the run log.
 //
-// Custom receiver mode never reaches buildGrid, so a model carrying both a
-// drawn area and explicit receivers uses the receivers and ignores the area.
+// A listed receiver set — custom or facade — never reaches buildGrid, so a
+// model carrying both a drawn area and explicit receivers uses the receivers
+// and ignores the area.
 func resolveGridReceivers(
 	model modelgeojson.Model,
-	receiverMode string,
+	set receiverSet,
 	buildGrid func(calcArea *geo.BBox) ([]geo.PointReceiver, results.GridLayout, error),
 ) ([]geo.PointReceiver, results.GridLayout, *geo.BBox, error) {
 	calcArea, err := calcAreaExtent(model)
@@ -178,10 +179,10 @@ func resolveGridReceivers(
 		return nil, results.GridLayout{}, nil, err
 	}
 
-	receivers, layout, err := resolveReceiverSet(receiverMode, model, func() ([]geo.PointReceiver, results.GridLayout, error) {
+	receivers, layout, err := resolveReceiverSet(set, func() ([]geo.PointReceiver, results.GridLayout, error) {
 		return buildGrid(calcArea)
 	})
-	if err != nil || receiverMode == receiverModeCustom {
+	if err != nil || set.isListed() {
 		return receivers, layout, calcArea, err
 	}
 
@@ -236,20 +237,19 @@ func buildingNoDataCells(model modelgeojson.Model, receivers []geo.PointReceiver
 }
 
 func resolveReceiverSet(
-	mode string,
-	model modelgeojson.Model,
+	set receiverSet,
 	buildGrid func() ([]geo.PointReceiver, results.GridLayout, error),
 ) ([]geo.PointReceiver, results.GridLayout, error) {
-	if mode == receiverModeCustom {
-		receivers, err := extractExplicitReceivers(model)
-		if err != nil {
-			return nil, results.GridLayout{}, err
+	if set.isListed() {
+		if len(set.listed) == 0 {
+			return nil, results.GridLayout{}, domainerrors.New(domainerrors.KindInternal, "cli.resolveReceiverSet",
+				set.mode+" receiver set reached the module unresolved", nil)
 		}
 
-		// Explicit receivers are points the user placed, not a grid. The zero
-		// layout says exactly that: no shape, and no georeference, because
-		// there is no cell size that would describe where these sit.
-		return receivers, results.GridLayout{}, nil
+		// Listed receivers are points, not a grid. The zero layout says
+		// exactly that: no shape, and no georeference, because there is no
+		// cell size that would describe where these sit.
+		return set.listed, results.GridLayout{}, nil
 	}
 
 	return buildGrid()

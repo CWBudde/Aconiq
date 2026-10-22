@@ -33,7 +33,10 @@ func Validate(model Model) ValidationReport {
 	ids := make(map[string]struct{}, len(model.Features))
 	allPoints := make([]point2, 0, 256)
 
-	var calcAreas calcAreaTracker
+	var (
+		calcAreas calcAreaTracker
+		facades   facadeTracker
+	)
 
 	for i, feature := range model.Features {
 		fid := strings.TrimSpace(feature.ID)
@@ -51,7 +54,12 @@ func Validate(model Model) ValidationReport {
 
 		points := validateFeature(feature, &report)
 		allPoints = append(allPoints, points...)
+
+		facades.observe(feature, fid, &report)
 	}
+
+	// After the walk: a facade receiver may come before its building.
+	facades.resolve(&report)
 
 	validateCRSPlausibility(model.ProjectCRS, allPoints, &report)
 

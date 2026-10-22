@@ -2749,36 +2749,43 @@ const OSM_METERS_PER_LEVEL = 3;
 const OSM_DEFAULT_BUILDING_HEIGHT_M = 3 * OSM_METERS_PER_LEVEL;
 const OSM_DEFAULT_BARRIER_HEIGHT_M = 2;
 
+/**
+ * Where a height came from, as `height_source` spells it: `levels` for
+ * `building:levels` × 3 m, `assumed` for a default, and undefined for a height
+ * read from a `height` tag. The Go importer writes the same two values.
+ */
+type OSMHeightSource = "levels" | "assumed";
+
 interface OSMHeight {
   meters: number;
-  assumed: boolean;
+  source?: OSMHeightSource;
 }
 
 function osmBuildingHeight(tags: Record<string, string>): OSMHeight {
   const tagged = parseTagHeight(tags["height"]);
   if (tagged != null && tagged > 0) {
-    return { meters: tagged, assumed: false };
+    return { meters: tagged };
   }
 
   const levels = Number.parseFloat(tags["building:levels"] ?? "");
   if (Number.isFinite(levels) && levels > 0) {
-    return { meters: levels * OSM_METERS_PER_LEVEL, assumed: false };
+    return { meters: levels * OSM_METERS_PER_LEVEL, source: "levels" };
   }
 
-  return { meters: OSM_DEFAULT_BUILDING_HEIGHT_M, assumed: true };
+  return { meters: OSM_DEFAULT_BUILDING_HEIGHT_M, source: "assumed" };
 }
 
 function osmBarrierHeight(tags: Record<string, string>): OSMHeight {
   const tagged = parseTagHeight(tags["height"]);
   if (tagged != null && tagged > 0) {
-    return { meters: tagged, assumed: false };
+    return { meters: tagged };
   }
 
-  return { meters: OSM_DEFAULT_BARRIER_HEIGHT_M, assumed: true };
+  return { meters: OSM_DEFAULT_BARRIER_HEIGHT_M, source: "assumed" };
 }
 
 /**
- * Writes the height, and says so when it was assumed rather than read.
+ * Writes the height, and says where it came from unless it was read.
  *
  * Absence of `height_source` records no provenance rather than "read from OSM",
  * which is the same reading the Go importer and the schema doc take.
@@ -2789,8 +2796,8 @@ function applyOSMHeight(
 ): void {
   properties["height_m"] = height.meters;
 
-  if (height.assumed) {
-    properties["height_source"] = "assumed";
+  if (height.source) {
+    properties["height_source"] = height.source;
   }
 }
 

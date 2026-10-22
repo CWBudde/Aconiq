@@ -189,12 +189,33 @@ export type ModelResponse = Omit<Schemas["ModelResponse"], "model"> & {
  * `backend/internal/results/` rather than the API document.
  * ---------------------------------------------------------------------- */
 
+/**
+ * The footprint edge a facade receiver stands at, as `results.ReceiverFacade`
+ * writes it: the canonical part, ring and edge of `building_ref`, and the
+ * edge's endpoints as `[x, y]` in the run's compute CRS.
+ */
+export interface ReceiverFacade {
+  building_ref: string;
+  part: number;
+  ring: number;
+  edge: number;
+  from: [number, number];
+  to: [number, number];
+}
+
 export interface ReceiverRecord {
   id: string;
   x: number;
   y: number;
   height_m: number;
   values: Record<string, number>;
+  /**
+   * A facade receiver's placement rule, facade and storey. They come as a set
+   * and only on facade receivers; grid and plain custom rows carry none.
+   */
+  placement_rule?: string;
+  facade?: ReceiverFacade;
+  storey?: number;
 }
 
 export interface ReceiverTable {

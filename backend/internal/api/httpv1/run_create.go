@@ -26,6 +26,19 @@ type createRunRequest struct {
 	Params          map[string]string `json:"params,omitempty"`
 	InputPaths      []string          `json:"input_paths,omitempty"`
 	Experimental    bool              `json:"experimental,omitempty"`
+
+	// The facade receiver set of receiver_mode "facade": the model buildings
+	// that carry points, the station spacing along each facade, and whether
+	// courtyard facades are included.
+	FacadeBuildings        []string `json:"facade_buildings,omitempty"`
+	FacadeSpacingM         *float64 `json:"facade_spacing_m,omitempty"`
+	FacadeIncludeCourtyard bool     `json:"facade_include_courtyard,omitempty"`
+
+	// AllowUnconfirmed lets a normative run compute at facade points that are
+	// still proposed or whose slab height is assumed. The run command refuses
+	// them without it; there is no fast path here, because counting them
+	// needs the model.
+	AllowUnconfirmed bool `json:"allow_unconfirmed,omitempty"`
 }
 
 func (h Handler) handleRunCreate(w http.ResponseWriter, r *http.Request) {
@@ -290,6 +303,11 @@ func (req createRunRequest) validate() error {
 		}
 	}
 
+	err := req.validateFacadeSet()
+	if err != nil {
+		return err
+	}
+
 	// Sorted so that a request with several invalid keys always reports the same
 	// one.
 	paramKeys := make([]string, 0, len(req.Params))
@@ -308,6 +326,30 @@ func (req createRunRequest) validate() error {
 		if strings.ContainsAny(value, "\x00\n\r") {
 			return fmt.Errorf("params value for %q must not contain control characters", key)
 		}
+	}
+
+	return nil
+}
+
+// validateFacadeSet checks the facade fields that become arguments. A building
+// id is a model feature id, so its spelling is the model's and is not
+// constrained beyond what argv needs: it is passed as `--facade-building=<id>`,
+// so a leading "-" is a value, and a control character is refused. Whether the
+// set is complete, and whether the ids name buildings, is the run command's to
+// decide.
+func (req createRunRequest) validateFacadeSet() error {
+	for _, id := range req.FacadeBuildings {
+		if id == "" {
+			return stderrors.New("facade_buildings entries must not be empty")
+		}
+
+		if strings.ContainsAny(id, "\x00\n\r") {
+			return fmt.Errorf("facade_buildings entry %q must not contain control characters", id)
+		}
+	}
+
+	if req.FacadeSpacingM != nil && !(*req.FacadeSpacingM > 0) {
+		return stderrors.New("facade_spacing_m must be > 0")
 	}
 
 	return nil

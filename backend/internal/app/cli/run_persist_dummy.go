@@ -88,6 +88,7 @@ func persistDummyRunOutputs(
 	runDir string,
 	runOutput engine.RunOutput,
 	receivers []geo.PointReceiver,
+	set receiverSet,
 	layout results.GridLayout,
 	indicator string,
 	tier framework.EvidenceTier,
@@ -111,6 +112,10 @@ func persistDummyRunOutputs(
 		return persistedRunOutputs{}, err
 	}
 
+	for i, record := range table.Records {
+		table.Records[i] = set.tableRecord(record)
+	}
+
 	receiverJSONPath := filepath.Join(resultsDir, "receivers.json")
 	receiverCSVPath := filepath.Join(resultsDir, "receivers.csv")
 
@@ -128,13 +133,11 @@ func persistDummyRunOutputs(
 	// versions no model of its own, so it contributes no model version.
 	sourceCount, _ := runOutput.Metadata["source_count"].(int)
 
-	summary := newRunSummary(runDir, runOutput.OutputHash, "", receiverModeAutoGrid, tier, projection, sourceCount, len(receivers))
+	summary := newRunSummary(runDir, runOutput.OutputHash, "", set, tier, projection, sourceCount, len(receivers))
 	summary["total_chunks"] = runOutput.TotalChunks
 	summary["used_cached_chunks"] = runOutput.UsedCachedChunks
 
 	if layout.Width <= 0 || layout.Height <= 0 {
-		summary["receiver_mode"] = receiverModeCustom
-
 		summaryPath := filepath.Join(resultsDir, "run-summary.json")
 
 		err := writeJSONFile(summaryPath, summary)

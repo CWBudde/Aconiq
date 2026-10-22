@@ -54,9 +54,14 @@ type runRequestInput struct {
 	StandardID      string            `json:"standard_id"            jsonschema:"A standard id from list_standards."`
 	StandardVersion string            `json:"standard_version"       jsonschema:"One of the standard's versions, from list_standards."`
 	StandardProfile string            `json:"standard_profile"       jsonschema:"One of that version's profiles, from list_standards."`
-	ReceiverMode    string            `json:"receiver_mode"          jsonschema:"auto-grid (a receiver grid over the sources or the calc-area) or custom (the model's receiver features)."`
+	ReceiverMode    string            `json:"receiver_mode"          jsonschema:"auto-grid (a receiver grid over the sources or the calc-area), custom (the model's receiver features) or facade (receivers generated on the facades of facade_buildings; rls19-road and schall03 only)."`
 	Params          map[string]string `json:"params,omitempty"       jsonschema:"Parameters of the profile by name, each value as a string. Omitted ones take the default list_standards declares; provenance.json records the values the run resolved."`
 	Experimental    bool              `json:"experimental,omitempty" jsonschema:"Opt in to a scaffold-tier standard. A scaffold is not an implementation of the method its name suggests; without this its run is refused."`
+
+	FacadeBuildings        []string `json:"facade_buildings,omitempty"         jsonschema:"With receiver_mode facade: the building feature ids, from get_model, whose facades carry receivers."`
+	FacadeSpacingM         *float64 `json:"facade_spacing_m,omitempty"         jsonschema:"With receiver_mode facade: the station spacing along each facade in metres. Required there; there is no default."`
+	FacadeIncludeCourtyard bool     `json:"facade_include_courtyard,omitempty" jsonschema:"With receiver_mode facade: also place receivers on courtyard facades."`
+	AllowUnconfirmed       bool     `json:"allow_unconfirmed,omitempty"        jsonschema:"Opt in to a normative run over facade receivers that are still proposed or whose slab height is assumed. Without it such a run is refused; with it their counts are recorded in the run's provenance and report."`
 }
 
 var requiredRunFields = []string{"scenario_id", "standard_id", "standard_version", "standard_profile", "receiver_mode"}
@@ -134,7 +139,8 @@ func (t tools) addRunWriteTools(server *mcp.Server) error {
 		Name: toolStartRun,
 		Description: "Start a run of the saved model and return its row at once (status pending or running); it computes in the background. " +
 			"Poll get_run for progress, then read get_run_results, get_contours or get_run_log. " +
-			"A scaffold-tier standard is refused without experimental: true. Runs this server started stop when it exits.",
+			"A scaffold-tier standard is refused without experimental: true, and a normative run over proposed or assumed-height facade receivers without allow_unconfirmed: true. " +
+			"Runs this server started stop when it exits.",
 		InputSchema: startSchema,
 		Annotations: stateChanging,
 	}, t.audited(toolStartRun, func(ctx context.Context, arguments json.RawMessage) served {
@@ -352,7 +358,8 @@ func (t tools) serveStartRun(ctx context.Context, schema *jsonschema.Resolved, a
 	in, err := decodeArguments[runRequestInput](schema, arguments)
 	if err != nil {
 		return invalidArguments(toolStartRun, err,
-			"Pass scenario_id, standard_id, standard_version, standard_profile and receiver_mode, each non-empty, and optionally params and experimental.")
+			"Pass scenario_id, standard_id, standard_version, standard_profile and receiver_mode, each non-empty, and optionally params, experimental, "+
+				"the facade_* fields of receiver_mode facade and allow_unconfirmed.")
 	}
 
 	body, err := json.Marshal(in)

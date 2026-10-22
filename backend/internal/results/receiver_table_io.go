@@ -126,6 +126,9 @@ func SaveReceiverTableCSV(path string, table ReceiverTable) (err error) {
 // hand-rolling the quoting. See docs/result-containers-v1.md, section
 // "Receiver table CSV — byte contract".
 //
+// The facade columns (facadeCSVColumns) follow the indicators only when some
+// record carries facade attributes; see hasFacadeRecords.
+//
 // The table is validated first, so a caller that hands over garbage gets an
 // error rather than a partially written stream. Records are written one at a
 // time; the whole table is never buffered in memory.
@@ -136,17 +139,22 @@ func WriteReceiverTableCSV(w io.Writer, table ReceiverTable) error {
 	}
 
 	writer := csv.NewWriter(w)
-	header := make([]string, 0, len(table.IndicatorOrder)+4)
+	withFacade := table.hasFacadeRecords()
+
+	header := make([]string, 0, len(table.IndicatorOrder)+4+len(facadeCSVColumns))
 	header = append(header, "id", "x", "y", "height_m")
 
 	header = append(header, table.IndicatorOrder...)
+	if withFacade {
+		header = append(header, facadeCSVColumns...)
+	}
 
 	err = writer.Write(header)
 	if err != nil {
 		return fmt.Errorf("write receiver table csv header: %w", err)
 	}
 
-	row := make([]string, 0, len(table.IndicatorOrder)+4)
+	row := make([]string, 0, cap(header))
 
 	for _, record := range table.Records {
 		row = append(
@@ -164,6 +172,10 @@ func WriteReceiverTableCSV(w io.Writer, table ReceiverTable) error {
 			row = append(row, strconv.FormatFloat(record.Values[indicator], 'f', -1, 64))
 		}
 
+		if withFacade {
+			row = appendFacadeCSVFields(row, record)
+		}
+
 		err := writer.Write(row)
 		if err != nil {
 			return fmt.Errorf("write receiver table csv row for %s: %w", record.ID, err)
@@ -178,4 +190,49 @@ func WriteReceiverTableCSV(w io.Writer, table ReceiverTable) error {
 	}
 
 	return nil
+}
+
+// facadeCSVColumns are appended after the indicators when any record of the
+// table carries facade attributes, and only then: a table without facade
+// receivers — every grid table, and a custom table of plain receivers — keeps
+// the columns and the bytes it had before they existed.
+//
+// from and to are left out. They are a check that the footprint has not moved
+// since the receiver was placed, not a property of the result row; the JSON
+// carries them.
+var facadeCSVColumns = []string{"building_ref", "part", "ring", "edge", "storey", "placement_rule"}
+
+// hasFacadeRecords reports whether any record carries facade attributes.
+func (t ReceiverTable) hasFacadeRecords() bool {
+	for _, record := range t.Records {
+		if record.Facade != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// appendFacadeCSVFields appends the facadeCSVColumns fields of record to row.
+// A record without facade attributes — a plain receiver in a custom table
+// that also holds facade receivers — writes an empty field in each. Validate
+// has already ensured that a record with a Facade also has a Storey.
+func appendFacadeCSVFields(row []string, record ReceiverRecord) []string {
+	if record.Facade == nil {
+		for range facadeCSVColumns {
+			row = append(row, "")
+		}
+
+		return row
+	}
+
+	return append(
+		row,
+		record.Facade.BuildingRef,
+		strconv.Itoa(record.Facade.Part),
+		strconv.Itoa(record.Facade.Ring),
+		strconv.Itoa(record.Facade.Edge),
+		strconv.Itoa(*record.Storey),
+		record.PlacementRule,
+	)
 }

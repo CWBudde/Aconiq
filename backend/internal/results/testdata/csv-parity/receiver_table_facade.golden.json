@@ -1,0 +1,74 @@
+{
+  "indicator_order": [
+    "LrDay",
+    "LrNight"
+  ],
+  "units": {
+    "LrDay": "dB(A)",
+    "LrNight": "dB(A)"
+  },
+  "records": [
+    {
+      "id": "R1",
+      "x": 500030,
+      "y": 5800040,
+      "height_m": 4,
+      "values": {
+        "LrDay": 58.3,
+        "LrNight": 49.9
+      }
+    },
+    {
+      "id": "F1",
+      "x": 500012.05,
+      "y": 5800019.95,
+      "height_m": 3,
+      "values": {
+        "LrDay": 61.2,
+        "LrNight": 52.4
+      },
+      "placement_rule": "rls19-facade",
+      "facade": {
+        "building_ref": "osm-way-1,\"a\"",
+        "part": 0,
+        "ring": 0,
+        "edge": 3,
+        "from": [
+          500010,
+          5800020
+        ],
+        "to": [
+          500018.5,
+          5800022.5
+        ]
+      },
+      "storey": 0
+    },
+    {
+      "id": "F2",
+      "x": 500101.25,
+      "y": 5800202.75,
+      "height_m": 12,
+      "values": {
+        "LrDay": 55,
+        "LrNight": 47.05
+      },
+      "placement_rule": "schall03-facade",
+      "facade": {
+        "building_ref": "osm-way-2",
+        "part": 1,
+        "ring": 2,
+        "edge": 5,
+        "from": [
+          500100,
+          5800200
+        ],
+        "to": [
+          500102.5,
+          5800205.5
+        ]
+      },
+      "storey": 3
+    }
+  ]
+}

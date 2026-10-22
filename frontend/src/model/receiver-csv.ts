@@ -16,13 +16,35 @@
  * is a filtered-and-sorted view assembled by the results page.
  */
 
-/** Structural mirror of `ReceiverRecord` in `api/client`. */
+/**
+ * Structural mirror of `ReceiverFacade` in `backend/internal/results`: the
+ * footprint edge a facade receiver belongs to, with `from` / `to` as `[x, y]`.
+ */
+export interface ReceiverCSVFacade {
+  building_ref: string;
+  part: number;
+  ring: number;
+  edge: number;
+  from: [number, number];
+  to: [number, number];
+}
+
+/**
+ * Structural mirror of `ReceiverRecord` in `api/client`.
+ *
+ * `placement_rule`, `facade` and `storey` are the optional facade attributes
+ * of `results.ReceiverRecord`. Go requires all three or none; this type does
+ * not, and the builder below copes with either.
+ */
 export interface ReceiverCSVRecord {
   id: string;
   x: number;
   y: number;
   height_m: number;
   values: Record<string, number>;
+  placement_rule?: string;
+  facade?: ReceiverCSVFacade;
+  storey?: number;
 }
 
 /**
@@ -147,10 +169,48 @@ function expandExponential(text: string, exponentAt: number): string {
 }
 
 /**
+ * The columns `WriteReceiverTableCSV` appends after the indicators when any
+ * record carries a `facade`, and only then — so a grid table, or a custom
+ * table of plain receivers, keeps the bytes it had before they existed.
+ */
+const FACADE_CSV_COLUMNS = [
+  "building_ref",
+  "part",
+  "ring",
+  "edge",
+  "storey",
+  "placement_rule",
+];
+
+/**
+ * The facade fields of one row. A record without a `facade` writes an empty
+ * field in each, as Go does for a plain receiver in a mixed table.
+ *
+ * The integers go through `String`, which agrees with Go's `strconv.Itoa` on
+ * every integer Go can hold here. A missing `storey` or `placement_rule` on a
+ * facade row writes the empty field: Go's `Validate` refuses that state, the
+ * browser has no such gate.
+ */
+function facadeCSVFields(record: ReceiverCSVRecord): string[] {
+  const { facade } = record;
+  if (facade === undefined) return FACADE_CSV_COLUMNS.map(() => "");
+
+  return [
+    encodeCSVField(facade.building_ref),
+    String(facade.part),
+    String(facade.ring),
+    String(facade.edge),
+    record.storey === undefined ? "" : String(record.storey),
+    encodeCSVField(record.placement_rule ?? ""),
+  ];
+}
+
+/**
  * Builds the receiver-table CSV exactly as the CLI writes it.
  *
- * Header: `id`, `x`, `y`, `height_m`, then `indicator_order` in order; data
- * fields in the same order. Every record — the header included — is terminated
+ * Header: `id`, `x`, `y`, `height_m`, then `indicator_order` in order, then —
+ * only when some record carries a `facade` — `building_ref`, `part`, `ring`,
+ * `edge`, `storey`, `placement_rule`; data fields in the same order. Every record — the header included — is terminated
  * by a single LF, so an empty table is one header line plus a newline, and the
  * file never ends without one. No CRLF anywhere, and no BOM.
  *
@@ -161,7 +221,11 @@ function expandExponential(text: string, exponentAt: number): string {
  * a missing measurement distinguishable from a measured zero.
  */
 export function buildReceiverTableCSV(table: ReceiverCSVTable): string {
+  const withFacade = table.records.some(
+    (record) => record.facade !== undefined,
+  );
   const header = ["id", "x", "y", "height_m", ...table.indicator_order];
+  if (withFacade) header.push(...FACADE_CSV_COLUMNS);
   const lines = [header.map(encodeCSVField).join(",")];
 
   for (const record of table.records) {
@@ -175,6 +239,7 @@ export function buildReceiverTableCSV(table: ReceiverCSVTable): string {
       const value = record.values[indicator];
       row.push(value === undefined ? "" : formatCSVFloat(value));
     }
+    if (withFacade) row.push(...facadeCSVFields(record));
     lines.push(row.join(","));
   }
 

@@ -275,31 +275,7 @@ func openapiRunSchemas() map[string]any {
 				},
 			},
 		},
-		"CreateRunRequest": map[string]any{
-			"type":                 "object",
-			"additionalProperties": false,
-			"properties": map[string]any{
-				"scenario_id":      map[string]any{"type": "string"},
-				"standard_id":      map[string]any{"type": "string"},
-				"standard_version": map[string]any{"type": "string"},
-				"standard_profile": map[string]any{"type": "string"},
-				"model_path":       map[string]any{"type": "string"},
-				"receiver_mode":    map[string]any{"type": "string", "enum": []string{"auto-grid", "custom"}},
-				"params": map[string]any{
-					"type":                 "object",
-					"additionalProperties": map[string]any{"type": "string"},
-				},
-				"input_paths": map[string]any{
-					"type":  "array",
-					"items": map[string]any{"type": "string"},
-				},
-				"experimental": map[string]any{
-					"type":        "boolean",
-					"default":     false,
-					"description": "Required for scaffold-tier standards: they carry no normative coefficients, their base levels are invented and they have no octave bands, so a run must acknowledge that before it may emit levels. Requests without it are rejected with error code experimental_opt_in_required.",
-				},
-			},
-		},
+		"CreateRunRequest": openapiCreateRunRequestSchema(),
 		"ImportOSMRequest": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
@@ -508,6 +484,60 @@ func openapiRunProvenanceSchemas() map[string]any {
 				"tool_version":    map[string]any{"type": "string"},
 				"tool_commit":     map[string]any{"type": "string", "description": "Short source commit of the build, or `unknown`"},
 				"tool_build_date": map[string]any{"type": "string", "description": "RFC 3339 build date, or `unknown`"},
+			},
+		},
+	}
+}
+
+// openapiCreateRunRequestSchema is the body of POST /api/v1/runs and of its
+// estimate: what a run is asked to compute, and the opt-ins it may need.
+func openapiCreateRunRequestSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"scenario_id":      map[string]any{"type": "string"},
+			"standard_id":      map[string]any{"type": "string"},
+			"standard_version": map[string]any{"type": "string"},
+			"standard_profile": map[string]any{"type": "string"},
+			"model_path":       map[string]any{"type": "string"},
+			"receiver_mode": map[string]any{
+				"type":        "string",
+				"enum":        []string{"auto-grid", "custom", "facade"},
+				"description": "facade generates receivers on the facades of facade_buildings, at the placement rule of the standard (rls19-road and schall03 only).",
+			},
+			"facade_buildings": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string", "minLength": 1},
+				"description": "Model building feature ids that carry facade receivers. Required with receiver_mode facade.",
+			},
+			"facade_spacing_m": map[string]any{
+				"type":             "number",
+				"exclusiveMinimum": 0,
+				"description":      "Station spacing along each facade, in metres. Required with receiver_mode facade; there is no default.",
+			},
+			"facade_include_courtyard": map[string]any{
+				"type":        "boolean",
+				"default":     false,
+				"description": "Also place facade receivers on courtyard (inner-ring) facades.",
+			},
+			"allow_unconfirmed": map[string]any{
+				"type":        "boolean",
+				"default":     false,
+				"description": "Required for a normative run over facade receivers that are still proposed or whose slab height is assumed; their counts are then stamped into provenance, the run summary and the report.",
+			},
+			"params": map[string]any{
+				"type":                 "object",
+				"additionalProperties": map[string]any{"type": "string"},
+			},
+			"input_paths": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "string"},
+			},
+			"experimental": map[string]any{
+				"type":        "boolean",
+				"default":     false,
+				"description": "Required for scaffold-tier standards: they carry no normative coefficients, their base levels are invented and they have no octave bands, so a run must acknowledge that before it may emit levels. Requests without it are rejected with error code experimental_opt_in_required.",
 			},
 		},
 	}

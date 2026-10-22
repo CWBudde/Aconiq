@@ -63,9 +63,31 @@ func TestModuleRefusalIsRecordedAsAFailedRunWithItsReason(t *testing.T) {
 	projectDir := t.TempDir()
 
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "Module Refusal", "--crs", "EPSG:25832")
-	mustRunCLI(t, "--project", projectDir, "import", "--input", testdataPath(t, registryRunFixtures["beb-exposure"]...))
 
-	err := runCLI("--project", projectDir, "run", "--standard", "beb-exposure", "--receiver-mode", "custom")
+	// The pipeline reads custom receivers before the run exists, and refuses a
+	// model without any there. One receiver lets the run reach the module,
+	// whose refusal is what this test is about.
+	fixture, err := os.ReadFile(testdataPath(t, registryRunFixtures["beb-exposure"]...))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	withReceiver := strings.Replace(string(fixture), `"features": [`,
+		`"features": [{"type":"Feature","properties":{"id":"r1","kind":"receiver","height_m":4},"geometry":{"type":"Point","coordinates":[0,0]}},`, 1)
+	if withReceiver == string(fixture) {
+		t.Fatal("fixture has no features array to add a receiver to")
+	}
+
+	modelPath := filepath.Join(projectDir, "model.geojson")
+
+	err = os.WriteFile(modelPath, []byte(withReceiver), 0o600)
+	if err != nil {
+		t.Fatalf("write model: %v", err)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "import", "--input", modelPath)
+
+	err = runCLI("--project", projectDir, "run", "--standard", "beb-exposure", "--receiver-mode", "custom")
 	if !domainerrors.IsUserError(err) {
 		t.Fatalf("expected the module's user-input refusal, got %v", err)
 	}

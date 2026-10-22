@@ -104,7 +104,7 @@ func persistENDRunOutputs(
 	outputs []acoustics.ReceiverOutput,
 	layout results.GridLayout,
 	sourceCount int,
-	receiverMode string,
+	receivers receiverSet,
 	tier framework.EvidenceTier,
 	projection computeProjection,
 ) (persistedRunOutputs, string, time.Time, error) {
@@ -137,5 +137,5 @@ func persistENDRunOutputs(
 		}
 	}
 
-	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receiverMode, tier, projection)
+	return persistReceiverRunOutputs(plan, runDir, outputs, layout, sourceCount, receivers, tier, projection)
 }

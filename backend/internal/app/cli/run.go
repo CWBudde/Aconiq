@@ -29,6 +29,7 @@ func newRunCommand() *cobra.Command {
 		runID           string
 		estimate        bool
 		estimateBudget  time.Duration
+		facade          facadeRequest
 	)
 
 	cmd := &cobra.Command{
@@ -39,6 +40,10 @@ func newRunCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			// A spacing of 0 is refused by the generator, but an absent one
+			// is refused here, naming the flag: there is no default.
+			facade.spacingSet = cmd.Flags().Changed("facade-spacing-m")
 
 			runErr := executeRunCommand(cmd, runCommandRequest{
 				scenarioID:      scenarioID,
@@ -54,6 +59,7 @@ func newRunCommand() *cobra.Command {
 				runID:           runID,
 				estimate:        estimate,
 				estimateBudget:  estimateBudget,
+				facade:          facade,
 			})
 
 			return finishRunProfiles(cmd, profiles, runErr)
@@ -66,7 +72,11 @@ func newRunCommand() *cobra.Command {
 	cmd.Flags().StringVar(&standardVersion, "standard-version", "", "Standard version (defaults to standard default)")
 	cmd.Flags().StringVar(&standardProfile, "standard-profile", "", "Standard profile (defaults to version profile default)")
 	cmd.Flags().StringVar(&modelPath, "model", defaultModelPath, "Path to normalized GeoJSON model")
-	cmd.Flags().StringVar(&receiverMode, "receiver-mode", receiverModeAutoGrid, "Receiver mode: auto-grid or custom")
+	cmd.Flags().StringVar(&receiverMode, "receiver-mode", receiverModeAutoGrid, "Receiver mode: auto-grid, custom or facade")
+	cmd.Flags().StringArrayVar(&facade.buildings, "facade-building", nil, "Building feature id whose facades carry receivers in receiver mode facade (repeatable)")
+	cmd.Flags().Float64Var(&facade.spacingM, "facade-spacing-m", 0, "Station spacing along each facade in metres, required in receiver mode facade")
+	cmd.Flags().BoolVar(&facade.includeCourtyard, "facade-courtyard", false, "Also place facade receivers on courtyard facades")
+	cmd.Flags().BoolVar(&facade.allowUnconfirmed, "allow-unconfirmed", false, "Run a normative standard over facade receivers that are proposed or have an assumed slab height, and record their counts")
 	cmd.Flags().StringArrayVar(&rawParams, "param", nil, "Run parameter key=value (repeatable)")
 	cmd.Flags().StringArrayVar(&inputPaths, "input", nil, "Input path to hash into provenance (repeatable)")
 	cmd.Flags().BoolVar(&experimental, "experimental", false, "Acknowledge that a scaffold-tier standard emits invented levels and run it anyway")
