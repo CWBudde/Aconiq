@@ -676,7 +676,8 @@ module knows which facade a receiver belongs to, so neither excludes anything. O
   tested along the whole unfolded image path, including the part behind the facade plane that is
   only a mirror.
 
-The fix needs the receiver→facade link (A3's `facade` key, produced by P18 B2) and two choices:
+The fix needs the receiver→facade link (the `facade` key `geo.FacadeReceiverSet` generates,
+which P18 B3 carries into a run) and two choices:
 
 - **[Decision]** The extent of "the facade" a point excludes: its own footprint edge, the
   building's coplanar edges, or every coplanar segment across party walls
@@ -2841,22 +2842,6 @@ as it must be.
 Deterministic, no imagery. This is useful by itself (a facade level map per building), and it
 produces the candidates Phase D confirms or rejects.
 
-- [ ] **B2 Implement `FacadeReceiverSet`** in `internal/geo`. For each exterior edge of a selected
-      building (and courtyard edges when `include_courtyard`): points at a fixed spacing along
-      the facade, one per storey, offset outward along the edge normal by the placement rule's
-      distance. Each point carries the data-model properties: `placement_rule`, the `facade` key and
-      `storey`. IDs follow `(building_ref, part, ring, edge, station, storey)` in a fixed order,
-      so the same building always yields the same IDs and the same `output_hash`; without `part`
-      and `ring` a courtyard edge 0 collides with exterior edge 0. The outward normal must come
-      from the ring's orientation, never from a test against the footprint: a point 5 cm from a
-      facade is where `PointInPolygon` and its interior variant disagree. Two prerequisites from
-      the data model: `propertyGeometries` gains a singleton-object form so `facade.from` / `to` reproject
-      (it only walks arrays of objects today), and `osmimport` records a levels-derived height
-      as `height_source: levels`, without which `slab_height_source` cannot tell `measured` from
-      `levels`. Heights follow the slab rule of `facade-receivers.md` Section 5:
-      `z(n) = h_EG + (n + 1) · s`, `s` per building from a height not derived from levels and the
-      importer's 3.0 m otherwise, recorded in `slab_height_source`; `h_EG` defaults to 0. The key,
-      its canonicalisation and the receiver properties are that note's "Data model (A3)".
 - [ ] **B3 Wire it into `aconiq run`** as a receiver mode beside `custom` and the auto-grid, and into
       the receiver table, so a result row names its building, facade and storey. RLS-19 uses the
       facade link for the own-facade exclusion of Priority 1 §1.9. The run refuses `proposed`
@@ -2866,9 +2851,23 @@ produces the candidates Phase D confirms or rejects.
       run; re-attachment is an explicit reviewed step (`facade-receivers.md`, Data model). The
       note's Section 7 questions on the extent of the own facade, TA Lärm's own-facade practice
       and SoundPLAN receivers are open here.
+      The generator is `geo.FacadeReceiverSet.Generate`: `rls19-facade` and `schall03-facade`
+      only (the other rules need C1's windows or an area); stations at the centres of
+      ceil(L / `spacing_m`) equal parts, `spacing_m` required; a station dropped when a probe
+      0.1 m out lies strictly inside any building, which is what keeps party walls bare; IDs
+      `<set>/<building_ref>/p<part>r<ring>e<edge>/s<station>/f<storey>`; every point `proposed`.
+      B3 maps model features onto `geo.FacadeBuilding`, and a building with `building:levels`
+      but no `height_source` is `levels`, never `measured`: projects imported before the
+      importer wrote `levels` carry none. It also adds the `facade` shape check to model
+      validation, because reprojection carries a malformed key through for validation to report.
 - [ ] **B4 Address lookup.** Keep `addr:street` / `addr:housenumber` on OSM buildings, and the
       LGLN address where LoD2 carries one, so `--buildings "<street> <number>"` (or an API field)
       selects the pilot building without a hand-picked ID.
+- [ ] **B5 Browser OSM import writes `height_source: levels`.** `osmBuildingHeight` in
+      `frontend/src/api/browser-backend.ts` still returns a levels-derived height as read from a
+      tag, so a project imported in browser mode cannot tell `levels` from `measured`, and its
+      facade points would be stamped `measured`. Match `internal/io/osmimport`, then drop the
+      sentence saying so from `docs/geojson-schema-v1.md`, Height provenance.
 
 ### Phase C — Windows as model features
 
@@ -2901,7 +2900,7 @@ produces the candidates Phase D confirms or rejects.
       (`docs/policies/data-handling.md`, site and imagery evidence).
 - [ ] **D3 Cross-check against the geometry**: flag a window outside its facade's extent, a floor
       count that disagrees with `building:levels`, or a facade with windows in the photo but no
-      candidate from B2. These are review flags, not automatic corrections.
+      generated candidate. These are review flags, not automatic corrections.
 
 ### Phase E — Matching sources against imagery
 
@@ -2918,14 +2917,14 @@ windows, which are the user's immediate need.
 ### Phase F — Pilot: a Linden-Mitte row house
 
 - [ ] **F1 Pilot run.** Import the building and roads (OSM or LGLN LoD2 plus OSM roads), generate
-      B2 candidates for the pilot building, map its windows from own site photos through D1, and run
+      facade candidates for the pilot building, map its windows from own site photos through D1, and run
       RLS-19 on the facade receivers. Report per window: facade, floor, rule, level, evidence,
       review state. Compare against the auto-grid level at the same spot and record the
       difference (the own-facade term of Priority 1 §1.9 should be visible in it). Photos and
       the resulting project stay outside the tree.
 - [ ] **F2 Licence-safe fixture**: a synthetic building in `testdata/` that has the pilot's shape
       class (closed block-perimeter row house, street facade and courtyard facade, four to five
-      floors) but invented dimensions. Use it for golden tests of B2 IDs and positions, the C1
+      floors) but invented dimensions. Use it for golden tests of the generated IDs and positions, the C1
       placement rules, the D1 homography, and the §1.9 own-facade exclusion. It must carry
       nothing from the real photos.
 - [ ] **F3 Document the workflow** in English and German, including what the evidence fields

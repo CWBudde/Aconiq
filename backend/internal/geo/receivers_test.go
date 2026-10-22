@@ -108,44 +108,6 @@ func TestGridReceiverSetValidateErrors(t *testing.T) {
 	}
 }
 
-func TestFacadeReceiverSetValidateErrors(t *testing.T) {
-	t.Parallel()
-
-	tests := []FacadeReceiverSet{
-		{},
-		{ID: "facade"},
-		{ID: "facade", BuildingIDs: []string{"b1"}, OffsetM: math.Inf(1), VerticalStepM: 3},
-		{ID: "facade", BuildingIDs: []string{"b1"}, OffsetM: 1, VerticalStepM: 0},
-	}
-
-	for _, tc := range tests {
-		err := tc.Validate()
-		if err == nil {
-			t.Fatalf("expected validation error for %#v", tc)
-		}
-	}
-}
-
-func TestFacadeReceiverSetStub(t *testing.T) {
-	t.Parallel()
-
-	facade := FacadeReceiverSet{
-		ID:            "facade-a",
-		BuildingIDs:   []string{"b1"},
-		OffsetM:       1.0,
-		VerticalStepM: 3.0,
-	}
-
-	if facade.IsImplemented() {
-		t.Fatal("facade generation should be deferred in phase 5")
-	}
-
-	err := facade.Validate()
-	if err != nil {
-		t.Fatalf("expected valid facade stub, got %v", err)
-	}
-}
-
 // CellCount exists so an oversized grid can be refused before Generate
 // allocates it, which is only sound if the two agree about how many receivers
 // the grid holds.

@@ -202,6 +202,121 @@ func TestFetch_Barrier(t *testing.T) {
 	}
 }
 
+// heightSourceJSON carries one way per height_source case: a building whose
+// height is tagged, one whose height is derived from its storey count, one
+// with neither, and a barrier with and without a height tag.
+const heightSourceJSON = `{
+  "version": 0.6,
+  "elements": [
+    {
+      "type": "way",
+      "id": 401,
+      "geometry": [
+        {"lat": 51.510, "lon": 8.210},
+        {"lat": 51.511, "lon": 8.211},
+        {"lat": 51.512, "lon": 8.212},
+        {"lat": 51.510, "lon": 8.210}
+      ],
+      "tags": {"building": "yes", "height": "12 m", "building:levels": "5"}
+    },
+    {
+      "type": "way",
+      "id": 402,
+      "geometry": [
+        {"lat": 51.520, "lon": 8.220},
+        {"lat": 51.521, "lon": 8.221},
+        {"lat": 51.522, "lon": 8.222},
+        {"lat": 51.520, "lon": 8.220}
+      ],
+      "tags": {"building": "yes", "building:levels": "4"}
+    },
+    {
+      "type": "way",
+      "id": 403,
+      "geometry": [
+        {"lat": 51.530, "lon": 8.230},
+        {"lat": 51.531, "lon": 8.231},
+        {"lat": 51.532, "lon": 8.232},
+        {"lat": 51.530, "lon": 8.230}
+      ],
+      "tags": {"building": "yes"}
+    },
+    {
+      "type": "way",
+      "id": 404,
+      "geometry": [{"lat": 51.540, "lon": 8.240}, {"lat": 51.541, "lon": 8.241}],
+      "tags": {"barrier": "wall", "height": "2.5"}
+    },
+    {
+      "type": "way",
+      "id": 405,
+      "geometry": [{"lat": 51.550, "lon": 8.250}, {"lat": 51.551, "lon": 8.251}],
+      "tags": {"barrier": "fence"}
+    }
+  ]
+}`
+
+// TestFetch_HeightSource holds the provenance each case leaves on the feature.
+//
+// The levels case is the one that matters downstream: a facade receiver's
+// slab height is only as good as the building height it divides, and a reader
+// has to tell a tagged height from one estimated off the storey count. While
+// both left height_source absent it could not.
+func TestFetch_HeightSource(t *testing.T) {
+	t.Parallel()
+
+	fc, err := Fetch(context.Background(), Config{
+		BBox:             BBox{South: 51.5, West: 8.2, North: 51.6, East: 8.3},
+		OverpassEndpoint: "http://mock",
+		HTTPClient:       &mockHTTP{body: heightSourceJSON},
+	})
+	if err != nil {
+		t.Fatalf("Fetch returned error: %v", err)
+	}
+
+	byID := make(map[string]map[string]any, len(fc.Features))
+	for _, feat := range fc.Features {
+		id, _ := feat.ID.(string)
+		byID[id] = feat.Properties
+	}
+
+	tests := []struct {
+		id         string
+		wantHeight float64
+		wantSource string // "" means the property must be absent
+	}{
+		{id: "osm-way-401", wantHeight: 12.0},
+		{id: "osm-way-402", wantHeight: 12.0, wantSource: heightSourceLevels},
+		{id: "osm-way-403", wantHeight: defaultBuildingHeightM, wantSource: heightSourceAssumed},
+		{id: "osm-way-404", wantHeight: 2.5},
+		{id: "osm-way-405", wantHeight: defaultBarrierHeightM, wantSource: heightSourceAssumed},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.id, func(t *testing.T) {
+			t.Parallel()
+
+			props, ok := byID[tc.id]
+			if !ok {
+				t.Fatalf("feature %s missing from the import", tc.id)
+			}
+
+			if got := props["height_m"]; got != tc.wantHeight {
+				t.Errorf("height_m = %v, want %g", got, tc.wantHeight)
+			}
+
+			got, present := props[propertyHeightSource]
+
+			switch {
+			case tc.wantSource == "" && present:
+				t.Errorf("height_source = %v, want it absent", got)
+			case tc.wantSource != "" && got != tc.wantSource:
+				t.Errorf("height_source = %v, want %q", got, tc.wantSource)
+			}
+		})
+	}
+}
+
 func TestBuildingHeight(t *testing.T) {
 	t.Parallel()
 
@@ -209,7 +324,7 @@ func TestBuildingHeight(t *testing.T) {
 		t.Parallel()
 
 		h := buildingHeight(map[string]string{"height": "12m"})
-		if h.meters != 12.0 || h.assumed {
+		if h.meters != 12.0 || h.source != "" {
 			t.Errorf("expected 12.0 read from the tag, got %+v", h)
 		}
 	})
@@ -218,8 +333,14 @@ func TestBuildingHeight(t *testing.T) {
 		t.Parallel()
 
 		h := buildingHeight(map[string]string{"building:levels": "4"})
-		if h.meters != 12.0 || h.assumed {
-			t.Errorf("expected 12.0 (4x3m) read from the tag, got %+v", h)
+		if h.meters != 12.0 {
+			t.Errorf("expected 12.0 (4x3m), got %+v", h)
+		}
+
+		// Derived, not read: the storey count is a tag, the 3 m a storey is
+		// not, so the feature has to say which of the two it got.
+		if h.source != heightSourceLevels {
+			t.Errorf("expected source %q, got %+v", heightSourceLevels, h)
 		}
 	})
 
@@ -234,7 +355,7 @@ func TestBuildingHeight(t *testing.T) {
 		// The number alone is not the point: an untagged building used to be
 		// dropped, which made the whole import unsaveable. It is now assumed,
 		// and the feature has to say so.
-		if !h.assumed {
+		if h.source != heightSourceAssumed {
 			t.Error("the default height must be reported as assumed")
 		}
 	})
@@ -243,7 +364,7 @@ func TestBuildingHeight(t *testing.T) {
 		t.Parallel()
 
 		h := buildingHeight(map[string]string{"height": "7.5 m", "building:levels": "3"})
-		if h.meters != 7.5 || h.assumed {
+		if h.meters != 7.5 || h.source != "" {
 			t.Errorf("expected 7.5 from the height tag, got %+v", h)
 		}
 	})
@@ -256,7 +377,7 @@ func TestBarrierHeight(t *testing.T) {
 		t.Parallel()
 
 		h := barrierHeight(map[string]string{"height": "3.5"})
-		if h.meters != 3.5 || h.assumed {
+		if h.meters != 3.5 || h.source != "" {
 			t.Errorf("expected 3.5 read from the tag, got %+v", h)
 		}
 	})
@@ -265,7 +386,7 @@ func TestBarrierHeight(t *testing.T) {
 		t.Parallel()
 
 		h := barrierHeight(map[string]string{"barrier": "wall"})
-		if h.meters != defaultBarrierHeightM || !h.assumed {
+		if h.meters != defaultBarrierHeightM || h.source != heightSourceAssumed {
 			t.Errorf("expected an assumed %g, got %+v", defaultBarrierHeightM, h)
 		}
 	})

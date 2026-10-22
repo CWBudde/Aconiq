@@ -66,32 +66,47 @@ func (m Model) Bounds() (geo.BBox, bool) {
 // propertyGeometry names a property that carries coordinates in the project
 // CRS rather than in Feature.Coordinates, and says which shape they take.
 //
-// These exist because two standards vocabularies attach geometry to a feature
-// through its properties instead of its geometry: RLS-19 directional sources
-// carry their own centerline, and Schall 03 track features carry a point each.
-// Both are consumed as geometry by run_extract_rls19.go and
+// These exist because some vocabularies attach geometry to a feature through
+// its properties instead of its geometry: RLS-19 directional sources carry
+// their own centerline, Schall 03 track features carry a point each, and a
+// facade receiver carries the endpoints of the building edge it was placed on.
+// The first two are consumed as geometry by run_extract_rls19.go and
 // run_extract_schall03_normative.go, so a reprojection that moved only
 // Feature.Coordinates would leave them in degrees while everything around them
 // moved into metres — placing directional sources millions of metres from
 // their own receivers, and pushing track features past the 25 m proximity
-// check they are validated against.
+// check they are validated against. The facade endpoints are what a re-import
+// compares against the building edge, so left behind they would report every
+// facade receiver as moved.
+//
+// A container takes one of two forms. By default it is an array of objects,
+// and each object is reprojected; with singleton set it is one object, and
+// that object is reprojected. Either way the members named below are read from
+// the object, and a container of the other form is carried through untouched.
 //
 // **Adding a coordinate-bearing property to the v1 schema means adding it
 // here.** Nothing detects the omission automatically; it shows up as geometry
 // in the wrong hemisphere.
 type propertyGeometry struct {
-	// container is the top-level property holding an array of objects.
+	// container is the top-level property holding the object or objects.
 	container string
+	// singleton marks a container holding one object rather than an array
+	// of objects.
+	singleton bool
 	// nested names the members of each object that hold a coordinate tree
-	// (a GeoJSON-shaped nesting of [x, y] pairs).
+	// (a GeoJSON-shaped nesting of [x, y] pairs; a bare [x, y] pair is the
+	// smallest such tree).
 	nested []string
 	// pointXY names a pair of scalar members holding one coordinate.
 	pointXY [2]string
 }
 
+// propertyGeometries lists every property whose coordinates move with the
+// model, in either of propertyGeometry's two forms.
 var propertyGeometries = []propertyGeometry{
 	{container: "rls19_directional_sources", nested: []string{"centerline", "coordinates"}},
 	{container: "schall03_track_features", pointXY: [2]string{"x", "y"}},
+	{container: "facade", singleton: true, nested: []string{"from", "to"}},
 }
 
 // reprojectProperties returns properties whose embedded coordinates have been
@@ -106,14 +121,13 @@ func reprojectProperties(props map[string]any, pipeline *geo.TransformPipeline) 
 	copied := false
 
 	for _, spec := range propertyGeometries {
-		entries, ok := out[spec.container].([]any)
-		if !ok {
-			continue
-		}
-
-		converted, err := reprojectPropertyEntries(entries, spec, pipeline)
+		converted, ok, err := reprojectPropertyContainer(out[spec.container], spec, pipeline)
 		if err != nil {
 			return nil, fmt.Errorf("property %q: %w", spec.container, err)
+		}
+
+		if !ok {
+			continue
 		}
 
 		// Copy on first write, so a model with no embedded geometry shares its
@@ -129,6 +143,37 @@ func reprojectProperties(props map[string]any, pipeline *geo.TransformPipeline) 
 	return out, nil
 }
 
+// reprojectPropertyContainer reprojects one container in the form spec names.
+// The second result is false when the value is not of that form, and the
+// caller then leaves the property as it is.
+func reprojectPropertyContainer(raw any, spec propertyGeometry, pipeline *geo.TransformPipeline) (any, bool, error) {
+	if spec.singleton {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			return nil, false, nil
+		}
+
+		converted, err := reprojectPropertyEntry(entry, spec, pipeline)
+		if err != nil {
+			return nil, false, err
+		}
+
+		return converted, true, nil
+	}
+
+	entries, ok := raw.([]any)
+	if !ok {
+		return nil, false, nil
+	}
+
+	converted, err := reprojectPropertyEntries(entries, spec, pipeline)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return converted, true, nil
+}
+
 func reprojectPropertyEntries(entries []any, spec propertyGeometry, pipeline *geo.TransformPipeline) ([]any, error) {
 	converted := make([]any, len(entries))
 
@@ -140,33 +185,44 @@ func reprojectPropertyEntries(entries []any, spec propertyGeometry, pipeline *ge
 			continue
 		}
 
-		next := cloneProperties(entry)
-
-		for _, member := range spec.nested {
-			value, exists := next[member]
-			if !exists {
-				continue
-			}
-
-			moved, err := transformCoordinates(value, pipeline)
-			if err != nil {
-				return nil, fmt.Errorf("[%d].%s: %w", i, member, err)
-			}
-
-			next[member] = moved
-		}
-
-		if spec.pointXY[0] != "" {
-			err := reprojectPointXY(next, spec.pointXY, pipeline)
-			if err != nil {
-				return nil, fmt.Errorf("[%d]: %w", i, err)
-			}
+		next, err := reprojectPropertyEntry(entry, spec, pipeline)
+		if err != nil {
+			return nil, fmt.Errorf("[%d]: %w", i, err)
 		}
 
 		converted[i] = next
 	}
 
 	return converted, nil
+}
+
+// reprojectPropertyEntry returns a copy of one object with the members spec
+// names transformed, leaving the object handed in as it was.
+func reprojectPropertyEntry(entry map[string]any, spec propertyGeometry, pipeline *geo.TransformPipeline) (map[string]any, error) {
+	next := cloneProperties(entry)
+
+	for _, member := range spec.nested {
+		value, exists := next[member]
+		if !exists {
+			continue
+		}
+
+		moved, err := transformCoordinates(value, pipeline)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", member, err)
+		}
+
+		next[member] = moved
+	}
+
+	if spec.pointXY[0] != "" {
+		err := reprojectPointXY(next, spec.pointXY, pipeline)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return next, nil
 }
 
 // reprojectPointXY moves a pair of scalar members. A pair where either member

@@ -383,15 +383,27 @@ than letting validation refuse the whole file.
 ## Height provenance
 
 `height_source` is an optional property on any feature that carries `height_m`.
-It is written by an importer rather than by a reader, and its only value today
-is `assumed`: the height on this feature is the importer's assumption and not a
-measurement.
+It is written by an importer rather than by a reader, and it takes one of two
+values:
 
-`aconiq import --from-osm` and the browser's OSM import both set it on
+- `levels` — the height was derived as `building:levels` × 3.0 m. The storey
+  count is a tag; the 3 m a storey is not, so the height is an estimate from the
+  storey count and not a measurement.
+- `assumed` — the height on this feature is the importer's assumption and
+  nothing else.
+
+`aconiq import --from-osm` sets `levels` on
+
+- a **building** whose way carries `building:levels` but no parseable `height`.
+
+`aconiq import --from-osm` and the browser's OSM import both set `assumed` on
 
 - a **building** whose way carries neither `height` nor `building:levels`, and
 - a **barrier** (wall or fence) with no `height` tag, which has always been
   assumed to be 2 m — silently, until this property existed.
+
+The browser's OSM import does not write `levels` yet: a levels-derived building
+it imports carries no `height_source`, like one read from a `height` tag.
 
 Its **absence records no provenance**, not "read from the source". An ordinary
 GeoJSON import carries the property only if its own source wrote it, so absence
@@ -400,7 +412,10 @@ means nothing was recorded either way.
 It matters because a building's height is an input and not a label: ISO 9613-2
 reads it for the line-of-sight test, so a run over assumed heights is a run over
 a number nobody measured. A consumer that must not do that reads this property;
-one that does not care can ignore it.
+one that does not care can ignore it. A consumer that divides the height again —
+a facade receiver placing one point per storey — needs `levels` as much as
+`assumed`, because a levels-derived height only restates the storey count, so
+every slab height read off it is an estimate too.
 
 ## Geometry Sanity Checks
 
