@@ -2815,7 +2815,17 @@ standard; and the browser OSM import keeps `addr:*` (#135). Browser custom mode 
 alongside it. A save through another CRS (the map's EPSG:4326, MCP `save_model`) keeps the stored
 coordinates of every feature that arrived within 1 µm of them, and a facade's stored `from` / `to`,
 so a round trip renumbers no facade key; a re-import through `aconiq import` is not covered
-(#136). LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
+(#136). Windows are model features of their own (`kind: window`): a rectangle in the frame of
+the facade key they carry, with `sensitive` and `review_status`, written by `aconiq import
+--windows` from a CSV or JSON window list (building by id or address, canonical part, ring and
+edge). Facade mode places one point per sensitive window that is not rejected in place of that
+facade's stations: `rls19-facade` 0.05 m out at window head + 0.2 m (Schall 03's relation, recorded
+as borrowed in `facade_window_height_basis`), `schall03-facade` on the facade at the same height,
+and `talaerm-window` 0.5 m out at the window centre, which gives `iso9613` a facade mode that
+places only at windows. A window with a broken link or on a party wall refuses the run;
+`reattach-facades` re-keys windows too; browser mode keeps them through a save and hands them to
+the kernel, but neither draws nor edits them (C1, #PR). LGLN LoD2 and CityGML carry building
+`gml:id`s but no openings: windows are LoD3
 (`bldg:Opening`), and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
 as it must be.
@@ -2869,13 +2879,16 @@ exists is summarised above.
 
 ### Phase C — Windows as model features
 
-- [ ] **C1 A window list per facade**, imported from JSON/CSV in the facade frame, and from CityGML LoD3
-      `bldg:Opening` where a client supplies LoD3. A window marked as belonging to a _schutzbedürftiger
-      Raum_ produces its Immissionsort through the placement rule. Under TA Lärm that is the window
-      centre 0.5 m out. Under RLS-19 it is the floor's slab height, 5 cm out, at the window's `u`.
-      The other windows are kept as context. Balconies and loggias wait on `facade-receivers.md`
-      Section 7, questions 2 and 3, and TA Lärm's own-facade practice on question 6. A normative
-      run already refuses a point whose `placement_rule` belongs to another standard.
+- [ ] **C1b Windows from CityGML LoD3** `bldg:Opening`, where a client supplies LoD3, into the
+      `window` features C1 defined (#PR): project each opening onto the footprint edge whose
+      plane it lies in, and derive `u_m`, `sill_z_m`, `width_m` and `height_m` from its extent,
+      refusing an opening that lies in no facade plane. `sensitive` is not in LoD3 and stays
+      false until a person sets it. Needs a synthetic LoD3 fixture. Balconies and loggias still
+      wait on `facade-receivers.md` Section 7, questions 2 and 3, and TA Lärm's own-facade
+      practice on question 6.
+- [ ] **C1c Window checks the model can answer**: a window whose sill + height rises above its
+      building's `height_m` is placed in the top storey today (the storey is a label), and browser
+      mode does not validate window properties before the kernel refuses them.
 - [ ] **C2 Facade elevation view in the frontend**: pick a building, unfold a facade to its
       elevation (edge length × building height, floors drawn from `building:levels`), and draw,
       move or delete window rectangles. The conversion stays in the Go kernel, behind a WASM
