@@ -300,6 +300,56 @@ export interface FootprintMaskResponse {
 }
 
 /**
+ * `wasmkernel.FacadeReceiversRequest`: the facade receiver set of a run, as
+ * `--facade-building`, `--facade-spacing-m`, `--facade-courtyard` and
+ * `--allow-unconfirmed` ask for it. `model` is a GeoJSON FeatureCollection of
+ * every building, already in `crs`, the run's compute CRS.
+ */
+export interface FacadeReceiversRequest {
+  crs: string;
+  model: unknown;
+  standard_id: string;
+  buildings: string[];
+  spacing_m: number;
+  include_courtyard?: boolean;
+  allow_unconfirmed?: boolean;
+}
+
+/**
+ * A facade a receiver stands at, in `results.ReceiverFacade`'s shape: the same
+ * object a receiver table row carries (`ReceiverFacade` in `@/api/client`),
+ * with `from` / `to` in the compute CRS.
+ */
+export interface KernelReceiverFacade {
+  building_ref: string;
+  part: number;
+  ring: number;
+  edge: number;
+  from: [number, number];
+  to: [number, number];
+}
+
+/** One generated facade receiver and the attributes its table row carries. */
+export interface FacadeReceiver extends PointReceiver {
+  placement_rule: string;
+  facade: KernelReceiverFacade;
+  storey: number;
+  slab_height_source: string;
+  review_status: string;
+}
+
+/**
+ * The generated set, in the order a run computes it, with the counts and the
+ * provenance keys `aconiq run` records for it.
+ */
+export interface FacadeReceiversResponse {
+  receivers: FacadeReceiver[];
+  proposed_count: number;
+  assumed_height_count: number;
+  metadata: Record<string, string>;
+}
+
+/**
  * Where the coordinates ended up. `target_crs` is the CRS they are actually in,
  * which for an `auto` request is the resolved zone. `applied` is false only
  * when nothing moved, and then `coordinates` are the input values verbatim.

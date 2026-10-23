@@ -31,6 +31,8 @@ import {
   type AnyComputeRequest,
   type ContourRequest,
   type ContourResult,
+  type FacadeReceiversRequest,
+  type FacadeReceiversResponse,
   type FootprintMaskRequest,
   type FootprintMaskResponse,
   type GridComputeRequest,
@@ -110,6 +112,16 @@ export interface AconiqKernel {
    * *not* masked — and the two targets would blank different cells.
    */
   maskFootprints(req: FootprintMaskRequest): Promise<FootprintMaskResponse>;
+  /**
+   * The receivers of a facade run, placed by `internal/facadeset` — the
+   * package `aconiq run --receiver-mode facade` calls — with the attributes
+   * their table rows carry. It rejects what that run refuses, in its words:
+   * an unconfirmed normative run without `allow_unconfirmed`, an address two
+   * buildings share. The frontend places no facade point of its own.
+   */
+  facadeReceivers(
+    req: FacadeReceiversRequest,
+  ): Promise<FacadeReceiversResponse>;
   /**
    * Trace ISO-band contour lines over a run's raster.
    *
@@ -324,6 +336,7 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
       }),
     transform: (req) => client.transform(req),
     maskFootprints: (req) => client.maskFootprints(req),
+    facadeReceivers: (req) => client.facadeReceivers(req),
     contours: (payload, req) => client.contours(payload, req),
     standards: () => client.standards(),
     defaultConfig: () => client.defaultConfig(),
