@@ -73,7 +73,7 @@ func (s receiverSet) facadeListed() facadeset.Listed {
 // shape results.ReceiverTable accepts; a partial set stays in the model.
 func (s receiverSet) tableRecord(record results.ReceiverRecord) results.ReceiverRecord {
 	attrs, ok := s.facade[record.ID]
-	if !ok || attrs.PlacementRule == "" || attrs.Facade == nil || attrs.Storey == nil {
+	if !ok || !attrs.Complete() {
 		return record
 	}
 
@@ -187,49 +187,22 @@ func (r facadeRequest) validateFor(mode string) error {
 	return nil
 }
 
-// customReceiverSet reads the model's receivers and their facade properties.
-// A rejected point is dropped here, before anything can compute at it.
+// customReceiverSet reads the model's receivers and their facade properties,
+// through facadeset.Custom, which drops and counts the rejected ones.
 func customReceiverSet(set receiverSet, model modelgeojson.Model) (receiverSet, error) {
 	receivers, err := extractExplicitReceivers(model)
 	if err != nil {
 		return receiverSet{}, err
 	}
 
-	byID := make(map[string]modelgeojson.Feature, len(receivers))
-
-	for _, feature := range model.Features {
-		if feature.Kind == modelgeojson.FeatureKindReceiver {
-			byID[feature.ID] = feature
-		}
+	listed, rejected, err := facadeset.Custom(receivers, model)
+	if err != nil {
+		return receiverSet{}, fmt.Errorf("custom receivers: %w", err)
 	}
 
-	set.facade = make(map[string]facadeset.Attributes)
-	set.listed = make([]geo.PointReceiver, 0, len(receivers))
-
-	for _, receiver := range receivers {
-		attrs, carries, err := facadeset.AttributesOf(byID[receiver.ID])
-		if err != nil {
-			return receiverSet{}, domainerrors.New(domainerrors.KindValidation, "cli.run",
-				fmt.Sprintf("receiver %q: %v", receiver.ID, err), nil)
-		}
-
-		if carries && attrs.ReviewStatus == geo.ReviewStatusRejected {
-			set.rejected++
-
-			continue
-		}
-
-		if carries {
-			set.facade[receiver.ID] = attrs
-		}
-
-		set.listed = append(set.listed, receiver)
-	}
-
-	if len(set.listed) == 0 {
-		return receiverSet{}, domainerrors.New(domainerrors.KindUserInput, "cli.run",
-			"custom receiver mode found no receiver to compute at: every receiver in the model is rejected", nil)
-	}
+	set.listed = listed.Receivers
+	set.facade = listed.Facade
+	set.rejected = rejected
 
 	return set, nil
 }
