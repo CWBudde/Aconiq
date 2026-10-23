@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -582,6 +584,7 @@ function FeatureFields({ feature }: { feature: ModelFeature }) {
         <>
           <HeightField feature={feature} />
           <Schall03BuildingFields feature={feature} />
+          <FacadeElevationButton buildingId={feature.id} />
         </>
       );
     case "barrier":
@@ -1648,6 +1651,44 @@ function PropertyBooleanField({
         {spec.helper?.() ?? m.msg_field_default_off()}
       </p>
     </div>
+  );
+}
+
+// Its own chunk: the elevation view is opened for one building at a time,
+// and the map page should not carry it until someone does.
+const FacadeElevationDialog = lazy(
+  () => import("@/facade/facade-elevation-dialog"),
+);
+
+/**
+ * Opens the building's facade elevation (P18 C2). The dialog is mounted only
+ * while open, so a closed one neither loads its chunk nor measures anything.
+ */
+function FacadeElevationButton({ buildingId }: { buildingId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 text-xs"
+        onClick={() => {
+          setOpen(true);
+        }}
+      >
+        {m.action_facade_elevation()}
+      </Button>
+      {open && (
+        <Suspense fallback={null}>
+          <FacadeElevationDialog
+            buildingId={buildingId}
+            open={open}
+            onOpenChange={setOpen}
+          />
+        </Suspense>
+      )}
+    </>
   );
 }
 

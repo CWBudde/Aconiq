@@ -885,5 +885,63 @@
   "label_allow_unconfirmed": "Auch über unbestätigte Punkte rechnen",
   "msg_allow_unconfirmed_help": "Erzeugte Fassadenpunkte sind Vorschläge, bis jemand sie bestätigt. Eine normative Berechnung lehnt sie ohne diese Zustimmung ab; ihre Anzahl wird dann mit dem Ergebnis festgehalten.",
   "msg_facade_incomplete": "Mindestens ein Gebäude und einen Abstand größer als 0 m angeben.",
-  "msg_facade_opt_in_required": "Eine normative Norm rechnet an erzeugten Fassadenpunkten nur mit dieser Zustimmung: Sie bleiben Vorschläge, bis jemand sie bestätigt."
+  "msg_facade_opt_in_required": "Eine normative Norm rechnet an erzeugten Fassadenpunkten nur mit dieser Zustimmung: Sie bleiben Vorschläge, bis jemand sie bestätigt.",
+  "action_facade_elevation": "Fassadenansicht",
+  "title_facade_elevation": "Fassadenansicht von {building}",
+  "msg_facade_elevation_summary": [
+    {
+      "declarations": [
+        "input storeys",
+        "local storeysPlural = storeys: plural"
+      ],
+      "selectors": ["storeysPlural"],
+      "match": {
+        "storeysPlural=one": "{height} m hoch · {storeys} Geschoss · Geschosshöhe {source}",
+        "storeysPlural=other": "{height} m hoch · {storeys} Geschosse · Geschosshöhe {source}"
+      }
+    }
+  ],
+  "label_slab_source_measured": "gemessen",
+  "label_slab_source_levels": "aus building:levels",
+  "label_slab_source_assumed": "angenommen (3 m)",
+  "label_facade_select": "Fassade",
+  "label_facade_option": "Fassade {n} · nach {facing} · {length} m",
+  "label_facade_option_courtyard": "Fassade {n} · Hof · nach {facing} · {length} m",
+  "label_compass_n": "Norden",
+  "label_compass_ne": "Nordosten",
+  "label_compass_e": "Osten",
+  "label_compass_se": "Südosten",
+  "label_compass_s": "Süden",
+  "label_compass_sw": "Südwesten",
+  "label_compass_w": "Westen",
+  "label_compass_nw": "Nordwesten",
+  "label_facade_elevation_svg": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Fassade {n}, {length} m lang und {height} m hoch, mit {count} Fenster",
+        "countPlural=other": "Fassade {n}, {length} m lang und {height} m hoch, mit {count} Fenstern"
+      }
+    }
+  ],
+  "label_window_frame": "Fenster {id}: {width} × {height} m, Brüstung bei {sill} m, {u} m entlang der Fassade",
+  "heading_facade_windows": "Fenster an dieser Fassade",
+  "msg_facade_no_windows": "An dieser Fassade sind noch keine Fenster.",
+  "label_window_id": "Fenster",
+  "label_window_u": "Entlang (m)",
+  "label_window_sill": "Brüstung (m)",
+  "label_window_width": "Breite (m)",
+  "label_window_height": "Höhe (m)",
+  "label_window_sensitive": "Schutzbedürftig",
+  "label_window_review": "Prüfung",
+  "label_window_findings": "Befunde",
+  "label_window_sensitive_yes": "Ja",
+  "label_review_proposed": "Vorgeschlagen",
+  "label_review_confirmed": "Bestätigt",
+  "label_review_rejected": "Abgelehnt",
+  "heading_facade_detached": "Fenster ohne Fassade",
+  "msg_facade_detached_help": "Ihr Fassadenschlüssel benennt keine Kante dieses Gebäudes mehr. Mit aconiq reattach-facades neu zuordnen.",
+  "msg_facade_elevation_loading": "Fassaden werden vermessen …",
+  "msg_facade_elevation_failed": "Die Fassaden konnten nicht vermessen werden: {error}"
 }

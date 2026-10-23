@@ -31,6 +31,8 @@ import {
   type AnyComputeRequest,
   type ContourRequest,
   type ContourResult,
+  type FacadeElevationRequest,
+  type FacadeElevationResponse,
   type FacadeReceiversRequest,
   type FacadeReceiversResponse,
   type CustomReceiversRequest,
@@ -135,6 +137,17 @@ export interface AconiqKernel {
   customReceivers(
     req: CustomReceiversRequest,
   ): Promise<CustomReceiversResponse>;
+  /**
+   * One building unfolded into its facades, storeys and windows, by
+   * `facadeset.Elevation` — the code `POST /api/v1/facades/elevation`
+   * answers from — for the elevation view (P18 C2). The facades are the
+   * canonical edges facade keys are numbered on, their lengths and the slab
+   * heights are measured by the code that places facade receivers, so the
+   * frontend measures no facade of its own.
+   */
+  facadeElevation(
+    req: FacadeElevationRequest,
+  ): Promise<FacadeElevationResponse>;
   /**
    * Trace ISO-band contour lines over a run's raster.
    *
@@ -351,6 +364,7 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
     maskFootprints: (req) => client.maskFootprints(req),
     facadeReceivers: (req) => client.facadeReceivers(req),
     customReceivers: (req) => client.customReceivers(req),
+    facadeElevation: (req) => client.facadeElevation(req),
     contours: (payload, req) => client.contours(payload, req),
     standards: () => client.standards(),
     defaultConfig: () => client.defaultConfig(),

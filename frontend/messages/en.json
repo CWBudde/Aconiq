@@ -885,5 +885,63 @@
   "label_allow_unconfirmed": "Run over unconfirmed points",
   "msg_allow_unconfirmed_help": "Generated facade points are proposed until someone confirms them. A normative run refuses them unless you opt in; their count is then recorded with the result.",
   "msg_facade_incomplete": "Name at least one building and a spacing greater than 0 m.",
-  "msg_facade_opt_in_required": "A normative standard runs over generated facade points only with this opt-in: they stay proposed until someone confirms them."
+  "msg_facade_opt_in_required": "A normative standard runs over generated facade points only with this opt-in: they stay proposed until someone confirms them.",
+  "action_facade_elevation": "Facade elevation",
+  "title_facade_elevation": "Facade elevation of {building}",
+  "msg_facade_elevation_summary": [
+    {
+      "declarations": [
+        "input storeys",
+        "local storeysPlural = storeys: plural"
+      ],
+      "selectors": ["storeysPlural"],
+      "match": {
+        "storeysPlural=one": "{height} m high · {storeys} storey · storey height {source}",
+        "storeysPlural=other": "{height} m high · {storeys} storeys · storey height {source}"
+      }
+    }
+  ],
+  "label_slab_source_measured": "measured",
+  "label_slab_source_levels": "from building:levels",
+  "label_slab_source_assumed": "assumed (3 m)",
+  "label_facade_select": "Facade",
+  "label_facade_option": "Facade {n} · faces {facing} · {length} m",
+  "label_facade_option_courtyard": "Facade {n} · courtyard · faces {facing} · {length} m",
+  "label_compass_n": "north",
+  "label_compass_ne": "north-east",
+  "label_compass_e": "east",
+  "label_compass_se": "south-east",
+  "label_compass_s": "south",
+  "label_compass_sw": "south-west",
+  "label_compass_w": "west",
+  "label_compass_nw": "north-west",
+  "label_facade_elevation_svg": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Facade {n}, {length} m long and {height} m high, with {count} window",
+        "countPlural=other": "Facade {n}, {length} m long and {height} m high, with {count} windows"
+      }
+    }
+  ],
+  "label_window_frame": "Window {id}: {width} × {height} m, sill at {sill} m, {u} m along the facade",
+  "heading_facade_windows": "Windows on this facade",
+  "msg_facade_no_windows": "No windows on this facade yet.",
+  "label_window_id": "Window",
+  "label_window_u": "Along (m)",
+  "label_window_sill": "Sill (m)",
+  "label_window_width": "Width (m)",
+  "label_window_height": "Height (m)",
+  "label_window_sensitive": "Sensitive",
+  "label_window_review": "Review",
+  "label_window_findings": "Findings",
+  "label_window_sensitive_yes": "Yes",
+  "label_review_proposed": "Proposed",
+  "label_review_confirmed": "Confirmed",
+  "label_review_rejected": "Rejected",
+  "heading_facade_detached": "Windows on no facade",
+  "msg_facade_detached_help": "Their facade key no longer names an edge of this building. Re-attach them with aconiq reattach-facades.",
+  "msg_facade_elevation_loading": "Measuring the facades…",
+  "msg_facade_elevation_failed": "The facades could not be measured: {error}"
 }
