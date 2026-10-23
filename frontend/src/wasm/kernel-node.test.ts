@@ -222,6 +222,45 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     expect(elevation.facades.map((f) => f.length_m)).toEqual([10, 8, 10, 8]);
     expect(elevation.facades[0]?.facing_deg).toBe(180);
     expect(elevation.detached).toEqual([]);
+    expect(elevation.facades.map((f) => f.party_walls)).toEqual([
+      [],
+      [],
+      [],
+      [],
+    ]);
+
+    // A neighbour against the lower 3 m of the east wall makes that stretch
+    // a party wall, measured by the probe facade mode drops a point by.
+    const terraced = await kernel.facadeElevation({
+      crs: "EPSG:25832",
+      model: {
+        ...facadeModel,
+        features: [
+          ...facadeModel.features,
+          {
+            type: "Feature",
+            id: "next",
+            properties: { kind: "building", height_m: 6 },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [547010, 5795000],
+                  [547020, 5795000],
+                  [547020, 5795003],
+                  [547010, 5795003],
+                  [547010, 5795000],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+      building: "house",
+    });
+    expect(terraced.facades[1]?.party_walls).toEqual([
+      { from_um: 0, to_um: 3 },
+    ]);
     await expect(
       kernel.facadeElevation({
         crs: "EPSG:25832",

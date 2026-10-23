@@ -362,19 +362,31 @@ export interface ElevationFinding {
   message: string;
 }
 
-/** A window feature as the elevation draws it (`facadeset.ElevationWindow`). */
+/**
+ * A window feature as the elevation draws it (`facadeset.ElevationWindow`).
+ * `on_party_wall` is a window whose centre stands on a party wall of its
+ * facade, which a facade run refuses while it is sensitive.
+ */
 export interface ElevationWindow {
   id: string;
   window: FacadeWindowFrame;
   sensitive: boolean;
   review_status: "proposed" | "confirmed" | "rejected";
+  on_party_wall: boolean;
   findings: ElevationFinding[];
+}
+
+/** A stretch of a facade, in metres along it from its start (`geo.FacadeSpan`). */
+export interface FacadeSpan {
+  from_um: number;
+  to_um: number;
 }
 
 /**
  * One facade: a canonical edge, with `from` / `to` in the request's CRS, its
- * length in metres, the bearing it faces from grid north, and the windows
- * keyed to it (`facadeset.FacadeElevation`).
+ * length in metres, the bearing it faces from grid north, the stretches
+ * another building stands against (where facade mode places no point), and
+ * the windows keyed to it (`facadeset.FacadeElevation`).
  */
 export interface FacadeElevation {
   part: number;
@@ -385,6 +397,7 @@ export interface FacadeElevation {
   length_m: number;
   facing_deg: number;
   courtyard: boolean;
+  party_walls: FacadeSpan[];
   windows: ElevationWindow[];
 }
 

@@ -121,6 +121,58 @@ describe("loadFacadeElevation", () => {
     expect(ids).toEqual(["house", "w1"]);
   });
 
+  it("sends the buildings that could stand against it, and no farther one", async () => {
+    const { asked, backend } = fakeBackend();
+    // Metres in, metres out: the reach is measured in the compute CRS.
+    backend.transformCoordinates.mockImplementation((req) =>
+      Promise.resolve({
+        source_crs: req.source_crs,
+        target_crs: req.source_crs,
+        applied: false,
+        coordinates: req.coordinates,
+      }),
+    );
+    const box = (id: string, x0: number, x1: number): ModelFeature => ({
+      id,
+      kind: "building",
+      heightM: 6,
+      geometry: {
+        type: "Polygon",
+        coordinates: [
+          [
+            [x0, 5795000],
+            [x1, 5795000],
+            [x1, 5795008],
+            [x0, 5795008],
+            [x0, 5795000],
+          ],
+        ],
+      },
+    });
+
+    await loadFacadeElevation(
+      backend,
+      {
+        features: [
+          box("far", 547015, 547025),
+          house,
+          box("next", 547010, 547014),
+          box("close", 546990, 546999.5),
+          windowOn("w-next", "next"),
+        ],
+        receivers: [],
+        calcArea: null,
+        crs: "EPSG:25832",
+      },
+      "house",
+    );
+
+    const ids = (
+      asked[0]?.model as { features: { id: string }[] }
+    ).features.map((f) => f.id);
+    expect(ids).toEqual(["house", "next", "close"]);
+  });
+
   it("projects a geographic workspace first, as a run does", async () => {
     const { asked, transforms, backend } = fakeBackend();
     const lonLat: ModelFeature = {

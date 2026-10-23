@@ -21,7 +21,7 @@ import type {
   FacadeWindowFrame,
   WindowPlacement,
 } from "@/wasm/types";
-import { reviewLabel } from "./elevation-labels";
+import { partyWallsLabel, reviewLabel } from "./elevation-labels";
 import {
   ELEVATION_VIEW_HEIGHT,
   ELEVATION_VIEW_WIDTH,
@@ -87,6 +87,8 @@ export function ElevationEditor({
   slabHeightsM,
 }: ElevationEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const legendId = useId();
+  const hasPartyWalls = facade.party_walls.length > 0;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [gesture, setGestureState] = useState<Gesture | null>(null);
   // The gesture as of the last pointer event, not the last render: a release
@@ -120,11 +122,16 @@ export function ElevationEditor({
 
   const scale = elevationScale(facade.length_m, heightM);
 
+  // A window drawn where the gesture has it is not where the Go code
+  // measured whether it stands on a party wall, so that says nothing until
+  // the new elevation arrives.
   const windows = facade.windows.map((w): ElevationWindow => {
     if (gesture !== null && gesture.kind !== "draw" && gesture.id === w.id) {
-      return { ...w, window: gesture.frame };
+      return { ...w, window: gesture.frame, on_party_wall: false };
     }
-    if (pending?.id === w.id) return { ...w, window: pending.frame };
+    if (pending?.id === w.id) {
+      return { ...w, window: pending.frame, on_party_wall: false };
+    }
     return w;
   });
   const selected = windows.find((w) => w.id === selectedId) ?? null;
@@ -409,7 +416,13 @@ export function ElevationEditor({
         onPointerCancel={handlePointerCancel}
         onSelect={setSelectedId}
         onWindowKeyDown={handleWindowKeyDown}
+        describedBy={hasPartyWalls ? legendId : undefined}
       />
+      {hasPartyWalls && (
+        <p id={legendId} className="text-xs text-muted-foreground">
+          {partyWallsLabel(facade)}
+        </p>
+      )}
       {error !== null && (
         <p role="alert" className="text-xs text-destructive">
           {error}
@@ -491,6 +504,17 @@ function WindowForm({
       <h3 className="text-sm font-medium">
         {m.heading_window_edit({ id: w.id })}
       </h3>
+      {w.on_party_wall && (
+        <p
+          className={
+            w.sensitive && w.review_status !== "rejected"
+              ? "text-xs text-destructive"
+              : "text-xs text-muted-foreground"
+          }
+        >
+          {m.msg_window_on_party_wall()}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {fields.map(([key, label]) => (
           <FrameField
