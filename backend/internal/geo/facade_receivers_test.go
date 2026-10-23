@@ -261,6 +261,12 @@ func TestFacadeReceiversStoreyHeights(t *testing.T) {
 					t.Fatalf("heights %v, want %v", got, tc.wantZ)
 				}
 			}
+
+			// The slabs an elevation view draws are the heights placed at.
+			slabs, source, err := StoreySlabs(b)
+			if err != nil || source != tc.wantSource || !slices.Equal(slabs, got) {
+				t.Errorf("StoreySlabs = %v, %q, %v, want %v, %q", slabs, source, err, got, tc.wantSource)
+			}
 		})
 	}
 }
@@ -566,5 +572,33 @@ func TestFacadeKeyJSONIsTheModelShape(t *testing.T) {
 	err = json.Unmarshal(data, &doc)
 	if err != nil || len(doc.Facade.From) != 2 || len(doc.Facade.To) != 2 {
 		t.Fatalf("receiver JSON %s: facade endpoints are not [x, y] (err %v)", data, err)
+	}
+}
+
+// A canonical ring is walked with the building on its left, so an edge faces
+// right of its direction: east-bound faces south, north-bound east.
+func TestFacadeFacingDeg(t *testing.T) {
+	t.Parallel()
+
+	origin := Point2D{}
+	for _, tc := range []struct {
+		to   Point2D
+		want float64
+	}{
+		{Point2D{X: 1}, 180},
+		{Point2D{Y: 1}, 90},
+		{Point2D{X: -1}, 0},
+		{Point2D{Y: -1}, 270},
+		{Point2D{X: 1, Y: 1}, 135},
+	} {
+		if got := FacadeFacingDeg(origin, tc.to); math.Abs(got-tc.want) > 1e-9 {
+			t.Errorf("FacadeFacingDeg(0, %v) = %g, want %g", tc.to, got, tc.want)
+		}
+
+		// The right-hand normal FacadePoint steps out along is the bearing.
+		out := FacadePoint(origin, tc.to, 0, 1)
+		if bearing := math.Mod(math.Atan2(out.X, out.Y)*180/math.Pi+360, 360); math.Abs(bearing-tc.want) > 1e-9 {
+			t.Errorf("FacadePoint steps out at %g, want %g", bearing, tc.want)
+		}
 	}
 }

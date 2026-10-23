@@ -292,6 +292,66 @@ func TestReattachWindowAfterARenumbering(t *testing.T) {
 	}
 }
 
+// A building's edges come in canonical order with the keys a window on each
+// is written with, and their lengths in metres: in the project CRS when it is
+// projected, and in the compute CRS when it is geographic, with from / to
+// still in degrees.
+func TestWindowPlacerEdges(t *testing.T) {
+	t.Parallel()
+
+	placer, err := NewWindowPlacer(facadeModel(buildingFeature("b1", simpleFacadeFootprint())))
+	if err != nil {
+		t.Fatalf("NewWindowPlacer: %v", err)
+	}
+
+	edges, err := placer.Edges("b1")
+	if err != nil {
+		t.Fatalf("Edges: %v", err)
+	}
+
+	canonical, err := geo.FacadeEdges(simpleFacadeFootprint())
+	if err != nil {
+		t.Fatalf("FacadeEdges: %v", err)
+	}
+
+	if len(edges) != len(canonical) {
+		t.Fatalf("got %d edges, want %d", len(edges), len(canonical))
+	}
+
+	for i, e := range edges {
+		c := canonical[i]
+
+		want := geo.FacadeKey{BuildingRef: "b1", Part: c.Part, Ring: c.Ring, Edge: c.Edge, From: c.From, To: c.To}
+		if e.Key != want || math.Abs(e.LengthM-geo.Distance(c.From, c.To)) > 1e-9 {
+			t.Errorf("edge %d = %+v, want %+v of length %g", i, e, want, geo.Distance(c.From, c.To))
+		}
+	}
+
+	if _, err := placer.Edges("b2"); err == nil || !strings.Contains(err.Error(), "not in the model") {
+		t.Errorf("Edges(b2) err = %v, want the building refused", err)
+	}
+
+	geographic, err := Reproject(facadeModel(buildingFeature("b1", geoFacadeFootprint())), "EPSG:4326")
+	if err != nil {
+		t.Fatalf("Reproject: %v", err)
+	}
+
+	placer, err = NewWindowPlacer(geographic)
+	if err != nil {
+		t.Fatalf("NewWindowPlacer: %v", err)
+	}
+
+	edges, err = placer.Edges("b1")
+	if err != nil {
+		t.Fatalf("Edges: %v", err)
+	}
+
+	// Edge 0 runs from (x0 - 1, y0 + 12) to (x0, y0), about 12.04 m.
+	if first := edges[0]; math.Abs(first.LengthM-math.Hypot(1, 12)) > 0.01 || first.Key.From.X > 180 {
+		t.Errorf("edge 0 = %+v, want about 12.04 m with endpoints in degrees", first)
+	}
+}
+
 // A window's Point is its centre on the facade, so re-attaching it to an
 // edge that moved moves the Point with it: onto the new edge, at the frame's
 // centre u. The frame itself stays as it was.

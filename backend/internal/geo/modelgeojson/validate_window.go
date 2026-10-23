@@ -290,11 +290,49 @@ func (p WindowPlacer) Feature(spec WindowSpec) (Feature, error) {
 	}, nil
 }
 
+// PlacedEdge is one canonical edge of a building, as a window on it is keyed:
+// the key, with from / to in the project CRS, and the edge's length in metres
+// and the bearing it faces (geo.FacadeFacingDeg) in the frame the placer
+// measures in.
+type PlacedEdge struct {
+	Key       geo.FacadeKey
+	LengthM   float64
+	FacingDeg float64
+}
+
+// Edges lists a building's canonical edges in canonical order: the facades a
+// window can be placed on, and the lengths a frame's u_m and width_m are
+// measured along (P18 C2).
+func (p WindowPlacer) Edges(buildingRef string) ([]PlacedEdge, error) {
+	building, ok := p.index.byID[buildingRef]
+	if !ok {
+		return nil, notIndexed(buildingRef)
+	}
+
+	edges := p.index.buildings[building].edges
+	placed := make([]PlacedEdge, 0, len(edges))
+
+	for _, e := range edges {
+		key, err := p.index.keyOf(edgeMatch{building: building, edge: e})
+		if err != nil {
+			return nil, fmt.Errorf("building %q: %w", buildingRef, err)
+		}
+
+		placed = append(placed, PlacedEdge{Key: key, LengthM: geo.Distance(e.From, e.To), FacingDeg: geo.FacadeFacingDeg(e.From, e.To)})
+	}
+
+	return placed, nil
+}
+
+func notIndexed(buildingRef string) error {
+	return fmt.Errorf("building %q is not in the model, or has no stable id to key a facade by", buildingRef)
+}
+
 // edge finds the canonical edge a spec names, in the metric frame.
 func (p WindowPlacer) edge(spec WindowSpec) (edgeMatch, error) {
 	building, ok := p.index.byID[spec.BuildingRef]
 	if !ok {
-		return edgeMatch{}, fmt.Errorf("building %q is not in the model, or has no stable id to key a facade by", spec.BuildingRef)
+		return edgeMatch{}, notIndexed(spec.BuildingRef)
 	}
 
 	for _, e := range p.index.buildings[building].edges {
