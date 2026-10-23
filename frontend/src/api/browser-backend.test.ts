@@ -13,6 +13,7 @@ import {
   PERSISTED_STATE_VERSION,
   resetBrowserBackendForTests,
 } from "./browser-backend";
+import type { RunSpec } from "./backend";
 import * as storage from "./browser-storage";
 import { getFeatureBBox } from "@/model/grid-estimate";
 import { useModelStore } from "@/model/model-store";
@@ -21,6 +22,8 @@ import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
 import type {
   ComputeRequest,
+  FacadeReceiversRequest,
+  FacadeReceiversResponse,
   GridComputeRequest,
   TransformRequest,
 } from "@/wasm/types";
@@ -36,6 +39,58 @@ import type {
  * CRS the browser asked the kernel to project from.
  */
 const transformRequests: TransformRequest[] = [];
+
+/**
+ * Records every `facadeReceivers` request, and answers it. Where the points go
+ * is the kernel's business, pinned by its Go and Node tests; what this file can
+ * see is what `startRun` asks for and what it does with the answer. The stub
+ * refuses an unconfirmed request in the gate's words, as the real one does.
+ */
+const facadeRequests: FacadeReceiversRequest[] = [];
+
+function facadeAnswer(req: FacadeReceiversRequest): FacadeReceiversResponse {
+  const facade = {
+    building_ref: "house",
+    part: 0,
+    ring: 0,
+    edge: 0,
+    from: [0, 0] as [number, number],
+    to: [10, 0] as [number, number],
+  };
+  return {
+    receivers: [
+      {
+        id: "facade-house-0-0-0-0",
+        point: { x: 2, y: -0.05 },
+        height_m: 1,
+        placement_rule: "rls19-facade",
+        facade,
+        storey: 0,
+        slab_height_source: "levels",
+        review_status: "proposed",
+      },
+      {
+        id: "facade-house-0-0-0-1",
+        point: { x: 2, y: -0.05 },
+        height_m: 4,
+        placement_rule: "rls19-facade",
+        facade,
+        storey: 1,
+        slab_height_source: "levels",
+        review_status: "proposed",
+      },
+    ],
+    proposed_count: 2,
+    assumed_height_count: 0,
+    metadata: {
+      facade_placement_rule: "rls19-facade",
+      facade_buildings: '["house"]',
+      facade_spacing_m: String(req.spacing_m),
+      facade_include_courtyard: "false",
+      ...(req.allow_unconfirmed === true ? { allow_unconfirmed: "true" } : {}),
+    },
+  };
+}
 
 /**
  * A descriptor the stubbed kernel can publish. Only `id` carries weight here —
@@ -124,6 +179,17 @@ vi.mock("@/wasm/kernel", () => ({
           applied: false,
           coordinates: req.coordinates,
         });
+      },
+      facadeReceivers: (req: FacadeReceiversRequest) => {
+        facadeRequests.push(req);
+        if (req.allow_unconfirmed !== true) {
+          return Promise.reject(
+            new Error(
+              'facade receivers: run.facade: standard "rls19-road" is normative and its receivers include 2 proposed facade point(s) and 0 with an assumed slab height: pass --allow-unconfirmed to run anyway',
+            ),
+          );
+        }
+        return Promise.resolve(facadeAnswer(req));
       },
       standards: () => Promise.resolve(publishedStandards),
       defaultConfig: () => Promise.resolve({}),
@@ -265,6 +331,33 @@ describe("overpassWayToFeature", () => {
     { lon: 7.001, lat: 50.001 },
     { lon: 7, lat: 50 },
   ];
+
+  // A facade run selects a building by "<street> <number>", so the browser
+  // import keeps the two tags as OSM spells them, as `osmimport` does — a
+  // ";" list of numbers included — and writes nothing a way does not carry.
+  it("keeps a building's street and house number for facade selection", () => {
+    const addressed = overpassWayToFeature({
+      type: "way",
+      id: 44,
+      tags: {
+        building: "house",
+        "addr:street": "Musterstraße",
+        "addr:housenumber": "3;5",
+      },
+      geometry: ring,
+    });
+    const bare = overpassWayToFeature({
+      type: "way",
+      id: 45,
+      tags: { building: "house" },
+      geometry: ring,
+    });
+
+    expect(addressed?.properties["addr:street"]).toBe("Musterstraße");
+    expect(addressed?.properties["addr:housenumber"]).toBe("3;5");
+    expect(bare?.properties).not.toHaveProperty("addr:street");
+    expect(bare?.properties).not.toHaveProperty("addr:housenumber");
+  });
 
   it("reads building:levels when the way carries no height tag, and says so", () => {
     const feature = overpassWayToFeature({
@@ -641,6 +734,126 @@ describe("browserBackend.startRun standard gates", () => {
 
     const run = await browserBackend.startRun(RUN_SPEC);
     expect(run.standard_id).toBe("rls19-road");
+  });
+});
+
+/**
+ * A facade run asks the kernel for its receivers — every building, in the
+ * compute CRS, with the selection, spacing and opt-in as the user gave them —
+ * computes at what comes back, and writes the facade attributes into the rows
+ * and the counts and request into the summary, under the CLI's key names. A
+ * refusal stops it before a run exists.
+ */
+describe("browserBackend.startRun facade mode", () => {
+  const HOUSE: ModelFeature = {
+    id: "house",
+    kind: "building",
+    heightM: 6,
+    properties: {
+      "building:levels": "2",
+      "addr:street": "Musterstraße",
+      "addr:housenumber": "1",
+    },
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [10, 0],
+          [10, 8],
+          [0, 8],
+          [0, 0],
+        ],
+      ],
+    },
+  };
+
+  const FACADE_SPEC: RunSpec = {
+    ...RUN_SPEC,
+    receiverMode: "facade",
+    facade: {
+      buildings: ["Musterstraße 1"],
+      spacingM: 4,
+      includeCourtyard: false,
+    },
+  };
+
+  beforeEach(async () => {
+    await resetStores();
+    facadeRequests.length = 0;
+    useModelStore.setState({
+      features: [ROAD, HOUSE],
+      receivers: [],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: () => "blob:mock/facade",
+      revokeObjectURL: () => undefined,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("computes at the kernel's facade receivers and records them as the CLI does", async () => {
+    const run = await browserBackend.startRun({
+      ...FACADE_SPEC,
+      allowUnconfirmed: true,
+    });
+
+    expect(facadeRequests).toHaveLength(1);
+    const request = facadeRequests[0];
+    expect(request?.crs).toBe("EPSG:25832");
+    expect(request?.standard_id).toBe("rls19-road");
+    expect(request?.buildings).toEqual(["Musterstraße 1"]);
+    expect(request?.spacing_m).toBe(4);
+    expect(request?.allow_unconfirmed).toBe(true);
+    // Every building and nothing else: a road is no facade, and the kernel
+    // masks party walls across all of them.
+    const sent = request?.model as GeoJSONFeatureCollection;
+    expect(sent.features.map((feature) => feature.id)).toEqual(["house"]);
+    expect(sent.features[0]?.properties["addr:street"]).toBe("Musterstraße");
+
+    const tableRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.receiver_table_json",
+    );
+    const table = await browserBackend.getArtifactContent<ReceiverTable>(
+      tableRef?.id ?? "",
+    );
+    expect(table.records.map((record) => record.id)).toEqual([
+      "facade-house-0-0-0-0",
+      "facade-house-0-0-0-1",
+    ]);
+    for (const record of table.records) {
+      expect(record.placement_rule).toBe("rls19-facade");
+      expect(record.facade?.building_ref).toBe("house");
+    }
+    expect(table.records.map((record) => record.storey)).toEqual([0, 1]);
+
+    const summaryRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.summary",
+    );
+    const summary = await browserBackend.getArtifactContent<
+      Record<string, unknown>
+    >(summaryRef?.id ?? "");
+    expect(summary).toMatchObject({
+      receiver_count: 2,
+      facade_proposed_count: 2,
+      facade_placement_rule: "rls19-facade",
+      facade_buildings: '["house"]',
+      allow_unconfirmed: "true",
+    });
+    expect(summary).not.toHaveProperty("facade_assumed_height_count");
+  });
+
+  it("refuses an unconfirmed normative facade run before a run exists", async () => {
+    await expect(browserBackend.startRun(FACADE_SPEC)).rejects.toThrow(
+      /--allow-unconfirmed/,
+    );
+    expect(await browserBackend.getRuns()).toEqual([]);
   });
 });
 

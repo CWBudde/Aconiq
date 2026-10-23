@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import {
   AlertCircle,
+  Building2,
   Grid2x2,
   Loader2,
   Play,
@@ -54,6 +55,12 @@ import { RunEstimateNote } from "@/run/run-estimate-note";
 
 import { gridSizingFromParams } from "@/model/grid-estimate";
 import { ParameterField } from "@/run/parameter-field";
+import { FacadeFields } from "@/run/facade-fields";
+import {
+  EMPTY_FACADE_DRAFT,
+  facadeRunSpec,
+  offersFacadeMode,
+} from "@/run/facade-draft";
 import {
   parameterDescription,
   parameterGroup,
@@ -102,7 +109,7 @@ function RunCreateError({ error }: { error: Error }) {
 // Run setup dialog
 // ---------------------------------------------------------------------------
 
-type ReceiverMode = "auto-grid" | "custom";
+type ReceiverMode = "auto-grid" | "custom" | "facade";
 
 /** Non-empty groups in render order, each keeping the backend's own ordering. */
 function groupParameters(
@@ -300,7 +307,23 @@ function RunSetupForm({
     params,
   } = selection;
 
-  const [receiverMode, setReceiverMode] = useState<ReceiverMode>("auto-grid");
+  const [chosenReceiverMode, setReceiverMode] =
+    useState<ReceiverMode>("auto-grid");
+  const [facadeDraft, setFacadeDraft] = useState(EMPTY_FACADE_DRAFT);
+
+  // Offered where the selected standard publishes a facade placement rule.
+  // A facade choice left over from another standard falls back to the grid
+  // rather than asking for a run the backend would refuse.
+  const facadeOffered = offersFacadeMode(selectedStandard);
+  const receiverMode: ReceiverMode =
+    chosenReceiverMode === "facade" && !facadeOffered
+      ? "auto-grid"
+      : chosenReceiverMode;
+  const facadeSpec = facadeRunSpec(facadeDraft);
+  const facadeIncomplete = receiverMode === "facade" && facadeSpec === null;
+  // The opt-in is offered, and so sent, only for a normative standard: the
+  // only kind whose run refuses unconfirmed points.
+  const facadeNormative = selectedStandard?.evidence_tier === "normative";
 
   // The extent the automatic grid would cover, in metres. Only in auto-grid
   // mode: a custom receiver set is the points the user placed, and no
@@ -342,6 +365,10 @@ function RunSetupForm({
   function handleStandardChange(id: string) {
     selection.selectStandard(id);
     setAcknowledgedStandardId(null);
+    // The facade opt-in is the same kind of acknowledgement, given for the
+    // standard it was ticked under: a switch from rls19-road to schall03 must
+    // not carry it over to a run the user never opted into.
+    setFacadeDraft((draft) => ({ ...draft, allowUnconfirmed: false }));
   }
 
   const runSpec: RunSpec = {
@@ -350,6 +377,14 @@ function RunSetupForm({
     profile: effectiveProfile,
     params,
     receiverMode,
+    ...(receiverMode === "facade" && facadeSpec !== null
+      ? { facade: facadeSpec }
+      : {}),
+    ...(receiverMode === "facade" &&
+    facadeNormative &&
+    facadeDraft.allowUnconfirmed
+      ? { allowUnconfirmed: true }
+      : {}),
     // Derived from the tier of the standard being run, so a normative one
     // can never inherit an opt-in from an earlier selection.
     ...(requiresExperimentalOptIn ? { experimental: true } : {}),
@@ -371,11 +406,18 @@ function RunSetupForm({
     !experimentalOptInMissing &&
     !unsavedChanges &&
     !startBlocked &&
-    !customReceiversMissing;
+    !customReceiversMissing &&
+    !facadeIncomplete;
   const runEstimate = useRunEstimate(estimateWanted ? runSpec : null);
 
   function handleSubmit() {
-    if (experimentalOptInMissing || unsavedChanges || startBlocked) return;
+    if (
+      experimentalOptInMissing ||
+      unsavedChanges ||
+      startBlocked ||
+      facadeIncomplete
+    )
+      return;
 
     createRun.mutate(runSpec, {
       onSuccess: (run) => {
@@ -576,7 +618,9 @@ function RunSetupForm({
             <SectionHeading variant="eyebrow">
               {m.label_receivers()}
             </SectionHeading>
-            <div className="grid grid-cols-2 gap-3">
+            <div
+              className={`grid gap-3 ${facadeOffered ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"}`}
+            >
               <ReceiverModeButton
                 mode="auto-grid"
                 current={receiverMode}
@@ -593,7 +637,24 @@ function RunSetupForm({
                 title={m.label_receiver_custom_set()}
                 description={m.msg_receiver_custom_set_desc()}
               />
+              {facadeOffered ? (
+                <ReceiverModeButton
+                  mode="facade"
+                  current={receiverMode}
+                  onSelect={setReceiverMode}
+                  icon={Building2}
+                  title={m.label_receiver_facade()}
+                  description={m.msg_receiver_facade_desc()}
+                />
+              ) : null}
             </div>
+            {receiverMode === "facade" ? (
+              <FacadeFields
+                draft={facadeDraft}
+                onChange={setFacadeDraft}
+                normative={facadeNormative}
+              />
+            ) : null}
             {/* The same sentence in both modes: `modelToGeoJSON` now emits
                   the area as a `calc-area` feature, and the backend resolves
                   the auto-grid extent from it. No separate gate is needed for
@@ -807,7 +868,8 @@ function RunSetupForm({
               experimentalOptInMissing ||
               unsavedChanges ||
               startBlocked ||
-              customReceiversMissing
+              customReceiversMissing ||
+              facadeIncomplete
             }
           >
             <Play aria-hidden="true" className="mr-2 h-4 w-4" />

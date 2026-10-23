@@ -204,6 +204,45 @@ describe("buildCreateRunRequest", () => {
       params: { temperature_c: "10" },
     });
   });
+
+  it("sends a facade run's set and opt-in under the API's field names", () => {
+    const request = buildCreateRunRequest({
+      ...baseSpec,
+      receiverMode: "facade",
+      facade: {
+        buildings: ["way/1", "Musterstraße 1"],
+        spacingM: 2.5,
+        includeCourtyard: true,
+      },
+      allowUnconfirmed: true,
+    });
+
+    expect(request).toMatchObject({
+      receiver_mode: "facade",
+      facade_buildings: ["way/1", "Musterstraße 1"],
+      facade_spacing_m: 2.5,
+      facade_include_courtyard: true,
+      allow_unconfirmed: true,
+    });
+  });
+
+  it("sends no facade field outside the facade mode, and no false opt-in", () => {
+    const request = buildCreateRunRequest({
+      ...baseSpec,
+      receiverMode: "custom",
+      facade: { buildings: ["a"], spacingM: 5, includeCourtyard: false },
+      allowUnconfirmed: false,
+    });
+
+    for (const key of [
+      "facade_buildings",
+      "facade_spacing_m",
+      "facade_include_courtyard",
+      "allow_unconfirmed",
+    ]) {
+      expect(request).not.toHaveProperty(key);
+    }
+  });
 });
 
 /**

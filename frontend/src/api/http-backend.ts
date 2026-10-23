@@ -76,17 +76,31 @@ function postJSON<T>(path: string, body: unknown): Promise<T> {
 /**
  * Translate a run spec into the API request body.
  *
- * `experimental` is omitted unless the spec sets it, so a run against a
- * standard that needs no acknowledgement never carries one — matching the
- * `omitempty` on the Go struct rather than sending an explicit `false`.
+ * `experimental` and `allow_unconfirmed` are omitted unless the spec sets
+ * them, so a run that needs no acknowledgement never carries one — matching
+ * the `omitempty` on the Go struct rather than sending an explicit `false`.
+ * The facade fields go only with the facade mode: the server refuses them
+ * with any other, as `aconiq run` refuses `--facade-building` without it.
  */
 export function buildCreateRunRequest(spec: RunSpec): CreateRunRequest {
+  const facade =
+    spec.receiverMode === "facade" && spec.facade !== undefined
+      ? {
+          facade_buildings: spec.facade.buildings,
+          facade_spacing_m: spec.facade.spacingM,
+          ...(spec.facade.includeCourtyard
+            ? { facade_include_courtyard: true }
+            : {}),
+        }
+      : {};
   return {
     standard_id: spec.standardId,
     standard_version: spec.version,
     standard_profile: spec.profile,
     receiver_mode: spec.receiverMode,
     params: spec.params,
+    ...facade,
+    ...(spec.allowUnconfirmed === true ? { allow_unconfirmed: true } : {}),
     ...(spec.experimental === true ? { experimental: true } : {}),
   };
 }

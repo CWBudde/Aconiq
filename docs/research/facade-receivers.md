@@ -667,3 +667,13 @@ and the report states them, so the result carries its own caveat to a reader who
 model. A `rejected` point never enters a run, with or without the flag. A non-normative standard
 runs over proposed points without the flag. The flag is `--allow-unconfirmed` on `aconiq run`
 and `allow_unconfirmed` on the API and MCP (P18 B3).
+
+Browser mode applies the same rule in the same code (P18 B6). The WASM kernel's
+`facadeReceivers` places a facade run's points through `internal/facadeset`, the package
+`aconiq run --receiver-mode facade` calls, and refuses an unconfirmed normative run in the CLI's
+words. The run dialog's "Run over unconfirmed points" is the opt-in, offered only for a normative
+standard. A browser run writes no `provenance.json`, so its `run-summary.json` carries the counts
+and the request keys the CLI writes to provenance (`facade_placement_rule`, `facade_buildings`,
+`facade_spacing_m`, `facade_include_courtyard`, `allow_unconfirmed`). The mode is offered for a
+standard whose descriptor publishes a `facade_placement_rule`, which both `GET /api/v1/standards`
+and the kernel's `standards` read from the same table.

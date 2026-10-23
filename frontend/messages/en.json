@@ -871,5 +871,15 @@
   "duration_single_s": "≈ {value} s",
   "duration_single_min": "≈ {value} min",
   "duration_single_h": "≈ {value} h",
-  "duration_under_a_second": "< 1 s"
+  "duration_under_a_second": "< 1 s",
+  "label_receiver_facade": "Facade receivers",
+  "msg_receiver_facade_desc": "Placed on the facades of the buildings you name, by the standard's placement rule.",
+  "label_facade_buildings": "Buildings",
+  "msg_facade_buildings_help": "One per line: a building's feature id, or its address as \"<street> <number>\".",
+  "label_facade_spacing": "Station spacing along each facade",
+  "msg_facade_spacing_help": "Required. There is no default: how densely a facade is sampled is your choice.",
+  "label_facade_courtyard": "Include courtyard facades",
+  "label_allow_unconfirmed": "Run over unconfirmed points",
+  "msg_allow_unconfirmed_help": "Generated facade points are proposed until someone confirms them. A normative run refuses them unless you opt in; their count is then recorded with the result.",
+  "msg_facade_incomplete": "Name at least one building and a spacing greater than 0 m."
 }
