@@ -186,6 +186,11 @@ func TestValidateWindowAgainstItsBuilding(t *testing.T) {
 		"outside its facade": {func(w *Feature) {
 			w.Properties[PropertyWindow] = frameWith("u_m", 19.5)
 		}, CodeWindowOutsideFacade},
+		// b1 is 9 m tall: a head at 9.5 m is above its roof, where no
+		// storey is.
+		"above its building": {func(w *Feature) {
+			w.Properties[PropertyWindow] = frameWith("sill_z_m", 8.0)
+		}, CodeWindowAboveBuilding},
 	}
 
 	for name, tc := range cases {

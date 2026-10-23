@@ -199,6 +199,32 @@ func TestGenerateRefusesABrokenWindowLink(t *testing.T) {
 	}
 }
 
+// A window above its building's roof stands in no storey. Placing a point
+// there would put an Immissionsort above the building the model describes.
+func TestGenerateRefusesAWindowAboveTheRoof(t *testing.T) {
+	t.Parallel()
+
+	high := windowSpec("attic", 2, true, geo.ReviewStatusConfirmed)
+	high.Frame.SillZM = 8.5 // a 1.5 m window, its head at 10 m on a 9 m house
+
+	model := windowModel(t, high)
+
+	for _, standard := range []string{rls19RoadID, iso9613ID} {
+		_, _, err := Generate(houseRequest, standard, model)
+		if err == nil || !strings.Contains(err.Error(), modelgeojson.CodeWindowAboveBuilding) || !strings.Contains(err.Error(), "attic") {
+			t.Errorf("%s: err = %v, want the window above the roof named", standard, err)
+		}
+	}
+
+	// The same window, not sensitive, carries no point and refuses nothing.
+	high.Sensitive = false
+
+	_, _, err := Generate(houseRequest, rls19RoadID, windowModel(t, high))
+	if err != nil {
+		t.Errorf("a non-sensitive window above the roof: %v", err)
+	}
+}
+
 func TestGenerateNamesTheStandardsWithAFacadeMode(t *testing.T) {
 	t.Parallel()
 
