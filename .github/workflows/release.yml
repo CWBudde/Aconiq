@@ -27,15 +27,16 @@ jobs:
       # Full history and tags: `just build` stamps the version into the binary
       # with `git describe --tags`, and the stamp is what this job checks.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       - name: Pinned tool versions
         uses: ./.github/actions/toolchain
@@ -92,15 +93,16 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       # All seven targets (linux/darwin/windows on amd64+arm64, plus js/wasm)
       # cross-compile from this one runner because every build is
@@ -109,7 +111,7 @@ jobs:
         uses: ./.github/actions/toolchain
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: ${{ env.GORELEASER_VERSION }}
           args: release --clean

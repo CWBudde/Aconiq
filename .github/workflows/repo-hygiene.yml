@@ -29,7 +29,7 @@ jobs:
       # No fetch-depth here: `git ls-files` reads the index, not history, so the
       # default shallow checkout is enough and keeps the job fast.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The check itself lives in the justfile so a developer can run exactly
       # what CI runs, as AGENTS.md requires of every gate. Installing just costs

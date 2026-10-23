@@ -1,0 +1,29 @@
+version: 2
+
+# Actions only, deliberately.
+#
+# Go modules and the frontend lockfile are gated by `just go-ci` / `just fe-ci`
+# and by govulncheck, so a stale dependency there is visible. A stale *action*
+# is not: it fails nothing, it accumulates runner deprecation warnings until
+# GitHub removes the runtime, and then every workflow in the repository breaks
+# on the same morning. That is what this is here to prevent — the Node 20
+# removal caught all five workflows at once.
+#
+# Monthly and grouped into a single pull request, because the whole point is one
+# small, reviewable bump rather than a stream of them.
+#
+# `/` covers `.github/workflows` only; the composite actions under
+# `.github/actions/` pin actions of their own (wasm-kernel pins setup-go) and are
+# scanned only when listed, hence the glob.
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
