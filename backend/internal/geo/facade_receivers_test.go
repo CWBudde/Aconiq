@@ -435,9 +435,9 @@ func TestFacadeReceiverSetValidate(t *testing.T) {
 		}
 	}
 
-	// The rules that need a window or an area are known, and refused by
-	// name rather than as unknown.
-	for _, rule := range []string{"rls19-balcony", "rls19-outdoor-area", "schall03-outdoor-area", "talaerm-window", "talaerm-buildable-edge"} {
+	// The rules that need a balcony line or an area are known, and refused
+	// by name rather than as unknown.
+	for _, rule := range []string{"rls19-balcony", "rls19-outdoor-area", "schall03-outdoor-area", "talaerm-buildable-edge"} {
 		err := facadeSet(rule, 3, "b1").Validate()
 		if !errors.Is(err, ErrPlacementRuleNotGeometric) {
 			t.Errorf("rule %q: err = %v, want ErrPlacementRuleNotGeometric", rule, err)
@@ -497,8 +497,8 @@ func TestFacadeReceiverSetGenerateRefuses(t *testing.T) {
 		}
 	}
 
-	if _, err := facadeSet("talaerm-window", 3, "b1").Generate([]FacadeBuilding{ok}); err == nil ||
-		!strings.Contains(err.Error(), "talaerm-window") {
+	if _, err := facadeSet("rls19-balcony", 3, "b1").Generate([]FacadeBuilding{ok}); err == nil ||
+		!strings.Contains(err.Error(), "rls19-balcony") {
 		t.Errorf("non-geometric rule: err = %v, want it named", err)
 	}
 }
