@@ -2824,9 +2824,15 @@ as borrowed in `facade_window_height_basis`), `schall03-facade` on the facade at
 and `talaerm-window` 0.5 m out at the window centre, which gives `iso9613` a facade mode that
 places only at windows. A window with a broken link or on a party wall refuses the run;
 `reattach-facades` re-keys windows too; browser mode keeps them through a save and hands them to
-the kernel, but neither draws nor edits them (C1, #138). LGLN LoD2 and CityGML carry building
-`gml:id`s but no openings: windows are LoD3
-(`bldg:Opening`), and Lower Saxony does not publish LoD3. The footprint mask
+the kernel, but neither draws nor edits them (C1, #138). A window whose head rises above its
+building's `height_m` is a validation warning (`window.frame.above_building`) that refuses the
+facade run when the window is sensitive, and the map validates a window's property shapes itself;
+where a window sits on its edge stays the Go code's to check (C1c, #PR). A CityGML import also
+reads LoD3: each `bldg:Window` in a `WallSurface` becomes a window on the one edge whose line its
+outline lies within 0.5 m of, proposed and not sensitive, citing its `gml:id` and the file's
+sha256; doors, roof windows and openings in no facade plane or in two are reported in
+`citygml-import-report.json`, not placed (C1b, #PR). LGLN LoD2 carries building `gml:id`s but no
+openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
 as it must be.
 
@@ -2879,16 +2885,12 @@ exists is summarised above.
 
 ### Phase C — Windows as model features
 
-- [ ] **C1b Windows from CityGML LoD3** `bldg:Opening`, where a client supplies LoD3, into the
-      `window` features C1 defined (#138): project each opening onto the footprint edge whose
-      plane it lies in, and derive `u_m`, `sill_z_m`, `width_m` and `height_m` from its extent,
-      refusing an opening that lies in no facade plane. `sensitive` is not in LoD3 and stays
-      false until a person sets it. Needs a synthetic LoD3 fixture. Balconies and loggias still
-      wait on `facade-receivers.md` Section 7, questions 2 and 3, and TA Lärm's own-facade
-      practice on question 6.
-- [ ] **C1c Window checks the model can answer**: a window whose sill + height rises above its
-      building's `height_m` is placed in the top storey today (the storey is a label), and browser
-      mode does not validate window properties before the kernel refuses them.
+- [ ] **C1d LoD3 outlines the import does not read yet**: a window whose outline is an
+      `xlink:href` to a polygon elsewhere in the document, or an implicit geometry, is reported
+      and not placed, as is one across a vertex that splits a wall into two collinear edges. Read
+      same-document references, and merge collinear edges for the fit, if a client's LoD3 needs
+      it. Balconies and loggias still wait on `facade-receivers.md` Section 7, questions 2 and 3,
+      and TA Lärm's own-facade practice on question 6.
 - [ ] **C2 Facade elevation view in the frontend**: pick a building, unfold a facade to its
       elevation (edge length × building height, floors drawn from `building:levels`), and draw,
       move or delete window rectangles. The conversion stays in the Go kernel, behind a WASM
