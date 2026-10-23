@@ -2836,6 +2836,10 @@ elevation: each canonical edge with its length and facing bearing, the storeys' 
 mode places at, and the windows on it with their findings, the detached ones listed apart, all
 measured by `facadeset.Elevation` through the kernel's `facadeElevation` or
 `POST /api/v1/facades/elevation` over the model projected as a facade run projects it (C2a, #140).
+Windows are drawn, moved, resized and deleted there, by pointer, arrow keys or a form; each change is
+placed by `facadeset.PlaceWindow` (the kernel's `placeWindow`, `POST /api/v1/facades/window`), the
+placer `--windows` uses, and is one undo step. A drawn window starts `proposed` and not sensitive
+with no evidence; a move keeps its review fields and evidence (C2b, #141).
 LGLN LoD2 carries building `gml:id`s but no
 openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
@@ -2896,13 +2900,6 @@ exists is summarised above.
       same-document references, and merge collinear edges for the fit, if a client's LoD3 needs
       it. Balconies and loggias still wait on `facade-receivers.md` Section 7, questions 2 and 3,
       and TA Lärm's own-facade practice on question 6.
-- [ ] **C2 Facade elevation view in the frontend**: pick a building, unfold a facade to its
-      elevation (edge length × building height, floors drawn from `building:levels`), and draw,
-      move or delete window rectangles. The conversion stays in the Go kernel, behind a WASM
-      export, for the reason `transform` and `contours` are there: the browser must not grow a
-      second facade-frame implementation.
-      (2026-10-23) — partial: the read-only view landed (C2a, #140); drawing, moving and deleting
-      windows remains (C2b).
 - [ ] **C2c Party walls in the elevation view**: shade the stretch of a facade another building
       stands against, where facade mode places no station and refuses a sensitive window. The
       test runs inside facade generation today; expose it per edge through `facadeset.Elevation`
