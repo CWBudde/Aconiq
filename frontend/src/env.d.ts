@@ -79,6 +79,8 @@ interface Window {
     customReceivers: (json: string) => Promise<string>;
     /** See `AconiqKernel.facadeElevation`. */
     facadeElevation: (json: string) => Promise<string>;
+    /** See `AconiqKernel.placeWindow`. */
+    placeWindow: (json: string) => Promise<string>;
     /**
      * Two arguments, and the raster values are the first: they cross as raw
      * bytes rather than inside the JSON, because a 500x500 two-band grid is

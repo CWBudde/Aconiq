@@ -948,5 +948,12 @@
   "heading_facade_detached": "Windows on no facade",
   "msg_facade_detached_help": "Their facade key no longer names an edge of this building. Re-attach them with aconiq reattach-facades.",
   "msg_facade_elevation_loading": "Measuring the facades…",
-  "msg_facade_elevation_failed": "The facades could not be measured: {error}"
+  "msg_facade_elevation_failed": "The facades could not be measured: {error}",
+  "action_add_window": "Add window",
+  "msg_elevation_edit_help": "Drag on the wall to draw a window, drag a window to move it and its corner to resize it. Arrow keys move the selected window 10 cm, with Shift 1 m.",
+  "heading_window_edit": "Window {id}",
+  "action_delete_window": "Delete window",
+  "confirm_delete_window_title": "Delete window {id}?",
+  "confirm_delete_window_desc": "The window is removed from the model. Undo brings it back.",
+  "msg_window_place_failed": "The window was not placed: {error}"
 }

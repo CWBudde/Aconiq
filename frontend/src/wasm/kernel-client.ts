@@ -32,6 +32,8 @@ import {
   type FacadeElevationResponse,
   type FacadeReceiversRequest,
   type FacadeReceiversResponse,
+  type PlaceWindowRequest,
+  type PlaceWindowResponse,
   type CustomReceiversRequest,
   type CustomReceiversResponse,
   type FootprintMaskRequest,
@@ -499,6 +501,16 @@ export class KernelClient implements AconiqKernel {
     return JSON.parse(
       KernelClient.json(value, "facadeElevation"),
     ) as FacadeElevationResponse;
+  }
+
+  async placeWindow(req: PlaceWindowRequest): Promise<PlaceWindowResponse> {
+    const value = await this.call(
+      (id) => ({ id, method: "placeWindow", json: JSON.stringify(req) }),
+      [],
+    );
+    return JSON.parse(
+      KernelClient.json(value, "placeWindow"),
+    ) as PlaceWindowResponse;
   }
 
   async contours(

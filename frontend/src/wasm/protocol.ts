@@ -22,6 +22,7 @@ export type KernelMethod =
   | "facadeReceivers"
   | "customReceivers"
   | "facadeElevation"
+  | "placeWindow"
   | "contours"
   | "loadTerrain"
   | "clearTerrain";
@@ -81,6 +82,7 @@ export type KernelCall =
   | { id: number; method: "facadeReceivers"; json: string }
   | { id: number; method: "customReceivers"; json: string }
   | { id: number; method: "facadeElevation"; json: string }
+  | { id: number; method: "placeWindow"; json: string }
   | {
       id: number;
       method: "contours";

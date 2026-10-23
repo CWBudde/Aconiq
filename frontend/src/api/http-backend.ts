@@ -28,7 +28,11 @@ import type {
 import { openEventStream } from "./event-stream";
 import { apiURL } from "./mode";
 import type { GeoJSONFeatureCollection } from "@/model/types";
-import type { FacadeElevationResponse, TransformResponse } from "@/wasm/types";
+import type {
+  FacadeElevationResponse,
+  PlaceWindowResponse,
+  TransformResponse,
+} from "@/wasm/types";
 import type { RunEstimate } from "@/model/run-estimate";
 
 interface RequestOptions {
@@ -351,6 +355,10 @@ export const httpBackend: Backend = {
     // A pure function of its body, like the transform: the server unfolds the
     // model the map holds, saved or not, through the code the kernel calls.
     return postJSON<FacadeElevationResponse>("/api/v1/facades/elevation", req);
+  },
+
+  placeWindow(req) {
+    return postJSON<PlaceWindowResponse>("/api/v1/facades/window", req);
   },
 
   subscribeProjectEvents(listener) {

@@ -407,6 +407,46 @@ export interface FacadeElevationResponse {
 }
 
 /**
+ * A window as the elevation view draws or moves it
+ * (`facadeset.WindowPlacement`): the edge it is on, as the elevation listed
+ * it, its rectangle in that facade's frame, and the review fields. An absent
+ * `review_status` is `proposed`.
+ */
+export interface WindowPlacement {
+  id: string;
+  building_ref: string;
+  part: number;
+  ring: number;
+  edge: number;
+  window: FacadeWindowFrame;
+  sensitive: boolean;
+  review_status?: ElevationWindow["review_status"];
+  evidence?: unknown[];
+}
+
+/**
+ * `wasmkernel.PlaceWindowRequest`, and the body of
+ * `POST /api/v1/facades/window`: the model holding the window's building, in
+ * `crs` — the CRS the elevation was asked in, so `part` / `ring` / `edge`
+ * name the edge it showed.
+ */
+export interface PlaceWindowRequest {
+  crs: string;
+  model: unknown;
+  window: WindowPlacement;
+}
+
+/** The window feature the model stores, in the request's CRS. */
+export interface PlaceWindowResponse {
+  feature: {
+    type: "Feature";
+    id?: string;
+    properties: Record<string, unknown>;
+    geometry: { type: "Point"; coordinates: [number, number] };
+  };
+}
+
+/**
  * One generated facade receiver and the attributes its table row carries. A
  * point placed at a window names the window and what its height was derived
  * from, and its `slab_height_source` is empty: the window fixes the height.
