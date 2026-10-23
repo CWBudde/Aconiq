@@ -2831,7 +2831,12 @@ where a window sits on its edge stays the Go code's to check (C1c, #139). A City
 reads LoD3: each `bldg:Window` in a `WallSurface` becomes a window on the one edge whose line its
 outline lies within 0.5 m of, proposed and not sensitive, citing its `gml:id` and the file's
 sha256; doors, roof windows and openings in no facade plane or in two are reported in
-`citygml-import-report.json`, not placed (C1b, #139). LGLN LoD2 carries building `gml:id`s but no
+`citygml-import-report.json`, not placed (C1b, #139). The building editor opens a read-only facade
+elevation: each canonical edge with its length and facing bearing, the storeys' slab heights facade
+mode places at, and the windows on it with their findings, the detached ones listed apart, all
+measured by `facadeset.Elevation` through the kernel's `facadeElevation` or
+`POST /api/v1/facades/elevation` over the model projected as a facade run projects it (C2a, #140).
+LGLN LoD2 carries building `gml:id`s but no
 openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
 as it must be.
@@ -2896,6 +2901,12 @@ exists is summarised above.
       move or delete window rectangles. The conversion stays in the Go kernel, behind a WASM
       export, for the reason `transform` and `contours` are there: the browser must not grow a
       second facade-frame implementation.
+      (2026-10-23) — partial: the read-only view landed (C2a, #140); drawing, moving and deleting
+      windows remains (C2b).
+- [ ] **C2c Party walls in the elevation view**: shade the stretch of a facade another building
+      stands against, where facade mode places no station and refuses a sensitive window. The
+      test runs inside facade generation today; expose it per edge through `facadeset.Elevation`
+      rather than repeating it.
 
 ### Phase D — Mapping windows from images
 
