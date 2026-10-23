@@ -55,3 +55,52 @@ func FacadeElevation(input []byte) ([]byte, error) {
 
 	return out, nil
 }
+
+// PlaceWindowRequest is the JSON `aconiq.placeWindow` takes: a window drawn
+// or moved in the elevation view, and the model holding its building, in CRS
+// — the compute CRS FacadeElevation was asked in, so Part, Ring and Edge name
+// the edge the view showed.
+type PlaceWindowRequest struct {
+	CRS    string                    `json:"crs"`
+	Model  json.RawMessage           `json:"model"`
+	Window facadeset.WindowPlacement `json:"window"`
+}
+
+// PlaceWindowResponse is the window feature the model stores, in CRS.
+type PlaceWindowResponse struct {
+	Feature modelgeojson.GeoJSONFeature `json:"feature"`
+}
+
+// PlaceWindow places one window of the elevation view through
+// facadeset.PlaceWindow — the code `POST /api/v1/facades/window` answers
+// from, and the placer `aconiq import --windows` uses — so the browser keys
+// no window and measures no frame of its own.
+func PlaceWindow(input []byte) ([]byte, error) {
+	var req PlaceWindowRequest
+
+	err := json.Unmarshal(input, &req)
+	if err != nil {
+		return nil, fmt.Errorf("invalid input JSON: %w", err)
+	}
+
+	if req.CRS == "" {
+		return nil, errors.New("crs is required: the CRS the model's coordinates are in")
+	}
+
+	model, err := modelgeojson.Normalize(req.Model, req.CRS, "placeWindow")
+	if err != nil {
+		return nil, fmt.Errorf("model: %w", err)
+	}
+
+	feature, err := facadeset.PlaceWindow(model, req.Window)
+	if err != nil {
+		return nil, fmt.Errorf("place window: %w", err)
+	}
+
+	out, err := json.Marshal(PlaceWindowResponse{Feature: feature})
+	if err != nil {
+		return nil, fmt.Errorf("encode window: %w", err)
+	}
+
+	return out, nil
+}

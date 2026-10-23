@@ -504,6 +504,35 @@ func facadeElevationFunc(_ js.Value, args []js.Value) any {
 	}))
 }
 
+// placeWindowFunc places a window drawn or moved in the elevation view.
+// Signature: (json: string) => Promise<string> (JSON)
+//
+// A Promise like facadeElevation, which it follows: a refusal — an edge the
+// building does not have, a window its edge has no room for — rejects with
+// the words POST /api/v1/facades/window answers in.
+func placeWindowFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsReject("placeWindow: expected exactly 1 JSON string argument")
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		out, err := wasmkernel.PlaceWindow([]byte(input))
+		if err != nil {
+			reject.Invoke(js.ValueOf(err.Error()))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
 // contoursFunc traces ISO-band contour lines over a run's raster.
 // Signature: (payload: Uint8Array, request: string) => Promise<string> (JSON)
 //
@@ -728,6 +757,7 @@ func main() {
 	aconiq.Set("facadeReceivers", js.FuncOf(facadeReceiversFunc))
 	aconiq.Set("customReceivers", js.FuncOf(customReceiversFunc))
 	aconiq.Set("facadeElevation", js.FuncOf(facadeElevationFunc))
+	aconiq.Set("placeWindow", js.FuncOf(placeWindowFunc))
 	// The two synchronous exports that can fail go through the rethrowing
 	// wrapper; the ones below cannot fail, so they are registered bare.
 	aconiq.Set("standards", throwingSyncExport(js.FuncOf(standardsFunc)))
