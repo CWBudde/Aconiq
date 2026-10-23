@@ -567,6 +567,8 @@
   "msg_validation_groundzone_geometry_invalid": "Geometrie der Bodenzone muss Polygon sein",
   "msg_validation_receiver_coordinates_invalid": "Koordinaten des Immissionsorts müssen endlich sein",
   "msg_validation_receiver_height_invalid": "height_m des Immissionsorts muss größer als 0 sein",
+  "msg_validation_window_invalid": "Fenstereigenschaft {field} fehlt oder ist fehlerhaft",
+  "msg_validation_window_geometry_invalid": "Geometrie des Fensters muss Point sein",
   "msg_validation_source_rls19_surface_type_invalid": "RLS-19 surface_type „{value}“ wird nicht unterstützt",
   "msg_validation_source_rls19_junction_type_invalid": "RLS-19 junction_type „{value}“ wird nicht unterstützt",
   "msg_validation_source_rls19_gradient_invalid": "RLS-19 gradient_percent muss zwischen {min} und {max} liegen",

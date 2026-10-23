@@ -167,6 +167,10 @@ function validateFeature(
       validateGroundZone(feature, errors);
       break;
     }
+    case "window": {
+      validateWindow(feature, errors);
+      break;
+    }
     case "barrier": {
       if (feature.heightM == null) {
         errors.push({
@@ -366,6 +370,138 @@ function validateGroundZone(
       params: {},
     });
   }
+}
+
+// The review states a window, like a facade receiver, can be in.
+const WINDOW_REVIEW_STATUSES = ["proposed", "confirmed", "rejected"];
+
+// The id citygmlimport mints for a building without a gml:id: an index into
+// the file, which a facade key must not name (`modelgeojson.parseFacadeKey`).
+const CITYGML_FALLBACK_ID = /^citygml-building-[0-9]+$/;
+
+// The largest index a facade key may carry, as `maxFacadeIndex` bounds it.
+const MAX_FACADE_INDEX = 2 ** 31 - 1;
+
+/**
+ * A window's properties, in the shapes `modelgeojson.validateWindowProperties`
+ * requires, one finding per malformed property and in its order.
+ *
+ * Only the shapes. Whether the key still names its edge, and whether the
+ * frame fits that edge and the building's height, needs the canonical
+ * footprint in the metric frame; a second implementation of that here is the
+ * one thing the kernel boundary exists to prevent, so those stay warnings the
+ * Go validator raises and the WASM kernel refuses a facade run over.
+ */
+function validateWindow(
+  feature: ModelFeature,
+  errors: ValidationIssue[],
+): void {
+  const props = feature.properties ?? {};
+  const invalid = (field: string): void => {
+    errors.push({
+      level: "error",
+      code: "window.invalid",
+      featureId: feature.id,
+      params: { field },
+    });
+  };
+
+  // A point at a window is named <set>/<building>/p…r…e…/w/<window>.
+  if (feature.id.includes("/")) {
+    invalid("id");
+  }
+
+  const sensitive = props["sensitive"];
+  if (sensitive != null && typeof sensitive !== "boolean") {
+    invalid("sensitive");
+  }
+
+  const status = props["review_status"];
+  if (
+    status != null &&
+    !(typeof status === "string" && WINDOW_REVIEW_STATUSES.includes(status))
+  ) {
+    invalid("review_status");
+  }
+
+  const evidence = props["evidence"];
+  if (
+    evidence != null &&
+    !(Array.isArray(evidence) && evidence.every(isPlainObject))
+  ) {
+    invalid("evidence");
+  }
+
+  if (!isWindowFrame(props["window"])) {
+    invalid("window");
+  }
+
+  if (!isFacadeKey(props["facade"])) {
+    invalid("facade");
+  }
+
+  if (feature.geometry.type !== "Point") {
+    errors.push({
+      level: "error",
+      code: "window.geometry.invalid",
+      featureId: feature.id,
+      params: {},
+    });
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/** `geo.FacadeWindow.Validate`: finite, u and sill >= 0, size > 0. */
+function isWindowFrame(value: unknown): boolean {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  const { u_m: u, sill_z_m: sill, width_m: width, height_m: height } = value;
+  return (
+    isFiniteNumber(u) &&
+    isFiniteNumber(sill) &&
+    isFiniteNumber(width) &&
+    isFiniteNumber(height) &&
+    u >= 0 &&
+    sill >= 0 &&
+    width > 0 &&
+    height > 0
+  );
+}
+
+/** `modelgeojson.parseFacadeKey`: the key's shape, not its edge. */
+function isFacadeKey(value: unknown): boolean {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  const ref = value["building_ref"];
+  if (
+    typeof ref !== "string" ||
+    ref.trim() === "" ||
+    CITYGML_FALLBACK_ID.test(ref)
+  ) {
+    return false;
+  }
+  const isIndex = (n: unknown): boolean =>
+    Number.isInteger(n) &&
+    (n as number) >= 0 &&
+    (n as number) <= MAX_FACADE_INDEX;
+  const isPosition = (p: unknown): boolean =>
+    Array.isArray(p) && p.length === 2 && p.every(isFiniteNumber);
+  return (
+    isIndex(value["part"]) &&
+    isIndex(value["ring"]) &&
+    isIndex(value["edge"]) &&
+    isPosition(value["from"]) &&
+    isPosition(value["to"])
+  );
 }
 
 function validateRLS19SourceAcoustics(

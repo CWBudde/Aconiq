@@ -87,6 +87,17 @@ export interface ValidationIssueParams {
   "receiver.height.invalid": NoIssueParams;
 
   /*
+   * A window's own properties, mirroring `modelgeojson`'s `window.invalid`
+   * and `window.geometry.invalid`. `field` is the property that is missing or
+   * malformed (`id`, `facade`, `window`, `sensitive`, `review_status`,
+   * `evidence`),
+   * one finding per property as the backend reports them. The warnings that
+   * measure a window against its edge are the kernel's alone.
+   */
+  "window.invalid": { field: string };
+  "window.geometry.invalid": NoIssueParams;
+
+  /*
    * Self-intersection, mirroring `modelgeojson.checkSelfIntersection` — the
    * spellings are the backend's, deliberately, because two lists that mean the
    * same thing and say it differently are how this drifted in the first place.

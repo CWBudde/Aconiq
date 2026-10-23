@@ -65,6 +65,11 @@ export function validationIssueText(issue: ValidationIssue): string {
     case "receiver.height.invalid":
       return m.msg_validation_receiver_height_invalid();
 
+    case "window.invalid":
+      return m.msg_validation_window_invalid(issue.params);
+    case "window.geometry.invalid":
+      return m.msg_validation_window_geometry_invalid();
+
     case "source.rls19.surface_type.invalid":
       return m.msg_validation_source_rls19_surface_type_invalid(issue.params);
     case "source.rls19.junction_type.invalid":
