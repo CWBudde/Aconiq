@@ -39,6 +39,7 @@ so a file Aconiq produced says what it is, and read so one can come back.
   - `receiver`
   - `calc-area`
   - `ground-zone`
+  - `window`
 
 ### `source` Features
 
@@ -234,6 +235,51 @@ share, so the answer never depends on iteration order.
 
 Only `iso9613` reads them today. Other standards ignore the kind rather than
 refusing it, the way they ignore the vocabularies that are not theirs.
+
+### `window` Features
+
+A window in a building's facade (P18 C1). It is a rectangle in the frame of
+the facade it belongs to, specified in
+[`docs/research/facade-receivers.md`](research/facade-receivers.md), The facade
+frame: `u` along the edge from its start vertex, `z` above the ground.
+
+| property        | shape                                                                                                                |
+| --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `facade`        | Required. The facade key, as on a facade receiver: the building edge the window is in.                               |
+| `window`        | Required. `{u_m, sill_z_m, width_m, height_m}`: the u of its left edge, its sill height, its width and height, in m. |
+| `sensitive`     | `true` for a window of a _schutzbedürftiger Raum_. Absent is `false`: the window is kept as context.                 |
+| `review_status` | `proposed`, `confirmed` or `rejected`. Absent is `proposed`.                                                         |
+| `evidence`      | An array of objects, where the placement came from (facade-receivers.md, Receiver properties).                       |
+
+- Geometry must be `Point`: the window centre on the facade plane. It is there
+  for the map; nothing places from it, and the frame decides where the window is.
+- No `height_m`: the window's size is its `window` property.
+- The id must not contain `/`, which separates the parts of the receiver ids
+  placed at it.
+
+| Code                       | Level   | Raised when                                                                       |
+| -------------------------- | ------- | --------------------------------------------------------------------------------- |
+| `window.invalid`           | error   | A property above is missing or does not have its shape; one issue per property.   |
+| `window.geometry.invalid`  | error   | The geometry is not a `Point`.                                                    |
+| `window.facade.unresolved` | warning | `facade.building_ref` names no `building` feature in the model.                   |
+| `window.facade.moved`      | warning | The building exists, but the key no longer names its edge (as for a receiver).    |
+| `window.frame.outside`     | warning | `u_m + width_m` runs more than 1 mm past the end of the edge, measured in metres. |
+
+The warnings are warnings for a facade receiver's reason: a re-import that
+changed the building has to succeed. `aconiq run --receiver-mode facade`
+refuses to place at a sensitive window that has one, for every standard, and
+`aconiq reattach-facades` re-keys a window as it re-keys a receiver.
+
+No standard computes over a window. `aconiq run --receiver-mode facade` places
+one point per sensitive window that is not `rejected`, in place of the station
+grid on that window's facade, at the standard's rule: `rls19-facade` 0.05 m out
+at the window head + 0.2 m (Schall 03's relation, recorded as borrowed in
+`height_basis`), `schall03-facade` on the facade at the same height, and
+`talaerm-window` (ISO 9613-2) 0.5 m out at the window centre. The point
+inherits the window's `review_status`, and the run records
+`facade_window_count` and `facade_window_height_basis` in its provenance. A
+sensitive window on a party wall refuses the run rather than being dropped. `aconiq import --windows` writes window
+features from a window list.
 
 ## Standard-Specific Geometry Conventions
 
@@ -530,6 +576,10 @@ Validation uses project CRS from `.noise/project.json`.
 does not reach the file on disk — `ToFeatureCollection` does not emit it — so a
 bump would be a stamp nobody consults. v1 has been widened in place before, for
 `bimschv16_area_category` on `receiver` features.
+
+- **2026-10-23 — `window` feature kind.** Windows in their facade's frame,
+  from which facade receiver mode places its points (P18 C1). The same
+  older-binary limitation the `calc-area` entry below records applies.
 
 - **2026-09-19 — `ground-zone` feature kind.** Ground-category areas, from which
   ISO 9613-2 resolves G per region instead of reading one global number three
