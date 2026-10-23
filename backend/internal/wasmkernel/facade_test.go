@@ -188,3 +188,53 @@ func TestFacadeReceiversSpeaksTheReceiverTableShape(t *testing.T) {
 		t.Errorf("receiver %v: facade.from is not an [x, y] pair or the rule is not RLS-19's", first)
 	}
 }
+
+// A window in the model is placed at as `aconiq run` places at it: the
+// browser hands the kernel its windows with its buildings, and the point
+// carries the window it stands at, its height basis and its review status.
+func TestFacadeReceiversPlaceAtWindows(t *testing.T) {
+	t.Parallel()
+
+	window := `{"type":"Feature","id":"a-bed","properties":{"kind":"window",
+ "facade":{"building_ref":"a","part":0,"ring":0,"edge":0,"from":[547000,5795000],"to":[547010,5795000]},
+ "window":{"u_m":2,"sill_z_m":3.9,"width_m":1.2,"height_m":1.5},"sensitive":true,"review_status":"confirmed"},
+ "geometry":{"type":"Point","coordinates":[547002.6,5795000]}}`
+	model := strings.Replace(facadeTestModel, "\n]}", ",\n"+window+"\n]}", 1)
+
+	in, err := json.Marshal(wasmkernel.FacadeReceiversRequest{
+		CRS: "EPSG:25832", Model: json.RawMessage(model), StandardID: "rls19-road",
+		Buildings: []string{"a"}, SpacingM: 4, AllowUnconfirmed: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := wasmkernel.FacadeReceivers(in)
+	if err != nil {
+		t.Fatalf("facadeReceivers: %v", err)
+	}
+
+	var resp wasmkernel.FacadeReceiversResponse
+
+	err = json.Unmarshal(out, &resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var found *wasmkernel.FacadeReceiver
+
+	for i := range resp.Receivers {
+		if resp.Receivers[i].ID == "facade/a/p0r0e0/w/a-bed" {
+			found = &resp.Receivers[i]
+		}
+	}
+
+	if found == nil {
+		t.Fatalf("no receiver at the window among %d", len(resp.Receivers))
+	}
+
+	if found.WindowID != "a-bed" || found.Window == nil || found.HeightBasis != geo.HeightBasisSchall03WindowHead ||
+		found.ReviewStatus != geo.ReviewStatusConfirmed || resp.Metadata["facade_window_count"] != "1" {
+		t.Errorf("window receiver = %+v, metadata %v", *found, resp.Metadata)
+	}
+}

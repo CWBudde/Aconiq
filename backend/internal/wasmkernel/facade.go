@@ -15,7 +15,7 @@ import (
 // FacadeReceiversRequest is the JSON `aconiq.facadeReceivers` takes.
 //
 // Model is a GeoJSON FeatureCollection in the v1 model schema, already in CRS,
-// the run's compute CRS: the browser projects its model through `transform`
+// the run's compute CRS, holding the buildings and their windows: the browser projects its model through `transform`
 // before anything reads a coordinate, as `aconiq run` does, so facade keys are
 // canonical in the CRS they are validated in (facade-receivers.md, The facade
 // key). It must hold every building, not only the requested ones: each masks
@@ -43,6 +43,11 @@ type FacadeReceiver struct {
 	Storey           int                    `json:"storey"`
 	SlabHeightSource string                 `json:"slab_height_source"`
 	ReviewStatus     string                 `json:"review_status"`
+	// HeightBasis, WindowID and Window are set on a point placed at a
+	// window, whose height the window fixes (geo.FacadeReceiver).
+	HeightBasis string            `json:"height_basis,omitempty"`
+	WindowID    string            `json:"window_id,omitempty"`
+	Window      *geo.FacadeWindow `json:"window,omitempty"`
 }
 
 // FacadeReceiversResponse is the generated set in the order a run computes
@@ -128,6 +133,9 @@ func FacadeReceivers(input []byte) ([]byte, error) {
 			Storey:           *attrs.Storey,
 			SlabHeightSource: attrs.SlabHeightSource,
 			ReviewStatus:     attrs.ReviewStatus,
+			HeightBasis:      attrs.HeightBasis,
+			WindowID:         attrs.WindowID,
+			Window:           attrs.Window,
 		})
 	}
 

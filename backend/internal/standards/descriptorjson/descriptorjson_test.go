@@ -105,7 +105,8 @@ func TestFacadePlacementRuleIsPublishedWhereOneExists(t *testing.T) {
 	for id, want := range map[string]string{
 		rls19road.StandardID: geo.PlacementRLS19Facade,
 		schall03.StandardID:  geo.PlacementSchall03Facade,
-		iso9613.StandardID:   "",
+		iso9613.StandardID:   geo.PlacementTALaermWindow,
+		"cnossos-road":       "",
 	} {
 		got := descriptorjson.FromDescriptor(framework.StandardDescriptor{ID: id, EvidenceTier: framework.EvidenceTierNormative})
 		if got.FacadePlacementRule != want {
