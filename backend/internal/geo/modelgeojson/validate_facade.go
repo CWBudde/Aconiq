@@ -254,7 +254,7 @@ func (f metricFrame) building(ref string, building Feature) (Feature, error) {
 // facadeMoved compares a key against its building's canonical footprint, and
 // says why when they no longer agree.
 func facadeMoved(building Feature, key geo.FacadeKey) (string, bool) {
-	polygons, err := featurePolygons(building)
+	polygons, err := FeaturePolygons(building)
 	if err != nil {
 		return "cannot be checked: the building's footprint does not parse (" + err.Error() + ")", true
 	}
@@ -273,11 +273,11 @@ func facadeMoved(building Feature, key geo.FacadeKey) (string, bool) {
 	return "", false
 }
 
-// featurePolygons reads a building's footprint in geo.FacadeBuilding's
+// FeaturePolygons reads a building's footprint in geo.FacadeBuilding's
 // Polygons format: one entry per part, rings[0] the exterior and rings[1:]
 // the holes, each ring closed as GeoJSON writes it. It parses with the same
 // rules validatePolygonGeometry applies.
-func featurePolygons(feature Feature) ([][][]geo.Point2D, error) {
+func FeaturePolygons(feature Feature) ([][][]geo.Point2D, error) {
 	var raw []any
 
 	switch feature.GeometryType {
