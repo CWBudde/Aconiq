@@ -172,6 +172,47 @@ describe("normalizeModelGeoJSON", () => {
     expect(result.skipped).toEqual([]);
   });
 
+  // A window the CLI imported (`aconiq import --windows`) is a model feature
+  // the map does not draw: dropping it here would let the next save delete it
+  // from the project.
+  it("keeps a window and every property it carries", () => {
+    const properties = {
+      kind: "window",
+      facade: {
+        building_ref: "house",
+        part: 0,
+        ring: 0,
+        edge: 0,
+        from: [0, 0],
+        to: [10, 0],
+      },
+      window: { u_m: 2, sill_z_m: 3.9, width_m: 1.2, height_m: 1.5 },
+      sensitive: true,
+      review_status: "confirmed",
+    };
+    const result = normalizeModelGeoJSON({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: "w1",
+          properties,
+          geometry: { type: "Point", coordinates: [2.6, 0] },
+        },
+      ],
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.features).toHaveLength(1);
+    expect(result.features[0]).toMatchObject({
+      id: "w1",
+      kind: "window",
+      properties,
+      geometry: { type: "Point", coordinates: [2.6, 0] },
+    });
+    expect(result.features[0]).not.toHaveProperty("heightM");
+  });
+
   it("keeps a receiver's properties, not only its point", () => {
     // `bimschv16_area_category` is what makes a receiver assessable at all:
     // `assessment/bimschv16` skips a receiver that carries none. Reading the

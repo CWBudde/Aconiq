@@ -116,6 +116,8 @@ function featureKindLabel(kind: FeatureKind): string {
       return m.option_barrier();
     case "ground-zone":
       return m.option_ground_zone();
+    case "window":
+      return m.option_window();
   }
 }
 

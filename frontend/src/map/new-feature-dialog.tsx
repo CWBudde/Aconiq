@@ -113,6 +113,7 @@ function typedGeometryType(
 ): TypedGeometryType {
   switch (kind) {
     case "receiver":
+    case "window":
       return "Point";
     case "building":
       return "Polygon";

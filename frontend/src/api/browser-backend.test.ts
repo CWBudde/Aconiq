@@ -916,6 +916,43 @@ describe("browserBackend.startRun facade mode", () => {
     expect(summary).not.toHaveProperty("facade_assumed_height_count");
   });
 
+  // The kernel places a sensitive window's point in place of the stations on
+  // its facade, so the windows travel with the buildings; a window is a
+  // model feature like them, just one the map does not draw.
+  it("hands the kernel the windows with the buildings", async () => {
+    const window: ModelFeature = {
+      id: "house-bedroom",
+      kind: "window",
+      properties: {
+        facade: {
+          building_ref: "house",
+          part: 0,
+          ring: 0,
+          edge: 0,
+          from: [0, 0],
+          to: [10, 0],
+        },
+        window: { u_m: 2, sill_z_m: 3.9, width_m: 1.2, height_m: 1.5 },
+        sensitive: true,
+      },
+      geometry: { type: "Point", coordinates: [2.6, 0] },
+    };
+    useModelStore.setState({ features: [ROAD, HOUSE, window] });
+
+    await browserBackend.startRun({ ...FACADE_SPEC, allowUnconfirmed: true });
+
+    const sent = facadeRequests[0]?.model as GeoJSONFeatureCollection;
+    expect(sent.features.map((feature) => feature.id)).toEqual([
+      "house",
+      "house-bedroom",
+    ]);
+    expect(sent.features[1]?.properties).toMatchObject({
+      kind: "window",
+      sensitive: true,
+      window: { u_m: 2, sill_z_m: 3.9, width_m: 1.2, height_m: 1.5 },
+    });
+  });
+
   it("refuses an unconfirmed normative facade run before a run exists", async () => {
     await expect(browserBackend.startRun(FACADE_SPEC)).rejects.toThrow(
       /--allow-unconfirmed/,

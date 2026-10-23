@@ -207,6 +207,43 @@ describe("resolveComputeModel", () => {
     expect(facade.from).toEqual([12, 13]);
   });
 
+  // A window carries its facade key the same way, and the kernel places its
+  // point from that key, so the endpoints move with the window's point.
+  it("moves a window's facade endpoints with it", async () => {
+    const kernel = fakeKernel(shiftBy(1000, 2000));
+    const facade = {
+      building_ref: "block",
+      part: 0,
+      ring: 0,
+      edge: 1,
+      from: [12, 13],
+      to: [14, 15],
+    };
+
+    const model = await resolveComputeModel(
+      kernel,
+      workspace({
+        features: [
+          POLYGON,
+          {
+            id: "W1",
+            kind: "window",
+            properties: { facade, sensitive: true },
+            geometry: { type: "Point", coordinates: [13, 14] },
+          },
+        ],
+      }),
+    );
+
+    const window = model.features.find((feature) => feature.id === "W1");
+    expect(window?.geometry.coordinates).toEqual([1013, 2014]);
+    expect(window?.properties).toEqual({
+      facade: { ...facade, from: [1012, 2013], to: [1014, 2015] },
+      sensitive: true,
+    });
+    expect(facade.from).toEqual([12, 13]);
+  });
+
   it("carries a malformed facade through, as the Go side does", async () => {
     const kernel = fakeKernel(shiftBy(1000, 2000));
     const properties = { facade: { from: "nowhere" } };

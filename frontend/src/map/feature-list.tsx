@@ -36,6 +36,8 @@ function kindLabel(kind: FeatureKind | "receiver"): string {
       return m.option_barrier();
     case "ground-zone":
       return m.option_ground_zone();
+    case "window":
+      return m.option_window();
     case "receiver":
       return m.option_receiver();
   }
@@ -65,8 +67,12 @@ export function FeatureList({ selectedId, onSelect }: FeatureListProps) {
   const features = useModelStore((s) => s.features);
   const receivers = useModelStore((s) => s.receivers);
 
+  // Windows are listed by the facade elevation view, which edits them in their
+  // facade frame (P18 C2); the map neither draws nor edits them.
   const entries: Entry[] = [
-    ...features.map((feature) => ({ id: feature.id, kind: feature.kind })),
+    ...features
+      .filter((feature) => feature.kind !== "window")
+      .map((feature) => ({ id: feature.id, kind: feature.kind })),
     ...receivers.map((receiver) => ({
       id: receiver.id,
       kind: "receiver" as const,
