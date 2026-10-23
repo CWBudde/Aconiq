@@ -98,6 +98,56 @@ func TestReattachFacadesEndToEnd(t *testing.T) {
 	mustRunCLI(t, append(runArgs, "--allow-unconfirmed")...)
 }
 
+func savedDump(t *testing.T, projectDir string) modelgeojson.ModelDump {
+	t.Helper()
+
+	store, err := projectfs.New(projectDir)
+	if err != nil {
+		t.Fatalf("open project: %v", err)
+	}
+
+	raw, err := os.ReadFile(store.ModelArtifactPaths().Dump)
+	if err != nil {
+		t.Fatalf("read dump: %v", err)
+	}
+
+	var dump modelgeojson.ModelDump
+
+	err = json.Unmarshal(raw, &dump)
+	if err != nil {
+		t.Fatalf("decode dump: %v", err)
+	}
+
+	return dump
+}
+
+// Re-keying a receiver is not an import: the dump keeps the import's source,
+// CRS, transform and time, which the normalized GeoJSON does not carry.
+func TestReattachFacadesKeepsTheImportRecord(t *testing.T) {
+	t.Parallel()
+
+	projectDir := orphanedFacadeProject(t)
+	before := savedDump(t, projectDir)
+
+	if before.SourcePath == "" || before.ImportedAt.IsZero() {
+		t.Fatalf("dump before = %+v; the fixture must record an import to keep", before)
+	}
+
+	mustRunCLI(t, "--project", projectDir, "reattach-facades", "--apply")
+
+	after := savedDump(t, projectDir)
+	if after.SourcePath != before.SourcePath || after.ImportCRS != before.ImportCRS ||
+		after.TransformApplied != before.TransformApplied || !after.ImportedAt.Equal(before.ImportedAt) {
+		t.Fatalf("import record = %q %q %v %v after, %q %q %v %v before",
+			after.SourcePath, after.ImportCRS, after.TransformApplied, after.ImportedAt,
+			before.SourcePath, before.ImportCRS, before.TransformApplied, before.ImportedAt)
+	}
+
+	if facade, _ := savedReceiver(t, projectDir, "r1").Properties[modelgeojson.PropertyFacade].(map[string]any); facade["building_ref"] != "a" {
+		t.Fatalf("receiver facade = %v, want re-keyed to a", facade)
+	}
+}
+
 // Under --json stdout is exactly one JSON document naming every outcome.
 func TestReattachFacadesJSON(t *testing.T) {
 	t.Parallel()
