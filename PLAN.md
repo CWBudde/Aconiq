@@ -2839,7 +2839,10 @@ measured by `facadeset.Elevation` through the kernel's `facadeElevation` or
 Windows are drawn, moved, resized and deleted there, by pointer, arrow keys or a form; each change is
 placed by `facadeset.PlaceWindow` (the kernel's `placeWindow`, `POST /api/v1/facades/window`), the
 placer `--windows` uses, and is one undo step. A drawn window starts `proposed` and not sensitive
-with no evidence; a move keeps its review fields and evidence (C2b, #141).
+with no evidence; a move keeps its review fields and evidence (C2b, #141). The view hatches each
+facade's party walls, found by the probe facade mode drops a point by (`geo.PartyWallSpans`), and
+flags a window whose centre stands on one; the frontend sends the buildings within 1 m of the one
+it unfolds for that (C2c, #142).
 LGLN LoD2 carries building `gml:id`s but no
 openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
@@ -2900,10 +2903,6 @@ exists is summarised above.
       same-document references, and merge collinear edges for the fit, if a client's LoD3 needs
       it. Balconies and loggias still wait on `facade-receivers.md` Section 7, questions 2 and 3,
       and TA Lärm's own-facade practice on question 6.
-- [ ] **C2c Party walls in the elevation view**: shade the stretch of a facade another building
-      stands against, where facade mode places no station and refuses a sensitive window. The
-      test runs inside facade generation today; expose it per edge through `facadeset.Elevation`
-      rather than repeating it.
 
 ### Phase D — Mapping windows from images
 
