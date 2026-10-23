@@ -555,7 +555,10 @@ building it meant; the validation report lists it. None of it is measured in the
 frontend projects the model into the compute CRS a facade run would use and asks
 `facadeset.Elevation`, through the WASM kernel's `facadeElevation` in browser mode and
 `POST /api/v1/facades/elevation` in API mode, so the edges are numbered and measured as the run
-numbers and measures them.
+numbers and measures them. A stretch of a facade another building stands against is hatched, and
+a window whose centre stands on one says so: these are the party walls facade mode places no
+point on and refuses a sensitive window on, found by the same probe 0.1 m out
+(`geo.PartyWallSpans`), so the frontend sends the buildings near the one it unfolds as well.
 
 The elevation is also where windows are drawn by hand. Dragging on the wall draws one, dragging a
 window moves it and its corner resizes it; the arrow keys, a form with the four frame values and

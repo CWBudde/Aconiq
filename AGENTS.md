@@ -171,12 +171,14 @@ PLAN.md           Roadmap and the single status source
 - **`facadeElevation`** unfolds one building for the facade elevation view through
   `facadeset.Elevation`, which `POST /api/v1/facades/elevation` answers from too: each canonical
   edge with its length and the bearing it faces, the storeys' slab heights facade mode places at,
-  and the windows keyed to each edge with their validation findings, the ones whose key names no
-  edge of it listed apart. A window whose `building_ref` names no building of the model is in no
-  building's elevation; the validation report lists it. The frontend sends the model in the
-  compute CRS a facade run would use (`resolveComputeModel`), so the edges are numbered as the
-  run's keys are. It must not grow a facade frame of its own: which edge, how long and which way
-  `u` runs are the Go code's.
+  the stretches of each edge another building stands against (`geo.PartyWallSpans`, the probe
+  facade mode drops a point by), and the windows keyed to each edge with their validation findings
+  and whether their centre stands on such a party wall, the ones whose key names no edge of it
+  listed apart. A window whose `building_ref` names no building of the model is in no building's
+  elevation; the validation report lists it. The frontend sends the model in the compute CRS a
+  facade run would use (`resolveComputeModel`), so the edges are numbered as the run's keys are.
+  It must not grow a facade frame of its own: which edge, how long and which way `u` runs are the
+  Go code's.
 - **`placeWindow`** turns a window drawn or moved in that view into the feature the model stores,
   through `facadeset.PlaceWindow` — the placer `aconiq import --windows` uses, and the code
   `POST /api/v1/facades/window` answers from: the key with `from` / `to`, the Point at the
