@@ -39,6 +39,13 @@ const (
 // a person made does.
 const FacadeMoveToleranceM = 0.001
 
+// The members of a facade key that hold a position: the only ones Reproject
+// moves.
+const (
+	facadeFromMember = "from"
+	facadeToMember   = "to"
+)
+
 // maxFacadeIndex bounds the integers a facade property may carry. Nothing
 // real comes near it; it keeps the float64-to-int conversion exact and in
 // range on every architecture.
@@ -140,6 +147,11 @@ type metricFrame struct {
 	// pipeline projects into the compute CRS; nil measures as stored.
 	pipeline *geo.TransformPipeline
 	crsID    string
+	// inverse projects from the compute CRS back into the project CRS, for a
+	// point re-attaching writes into the model; inverseErr is why there is
+	// none. Both are unset when pipeline is.
+	inverse    *geo.TransformPipeline
+	inverseErr error
 	// failure, when set, is why a geographic model has no metric frame. Every
 	// key is then reported as one that cannot be checked.
 	failure string
@@ -174,7 +186,18 @@ func newMetricFrame(model Model) metricFrame {
 		return metricFrame{failure: fmt.Sprintf("%s cannot be projected into %s (%v)", source.ID, target.ID, err)}
 	}
 
-	return metricFrame{pipeline: &pipeline, crsID: target.ID, buildings: make(map[string]projectedBuilding)}
+	frame := metricFrame{pipeline: &pipeline, crsID: target.ID, buildings: make(map[string]projectedBuilding)}
+
+	// Only re-attaching writes a point back; validation never needs the way
+	// home, so a missing one is recorded rather than failing the frame.
+	inverse, err := geo.BuildTransformPipeline(source, target)
+	if err != nil {
+		frame.inverseErr = err
+	} else {
+		frame.inverse = &inverse
+	}
+
+	return frame
 }
 
 // facadeMoved is facadeMoved measured in the frame. A key that cannot be
@@ -397,7 +420,7 @@ func parseFacadeKey(value any) (geo.FacadeKey, string) {
 	for _, member := range []struct {
 		name string
 		dst  *geo.Point2D
-	}{{"from", &key.From}, {"to", &key.To}} {
+	}{{facadeFromMember, &key.From}, {facadeToMember, &key.To}} {
 		p, isPosition := asPosition(obj[member.name])
 		if !isPosition {
 			return geo.FacadeKey{}, fmt.Sprintf("%s %#v must be [x, y], two finite numbers", member.name, obj[member.name])

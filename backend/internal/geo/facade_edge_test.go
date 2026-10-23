@@ -145,3 +145,44 @@ func TestIsPlacementRule(t *testing.T) {
 		}
 	}
 }
+
+// FacadeEdges lists every canonical edge once, in part, ring, edge order,
+// each the edge FacadeEdge names for the same indices.
+func TestFacadeEdgesListsEveryCanonicalEdge(t *testing.T) {
+	t.Parallel()
+
+	polygons := facadeEdgeBlock().Polygons
+
+	edges, err := FacadeEdges(polygons)
+	if err != nil {
+		t.Fatalf("FacadeEdges: %v", err)
+	}
+
+	// The main block: an exterior and two holes of four edges each; the
+	// annex: four exterior edges.
+	if len(edges) != 16 {
+		t.Fatalf("FacadeEdges listed %d edges, want 16", len(edges))
+	}
+
+	for i, e := range edges {
+		from, to, ok := FacadeEdge(polygons, e.Part, e.Ring, e.Edge)
+		if !ok || from != e.From || to != e.To {
+			t.Fatalf("edge %d (%d, %d, %d) = %+v → %+v, FacadeEdge says %+v → %+v (%v)",
+				i, e.Part, e.Ring, e.Edge, e.From, e.To, from, to, ok)
+		}
+
+		if i > 0 {
+			p := edges[i-1]
+			if [3]int{p.Part, p.Ring, p.Edge} == [3]int{e.Part, e.Ring, e.Edge} ||
+				p.Part > e.Part || (p.Part == e.Part && (p.Ring > e.Ring || (p.Ring == e.Ring && p.Edge > e.Edge))) {
+				t.Fatalf("edge %d (%d, %d, %d) follows (%d, %d, %d); want part, ring, edge order",
+					i, e.Part, e.Ring, e.Edge, p.Part, p.Ring, p.Edge)
+			}
+		}
+	}
+
+	_, err = FacadeEdges([][][]Point2D{{{{X: 0, Y: 0}, {X: 1, Y: 0}, {X: 0, Y: 0}}}})
+	if err == nil {
+		t.Fatal("FacadeEdges accepted a degenerate ring")
+	}
+}

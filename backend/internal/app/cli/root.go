@@ -141,6 +141,7 @@ func newRootCommand() *cobra.Command {
 		newRunCommand(),
 		newStatusCommand(),
 		newDeleteRunCommand(),
+		newReattachFacadesCommand(),
 		newExportCommand(),
 		newServeCommand(),
 		newMCPCommand(),
