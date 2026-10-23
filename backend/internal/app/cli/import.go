@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -459,6 +461,13 @@ func runGeometryImport(
 		return domainerrors.New(domainerrors.KindValidation, "cli.import", "invalid geojson input", err)
 	}
 
+	if len(result.openings) > 0 {
+		model, err = placeCityGMLOpenings(model, result.openings, effectiveCRS, result.sourceSHA256, result.citygmlReport.Openings)
+		if err != nil {
+			return domainerrors.New(domainerrors.KindValidation, "cli.import", "place the CityGML windows", err)
+		}
+	}
+
 	report := modelgeojson.Validate(model)
 	if report.ErrorCount() > 0 {
 		messages := make([]string, 0, len(report.Errors))
@@ -536,6 +545,15 @@ func printCityGMLImportReport(cmd *cobra.Command, r citygmlimport.ImportReport) 
 	for _, s := range r.Details {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  skipped %s: %s\n", s.ID, s.Reason)
 	}
+
+	if o := r.Openings; o != nil {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "CityGML: imported %d/%d windows (proposed, not sensitive); %d doors not imported\n",
+			o.Imported, o.Windows, o.Doors)
+
+		for _, s := range o.Skipped {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  skipped window %s: %s\n", s.ID, s.Reason)
+		}
+	}
 }
 
 // inputPayload holds the raw GeoJSON bytes and optional auto-detected CRS.
@@ -543,6 +561,8 @@ type inputPayload struct {
 	payload       []byte
 	detectedCRS   string                      // e.g. "EPSG:25832", empty if not detected
 	citygmlReport *citygmlimport.ImportReport // non-nil for CityGML imports
+	openings      []citygmlimport.Opening     // a CityGML document's LoD3 windows, in its CRS
+	sourceSHA256  string                      // the CityGML file's, for the windows' evidence
 }
 
 func epsgToString(code int) string {
@@ -652,8 +672,12 @@ func readCityGMLAsGeoJSON(path string, layerName string) (inputPayload, error) {
 	}
 
 	report := result.Report
+	sum := sha256.Sum256(raw)
 
-	return inputPayload{payload: encoded, detectedCRS: epsgToString(result.EPSGCode), citygmlReport: &report}, nil
+	return inputPayload{
+		payload: encoded, detectedCRS: epsgToString(result.EPSGCode), citygmlReport: &report,
+		openings: result.Openings, sourceSHA256: hex.EncodeToString(sum[:]),
+	}, nil
 }
 
 const defaultTerrainPath = ".noise/model/terrain.tif"
