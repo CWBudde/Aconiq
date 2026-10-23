@@ -14,7 +14,10 @@
 // what that package's unedited handler tests assert.
 package descriptorjson
 
-import "github.com/aconiq/backend/internal/standards/framework"
+import (
+	"github.com/aconiq/backend/internal/facadeset"
+	"github.com/aconiq/backend/internal/standards/framework"
+)
 
 // Parameter is one run parameter as a consumer sees it.
 type Parameter struct {
@@ -48,13 +51,19 @@ type Version struct {
 // omitempty: a descriptor that cannot be registered without a tier must not be
 // published without one either, and a consumer that never reads the docs sees
 // the field precisely because it is always there.
+//
+// FacadePlacementRule is the rule the standard places generated facade
+// receivers by, and absent for a standard that has none: it is what tells a
+// consumer the facade receiver mode exists for this standard. It is read from
+// facadeset, the table `aconiq run` refuses by, so the two cannot disagree.
 type Standard struct {
-	Context        string    `json:"context"`
-	ID             string    `json:"id"`
-	Description    string    `json:"description"`
-	EvidenceTier   string    `json:"evidence_tier"`
-	DefaultVersion string    `json:"default_version"`
-	Versions       []Version `json:"versions"`
+	Context             string    `json:"context"`
+	ID                  string    `json:"id"`
+	Description         string    `json:"description"`
+	EvidenceTier        string    `json:"evidence_tier"`
+	FacadePlacementRule string    `json:"facade_placement_rule,omitempty"`
+	DefaultVersion      string    `json:"default_version"`
+	Versions            []Version `json:"versions"`
 }
 
 // FromDescriptor converts one descriptor into its JSON shape.
@@ -64,13 +73,16 @@ func FromDescriptor(d framework.StandardDescriptor) Standard {
 		versions = append(versions, fromVersion(v))
 	}
 
+	rule, _ := facadeset.PlacementRule(d.ID)
+
 	return Standard{
-		Context:        d.Context,
-		ID:             d.ID,
-		Description:    d.Description,
-		EvidenceTier:   string(d.EvidenceTier),
-		DefaultVersion: d.DefaultVersion,
-		Versions:       versions,
+		Context:             d.Context,
+		ID:                  d.ID,
+		Description:         d.Description,
+		EvidenceTier:        string(d.EvidenceTier),
+		FacadePlacementRule: rule,
+		DefaultVersion:      d.DefaultVersion,
+		Versions:            versions,
 	}
 }
 

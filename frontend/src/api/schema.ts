@@ -776,6 +776,8 @@ export interface components {
              * @enum {string}
              */
             evidence_tier: "normative" | "preview" | "scaffold" | "test-fixture";
+            /** @description The rule this standard places generated facade receivers by (`receiver_mode` `facade`). Absent for a standard that has no rule a footprint alone can apply; such a standard refuses the facade mode. */
+            facade_placement_rule?: string;
             id: string;
             versions: components["schemas"]["VersionInfo"][];
         };
