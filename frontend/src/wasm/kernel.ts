@@ -33,6 +33,8 @@ import {
   type ContourResult,
   type FacadeReceiversRequest,
   type FacadeReceiversResponse,
+  type CustomReceiversRequest,
+  type CustomReceiversResponse,
   type FootprintMaskRequest,
   type FootprintMaskResponse,
   type GridComputeRequest,
@@ -122,6 +124,17 @@ export interface AconiqKernel {
   facadeReceivers(
     req: FacadeReceiversRequest,
   ): Promise<FacadeReceiversResponse>;
+  /**
+   * Which of a custom run's receivers a run keeps, decided by
+   * `facadeset.Custom` and `facadeset.Gate` — the calls `aconiq run
+   * --receiver-mode custom` makes. A `rejected` point is dropped; a normative
+   * run over unconfirmed points, a broken facade link or another standard's
+   * placement rule is rejected in that run's words. Kept receivers carry the
+   * facade attributes their table rows take.
+   */
+  customReceivers(
+    req: CustomReceiversRequest,
+  ): Promise<CustomReceiversResponse>;
   /**
    * Trace ISO-band contour lines over a run's raster.
    *
@@ -337,6 +350,7 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
     transform: (req) => client.transform(req),
     maskFootprints: (req) => client.maskFootprints(req),
     facadeReceivers: (req) => client.facadeReceivers(req),
+    customReceivers: (req) => client.customReceivers(req),
     contours: (payload, req) => client.contours(payload, req),
     standards: () => client.standards(),
     defaultConfig: () => client.defaultConfig(),

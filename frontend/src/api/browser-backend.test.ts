@@ -22,9 +22,12 @@ import { buildReceiverTableCSV } from "@/model/receiver-csv";
 import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
 import type {
   ComputeRequest,
+  CustomReceiversRequest,
+  CustomReceiversResponse,
   FacadeReceiversRequest,
   FacadeReceiversResponse,
   GridComputeRequest,
+  KernelReceiverFacade,
   TransformRequest,
 } from "@/wasm/types";
 import type {
@@ -90,6 +93,66 @@ function facadeAnswer(req: FacadeReceiversRequest): FacadeReceiversResponse {
       ...(req.allow_unconfirmed === true ? { allow_unconfirmed: "true" } : {}),
     },
   };
+}
+
+/**
+ * Records every `customReceivers` request, and answers it the way
+ * `facadeset.Custom` and `Gate` do for a model without broken links: a
+ * `rejected` receiver is dropped and counted, a facade-linked one with no
+ * review state or a `proposed` one is unconfirmed and refused without the
+ * opt-in, and a receiver carrying a rule, a key and a storey gets them back
+ * for its table row. The real decision is pinned by the kernel's Go and Node
+ * tests; this file sees what `startRun` asks and what it does with the answer.
+ */
+const customRequests: CustomReceiversRequest[] = [];
+
+function customAnswer(
+  req: CustomReceiversRequest,
+): Promise<CustomReceiversResponse> {
+  const model = req.model as GeoJSONFeatureCollection;
+  const properties = new Map(
+    model.features.map((feature) => [feature.id, feature.properties]),
+  );
+  const answer: CustomReceiversResponse = {
+    receivers: [],
+    proposed_count: 0,
+    assumed_height_count: 0,
+    rejected_count: 0,
+    metadata:
+      req.allow_unconfirmed === true ? { allow_unconfirmed: "true" } : {},
+  };
+  for (const receiver of req.receivers) {
+    const props = properties.get(receiver.id) ?? {};
+    const status = props.review_status;
+    if (status === "rejected") {
+      answer.rejected_count++;
+      continue;
+    }
+    const linked = "facade" in props || "placement_rule" in props;
+    if (status === "proposed" || (linked && status === undefined)) {
+      answer.proposed_count++;
+    }
+    answer.receivers.push({
+      ...receiver,
+      ...(typeof props.placement_rule === "string" &&
+      typeof props.storey === "number" &&
+      "facade" in props
+        ? {
+            placement_rule: props.placement_rule,
+            facade: props.facade as KernelReceiverFacade,
+            storey: props.storey,
+          }
+        : {}),
+    });
+  }
+  if (answer.proposed_count > 0 && req.allow_unconfirmed !== true) {
+    return Promise.reject(
+      new Error(
+        `facade receivers: run.facade: standard "rls19-road" is normative and its receivers include ${String(answer.proposed_count)} proposed facade point(s) and 0 with an assumed slab height: pass --allow-unconfirmed to run anyway`,
+      ),
+    );
+  }
+  return Promise.resolve(answer);
 }
 
 /**
@@ -190,6 +253,10 @@ vi.mock("@/wasm/kernel", () => ({
           );
         }
         return Promise.resolve(facadeAnswer(req));
+      },
+      customReceivers: (req: CustomReceiversRequest) => {
+        customRequests.push(req);
+        return customAnswer(req);
       },
       standards: () => Promise.resolve(publishedStandards),
       defaultConfig: () => Promise.resolve({}),
@@ -854,6 +921,188 @@ describe("browserBackend.startRun facade mode", () => {
       /--allow-unconfirmed/,
     );
     expect(await browserBackend.getRuns()).toEqual([]);
+  });
+});
+
+/**
+ * A custom run asks the kernel which of the placed receivers it may compute
+ * at — every building and receiver, with their properties, in the compute
+ * CRS — and computes at the answer: a rejected point never enters the run, an
+ * unconfirmed one under a normative standard refuses it unless the run opts
+ * in, and a facade-linked one carries its rule, facade and storey into its
+ * row. That is `aconiq run --receiver-mode custom`, which browser mode used to
+ * skip by reading id, point and height alone.
+ */
+describe("browserBackend.startRun custom mode gate", () => {
+  const HOUSE: ModelFeature = {
+    id: "house",
+    kind: "building",
+    heightM: 6,
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [10, 0],
+          [10, 8],
+          [0, 8],
+          [0, 0],
+        ],
+      ],
+    },
+  };
+
+  const FACADE = {
+    building_ref: "house",
+    part: 0,
+    ring: 0,
+    edge: 0,
+    from: [0, 0],
+    to: [10, 0],
+  };
+
+  const CUSTOM_SPEC: RunSpec = { ...RUN_SPEC, receiverMode: "custom" };
+
+  function placeReceivers(review: string): void {
+    useModelStore.setState({
+      features: [ROAD, HOUSE],
+      receivers: [
+        {
+          id: "plain",
+          heightM: 4,
+          geometry: { type: "Point", coordinates: [50, 20] },
+        },
+        {
+          id: "on-facade",
+          heightM: 1,
+          properties: {
+            placement_rule: "rls19-facade",
+            facade: FACADE,
+            storey: 0,
+            review_status: review,
+          },
+          geometry: { type: "Point", coordinates: [2, -0.05] },
+        },
+        {
+          id: "thrown-out",
+          heightM: 4,
+          properties: { review_status: "rejected" },
+          geometry: { type: "Point", coordinates: [60, 20] },
+        },
+      ],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+  }
+
+  beforeEach(async () => {
+    await resetStores();
+    customRequests.length = 0;
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: () => "blob:mock/custom",
+      revokeObjectURL: () => undefined,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the buildings and receivers with their properties, in the compute CRS", async () => {
+    placeReceivers("confirmed");
+
+    await browserBackend.startRun(CUSTOM_SPEC);
+
+    expect(customRequests).toHaveLength(1);
+    const request = customRequests[0];
+    expect(request?.crs).toBe("EPSG:25832");
+    expect(request?.standard_id).toBe("rls19-road");
+    expect(request?.allow_unconfirmed).toBeUndefined();
+    expect(request?.receivers.map((receiver) => receiver.id)).toEqual([
+      "plain",
+      "on-facade",
+      "thrown-out",
+    ]);
+    const sent = request?.model as GeoJSONFeatureCollection;
+    expect(sent.features.map((feature) => feature.id)).toEqual([
+      "house",
+      "plain",
+      "on-facade",
+      "thrown-out",
+    ]);
+    expect(sent.features[2]?.properties).toMatchObject({
+      kind: "receiver",
+      facade: FACADE,
+      review_status: "confirmed",
+    });
+  });
+
+  it("drops a rejected point and writes the facade attributes into its row", async () => {
+    placeReceivers("confirmed");
+
+    const run = await browserBackend.startRun(CUSTOM_SPEC);
+
+    const tableRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.receiver_table_json",
+    );
+    const table = await browserBackend.getArtifactContent<ReceiverTable>(
+      tableRef?.id ?? "",
+    );
+    expect(table.records.map((record) => record.id)).toEqual([
+      "plain",
+      "on-facade",
+    ]);
+    expect(table.records[0]?.facade).toBeUndefined();
+    expect(table.records[1]).toMatchObject({
+      placement_rule: "rls19-facade",
+      facade: FACADE,
+      storey: 0,
+    });
+
+    const summaryRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.summary",
+    );
+    const summary = await browserBackend.getArtifactContent<
+      Record<string, unknown>
+    >(summaryRef?.id ?? "");
+    expect(summary).toMatchObject({
+      receiver_count: 2,
+      facade_rejected_count: 1,
+    });
+    expect(summary).not.toHaveProperty("facade_proposed_count");
+    expect(summary).not.toHaveProperty("allow_unconfirmed");
+  });
+
+  it("refuses a proposed point under a normative standard before a run exists", async () => {
+    placeReceivers("proposed");
+
+    await expect(browserBackend.startRun(CUSTOM_SPEC)).rejects.toThrow(
+      /--allow-unconfirmed/,
+    );
+    expect(await browserBackend.getRuns()).toEqual([]);
+  });
+
+  it("runs over it with the opt-in, and records the count and the opt-in", async () => {
+    placeReceivers("proposed");
+
+    const run = await browserBackend.startRun({
+      ...CUSTOM_SPEC,
+      allowUnconfirmed: true,
+    });
+
+    expect(customRequests[0]?.allow_unconfirmed).toBe(true);
+    const summaryRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.summary",
+    );
+    const summary = await browserBackend.getArtifactContent<
+      Record<string, unknown>
+    >(summaryRef?.id ?? "");
+    expect(summary).toMatchObject({
+      facade_proposed_count: 1,
+      facade_rejected_count: 1,
+      allow_unconfirmed: "true",
+    });
   });
 });
 

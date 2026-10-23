@@ -170,6 +170,65 @@ describe("resolveComputeModel", () => {
     });
   });
 
+  // A facade receiver carries the endpoints of its building edge in its
+  // properties, in the project CRS. `modelgeojson.Reproject` moves them with
+  // the point; left behind, the kernel's facade-link check would measure
+  // degrees against metres and call every facade receiver moved.
+  it("moves a receiver's facade endpoints with it", async () => {
+    const kernel = fakeKernel(shiftBy(1000, 2000));
+    const facade = {
+      building_ref: "block",
+      part: 0,
+      ring: 0,
+      edge: 1,
+      from: [12, 13],
+      to: [14, 15],
+    };
+
+    const model = await resolveComputeModel(
+      kernel,
+      workspace({
+        receivers: [
+          {
+            id: "F1",
+            heightM: 4,
+            properties: { facade, review_status: "confirmed" },
+            geometry: { type: "Point", coordinates: [5, 6] },
+          },
+        ],
+      }),
+    );
+
+    expect(model.receivers[0]?.properties).toEqual({
+      facade: { ...facade, from: [1012, 2013], to: [1014, 2015] },
+      review_status: "confirmed",
+    });
+    // The store's own receiver is not written through.
+    expect(facade.from).toEqual([12, 13]);
+  });
+
+  it("carries a malformed facade through, as the Go side does", async () => {
+    const kernel = fakeKernel(shiftBy(1000, 2000));
+    const properties = { facade: { from: "nowhere" } };
+
+    const model = await resolveComputeModel(
+      kernel,
+      workspace({
+        receivers: [
+          {
+            id: "F1",
+            heightM: 4,
+            properties,
+            geometry: { type: "Point", coordinates: [5, 6] },
+          },
+        ],
+      }),
+    );
+
+    expect(model.receivers[0]?.properties).toEqual(properties);
+    expect(model.receivers[0]?.geometry.coordinates).toEqual([1005, 2006]);
+  });
+
   it("returns the workspace untouched when nothing moved", async () => {
     const kernel = fakeKernel(unmoved);
     const input = workspace({ crs: "EPSG:25832" });

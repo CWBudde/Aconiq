@@ -23,7 +23,6 @@ export function FacadeFields({
   const buildingsId = `${id}-buildings`;
   const spacingId = `${id}-spacing`;
   const courtyardId = `${id}-courtyard`;
-  const unconfirmedId = `${id}-unconfirmed`;
   const incomplete = facadeRunSpec(draft) === null;
 
   return (
@@ -86,24 +85,12 @@ export function FacadeFields({
       </div>
 
       {normative ? (
-        <div className="flex items-start gap-2.5">
-          <Checkbox
-            id={unconfirmedId}
-            className="mt-0.5"
-            checked={draft.allowUnconfirmed}
-            onCheckedChange={(checked) => {
-              onChange({ ...draft, allowUnconfirmed: checked === true });
-            }}
-          />
-          <div className="space-y-1">
-            <Label htmlFor={unconfirmedId} className="text-xs font-medium">
-              {m.label_allow_unconfirmed()}
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              {m.msg_allow_unconfirmed_help()}
-            </p>
-          </div>
-        </div>
+        <AllowUnconfirmedField
+          checked={draft.allowUnconfirmed}
+          onChange={(allowUnconfirmed) => {
+            onChange({ ...draft, allowUnconfirmed });
+          }}
+        />
       ) : null}
 
       {incomplete ? (
@@ -111,6 +98,42 @@ export function FacadeFields({
           {m.msg_facade_incomplete()}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The opt-in to run a normative standard over unconfirmed facade points, as
+ * `--allow-unconfirmed` gives it. Facade and custom runs both offer it: both
+ * are refused over such points without it.
+ */
+export function AllowUnconfirmedField({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const id = useId();
+
+  return (
+    <div className="flex items-start gap-2.5">
+      <Checkbox
+        id={id}
+        className="mt-0.5"
+        checked={checked}
+        onCheckedChange={(value) => {
+          onChange(value === true);
+        }}
+      />
+      <div className="space-y-1">
+        <Label htmlFor={id} className="text-xs font-medium">
+          {m.label_allow_unconfirmed()}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          {m.msg_allow_unconfirmed_help()}
+        </p>
+      </div>
     </div>
   );
 }
