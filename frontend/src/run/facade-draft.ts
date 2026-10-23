@@ -53,3 +53,16 @@ export function facadeRunSpec(draft: FacadeDraft): FacadeRunSpec | null {
     includeCourtyard: draft.includeCourtyard,
   };
 }
+
+/**
+ * Whether a facade run lacks the opt-in it cannot run without. Every point the
+ * generator places is `proposed`, and a normative run refuses proposed points
+ * unless it opts in — so without the tick the run, and its estimate, could
+ * only come back refused.
+ */
+export function facadeOptInMissing(
+  draft: FacadeDraft,
+  normative: boolean,
+): boolean {
+  return normative && !draft.allowUnconfirmed;
+}

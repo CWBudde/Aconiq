@@ -58,6 +58,7 @@ import { ParameterField } from "@/run/parameter-field";
 import { FacadeFields } from "@/run/facade-fields";
 import {
   EMPTY_FACADE_DRAFT,
+  facadeOptInMissing,
   facadeRunSpec,
   offersFacadeMode,
 } from "@/run/facade-draft";
@@ -320,10 +321,15 @@ function RunSetupForm({
       ? "auto-grid"
       : chosenReceiverMode;
   const facadeSpec = facadeRunSpec(facadeDraft);
-  const facadeIncomplete = receiverMode === "facade" && facadeSpec === null;
   // The opt-in is offered, and so sent, only for a normative standard: the
   // only kind whose run refuses unconfirmed points.
   const facadeNormative = selectedStandard?.evidence_tier === "normative";
+  // A facade run the backend can only refuse is not sent, nor estimated:
+  // incomplete, or normative over generated (always proposed) points without
+  // the opt-in.
+  const facadeBlocked =
+    receiverMode === "facade" &&
+    (facadeSpec === null || facadeOptInMissing(facadeDraft, facadeNormative));
 
   // The extent the automatic grid would cover, in metres. Only in auto-grid
   // mode: a custom receiver set is the points the user placed, and no
@@ -407,7 +413,7 @@ function RunSetupForm({
     !unsavedChanges &&
     !startBlocked &&
     !customReceiversMissing &&
-    !facadeIncomplete;
+    !facadeBlocked;
   const runEstimate = useRunEstimate(estimateWanted ? runSpec : null);
 
   function handleSubmit() {
@@ -415,7 +421,7 @@ function RunSetupForm({
       experimentalOptInMissing ||
       unsavedChanges ||
       startBlocked ||
-      facadeIncomplete
+      facadeBlocked
     )
       return;
 
@@ -869,7 +875,7 @@ function RunSetupForm({
               unsavedChanges ||
               startBlocked ||
               customReceiversMissing ||
-              facadeIncomplete
+              facadeBlocked
             }
           >
             <Play aria-hidden="true" className="mr-2 h-4 w-4" />
