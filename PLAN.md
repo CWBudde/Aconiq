@@ -2824,7 +2824,7 @@ as borrowed in `facade_window_height_basis`), `schall03-facade` on the facade at
 and `talaerm-window` 0.5 m out at the window centre, which gives `iso9613` a facade mode that
 places only at windows. A window with a broken link or on a party wall refuses the run;
 `reattach-facades` re-keys windows too; browser mode keeps them through a save and hands them to
-the kernel, but neither draws nor edits them (C1, #PR). LGLN LoD2 and CityGML carry building
+the kernel, but neither draws nor edits them (C1, #138). LGLN LoD2 and CityGML carry building
 `gml:id`s but no openings: windows are LoD3
 (`bldg:Opening`), and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
@@ -2880,7 +2880,7 @@ exists is summarised above.
 ### Phase C — Windows as model features
 
 - [ ] **C1b Windows from CityGML LoD3** `bldg:Opening`, where a client supplies LoD3, into the
-      `window` features C1 defined (#PR): project each opening onto the footprint edge whose
+      `window` features C1 defined (#138): project each opening onto the footprint edge whose
       plane it lies in, and derive `u_m`, `sill_z_m`, `width_m` and `height_m` from its extent,
       refusing an opening that lies in no facade plane. `sensitive` is not in LoD3 and stays
       false until a person sets it. Needs a synthetic LoD3 fixture. Balconies and loggias still
