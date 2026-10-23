@@ -250,6 +250,7 @@ func (h Handler) routes() *http.ServeMux {
 	mux.HandleFunc("/api/v1/import/terrain", h.handleImportTerrain)
 	mux.HandleFunc("/api/v1/model", h.handleModel)
 	mux.HandleFunc("/api/v1/transform", h.handleTransform)
+	mux.HandleFunc("/api/v1/facades/elevation", h.handleFacadeElevation)
 	mux.HandleFunc("/", h.handleNotFound)
 
 	return mux

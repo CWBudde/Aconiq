@@ -47,6 +47,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/facades/elevation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unfold a building into its facades, storeys and windows
+         * @description Answers what the elevation view draws for one building of the model in the body: each canonical edge in canonical order, with its key's endpoints in the request's `crs` and its length in metres; the storeys' slab heights facade receiver mode places at; and the window features keyed to each edge, with what validation finds about them. A window whose key no longer names an edge of the building as it is (`window.facade.unresolved` or `.moved`) is listed under `detached` instead. Like `/api/v1/transform` it reads no project and writes nothing, so it answers for the model a client holds, saved or not. The browser's WebAssembly kernel answers the same question from the same Go code (`aconiq.facadeElevation`).
+         */
+        post: operations["facadeElevation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -439,6 +459,26 @@ export interface components {
             retained_paths: string[];
             run_id: string;
         };
+        ElevationWindow: {
+            findings: {
+                code: string;
+                feature_id?: string;
+                /** @enum {string} */
+                level: "error" | "warning";
+                message: string;
+            }[];
+            id: string;
+            /** @enum {string} */
+            review_status: "proposed" | "confirmed" | "rejected";
+            sensitive: boolean;
+            /** @description The window's rectangle in its facade's frame, in metres. */
+            window: {
+                height_m: number;
+                sill_z_m: number;
+                u_m: number;
+                width_m: number;
+            };
+        };
         ErrorEnvelope: {
             error: components["schemas"]["APIError"];
         };
@@ -450,6 +490,40 @@ export interface components {
             high: number;
             /** @description Seconds */
             low: number;
+        };
+        FacadeElevation: {
+            /** @description An inner ring's edge. */
+            courtyard: boolean;
+            edge: number;
+            /** @description The bearing the facade faces, its outward normal, in degrees clockwise from grid north in `crs`, in [0, 360). */
+            facing_deg: number;
+            from: number[];
+            length_m: number;
+            part: number;
+            ring: number;
+            to: number[];
+            windows: components["schemas"]["ElevationWindow"][];
+        };
+        FacadeElevationRequest: {
+            /** @description The building's feature id. */
+            building: string;
+            /** @description CRS the model's coordinates are in. Send the compute CRS a facade run would use, so the facades are the edges its keys are numbered on. */
+            crs: string;
+            /** @description A GeoJSON FeatureCollection in the v1 model schema, holding the building and its windows. */
+            model: Record<string, never>;
+        };
+        FacadeElevationResponse: {
+            building_ref: string;
+            /** @description The building's windows whose key names no edge of it as it is now. */
+            detached: components["schemas"]["ElevationWindow"][];
+            facades: components["schemas"]["FacadeElevation"][];
+            height_m: number;
+            /** @description `building:levels`, absent when the building states no positive integer count. */
+            levels?: number;
+            /** @enum {string} */
+            slab_height_source: "measured" | "levels" | "assumed";
+            /** @description Each storey's ceiling slab above the ground, ground floor first. */
+            slab_heights_m: number[];
         };
         HealthResponse: {
             status: string;
@@ -951,6 +1025,96 @@ export interface operations {
             };
             /** @description Method not allowed */
             405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    facadeElevation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Any non-empty value. A CORS simple request cannot set a custom header, so requiring one forces a preflight, which the origin allowlist then answers or does not. The value is never read. */
+                "X-Aconiq-Client": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FacadeElevationRequest"];
+            };
+        };
+        responses: {
+            /** @description The building unfolded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FacadeElevationResponse"];
+                };
+            };
+            /** @description Malformed body, a missing `crs`, `model` or `building`, a model that is not a valid FeatureCollection, a building that is not in the model or has no height, or a geographic site with no compute CRS (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing request arrived without the X-Aconiq-Client header (`client_header_required`), or the project manifest named a path outside the project root (`forbidden_path`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body exceeds this endpoint's limit (`request_too_large`) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body was not sent as the media type this endpoint parses (`unsupported_media_type`) */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Failed to encode the elevation */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
