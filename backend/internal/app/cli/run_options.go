@@ -7,6 +7,7 @@ import (
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
 	"github.com/aconiq/backend/internal/domain/project"
+	"github.com/aconiq/backend/internal/facadeset"
 	"github.com/aconiq/backend/internal/geo"
 	bebexposure "github.com/aconiq/backend/internal/standards/beb/exposure"
 	bubindustry "github.com/aconiq/backend/internal/standards/bub/industry"
@@ -250,7 +251,7 @@ func receiverSetID(mode string) string {
 	case receiverModeCustom:
 		return explicitReceiverSetID
 	case receiverModeFacade:
-		return facadeReceiverSetID
+		return facadeset.SetID
 	default:
 		return ""
 	}

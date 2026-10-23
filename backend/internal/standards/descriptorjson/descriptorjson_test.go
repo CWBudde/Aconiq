@@ -5,8 +5,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/standards/descriptorjson"
 	"github.com/aconiq/backend/internal/standards/framework"
+	"github.com/aconiq/backend/internal/standards/iso9613"
+	rls19road "github.com/aconiq/backend/internal/standards/rls19/road"
+	"github.com/aconiq/backend/internal/standards/schall03"
 )
 
 // An empty registry answers `[]`, not `null`. A client that iterates the
@@ -87,6 +91,34 @@ func TestEvidenceTierIsCarriedVerbatim(t *testing.T) {
 		got := descriptorjson.FromDescriptor(framework.StandardDescriptor{EvidenceTier: tier})
 		if got.EvidenceTier != string(tier) {
 			t.Errorf("evidence tier %q encoded as %q", tier, got.EvidenceTier)
+		}
+	}
+}
+
+// A standard publishes the rule its facade receivers are placed by, and one
+// without a rule publishes no key: the run dialog offers the facade mode by
+// reading this, and the run refuses a standard missing from facadeset in the
+// same terms (facade-receivers.md, Section 4).
+func TestFacadePlacementRuleIsPublishedWhereOneExists(t *testing.T) {
+	t.Parallel()
+
+	for id, want := range map[string]string{
+		rls19road.StandardID: geo.PlacementRLS19Facade,
+		schall03.StandardID:  geo.PlacementSchall03Facade,
+		iso9613.StandardID:   "",
+	} {
+		got := descriptorjson.FromDescriptor(framework.StandardDescriptor{ID: id, EvidenceTier: framework.EvidenceTierNormative})
+		if got.FacadePlacementRule != want {
+			t.Errorf("%s: facade_placement_rule = %q, want %q", id, got.FacadePlacementRule, want)
+		}
+
+		raw, err := json.Marshal(got)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+
+		if present := strings.Contains(string(raw), `"facade_placement_rule"`); present != (want != "") {
+			t.Errorf("%s: encoded %s, key present = %v", id, raw, present)
 		}
 	}
 }

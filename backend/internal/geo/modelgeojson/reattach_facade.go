@@ -210,7 +210,7 @@ func newReattachIndex(model Model) reattachIndex {
 			measured = projected
 		}
 
-		polygons, err := featurePolygons(measured)
+		polygons, err := FeaturePolygons(measured)
 		if err != nil {
 			continue
 		}

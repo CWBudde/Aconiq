@@ -871,5 +871,16 @@
   "duration_single_s": "≈ {value} s",
   "duration_single_min": "≈ {value} Min.",
   "duration_single_h": "≈ {value} Std.",
-  "duration_under_a_second": "< 1 s"
+  "duration_under_a_second": "< 1 s",
+  "label_receiver_facade": "Fassaden-Immissionsorte",
+  "msg_receiver_facade_desc": "Auf den Fassaden der genannten Gebäude, nach der Platzierungsregel der Norm.",
+  "label_facade_buildings": "Gebäude",
+  "msg_facade_buildings_help": "Eines pro Zeile: die Feature-ID eines Gebäudes oder seine Adresse als „<Straße> <Hausnummer>“.",
+  "label_facade_spacing": "Stationsabstand entlang jeder Fassade",
+  "msg_facade_spacing_help": "Pflichtangabe. Es gibt keinen Vorgabewert: wie dicht eine Fassade abgetastet wird, entscheiden Sie.",
+  "label_facade_courtyard": "Hoffassaden einbeziehen",
+  "label_allow_unconfirmed": "Auch über unbestätigte Punkte rechnen",
+  "msg_allow_unconfirmed_help": "Erzeugte Fassadenpunkte sind Vorschläge, bis jemand sie bestätigt. Eine normative Berechnung lehnt sie ohne diese Zustimmung ab; ihre Anzahl wird dann mit dem Ergebnis festgehalten.",
+  "msg_facade_incomplete": "Mindestens ein Gebäude und einen Abstand größer als 0 m angeben.",
+  "msg_facade_opt_in_required": "Eine normative Norm rechnet an erzeugten Fassadenpunkten nur mit dieser Zustimmung: Sie bleiben Vorschläge, bis jemand sie bestätigt."
 }

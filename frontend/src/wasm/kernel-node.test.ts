@@ -154,6 +154,74 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     );
   });
 
+  // A synthetic 10 m × 8 m house of three storeys in EPSG:25832, addressed so
+  // the request can name it the way a user types it.
+  const facadeModel = {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        id: "house",
+        properties: {
+          kind: "building",
+          height_m: 9,
+          "building:levels": "3",
+          "addr:street": "Musterstraße",
+          "addr:housenumber": "1",
+        },
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [547000, 5795000],
+              [547010, 5795000],
+              [547010, 5795008],
+              [547000, 5795008],
+              [547000, 5795000],
+            ],
+          ],
+        },
+      },
+    ],
+  };
+
+  it("places facade receivers through the kernel, keyed to their building", async () => {
+    const kernel = await getNodeKernel();
+
+    const placed = await kernel.facadeReceivers({
+      crs: "EPSG:25832",
+      model: facadeModel,
+      standard_id: "rls19-road",
+      buildings: ["musterstraße 1"],
+      spacing_m: 4,
+      allow_unconfirmed: true,
+    });
+
+    expect(placed.receivers.length).toBeGreaterThan(0);
+    expect(placed.proposed_count).toBe(placed.receivers.length);
+    expect(placed.metadata["allow_unconfirmed"]).toBe("true");
+    for (const receiver of placed.receivers) {
+      expect(receiver.placement_rule).toBe("rls19-facade");
+      expect(receiver.facade.building_ref).toBe("house");
+      expect(receiver.facade.from).toHaveLength(2);
+      expect(receiver.storey).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("refuses an unconfirmed normative facade run in the run's words", async () => {
+    const kernel = await getNodeKernel();
+
+    await expect(
+      kernel.facadeReceivers({
+        crs: "EPSG:25832",
+        model: facadeModel,
+        standard_id: "rls19-road",
+        buildings: ["house"],
+        spacing_m: 4,
+      }),
+    ).rejects.toThrow(/--allow-unconfirmed/);
+  });
+
   it("rejects a malformed request rather than answering it", async () => {
     const kernel = await getNodeKernel();
 

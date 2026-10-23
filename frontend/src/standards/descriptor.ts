@@ -72,4 +72,12 @@ export interface StandardDescriptor {
    * than comparing raw strings.
    */
   evidence_tier?: string;
+  /**
+   * The rule this standard places generated facade receivers by
+   * (`rls19-facade`, `schall03-facade`), and absent for a standard without
+   * one. Its presence is what offers the facade receiver mode: the Go side
+   * fills it from `internal/facadeset`, the table the run refuses by, so no
+   * client keeps a list of its own.
+   */
+  facade_placement_rule?: string;
 }

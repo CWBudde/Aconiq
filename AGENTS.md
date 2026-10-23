@@ -114,8 +114,9 @@ PLAN.md           Roadmap and the single status source
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
 `window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `rls19RoadGrid`, `estimate`, `transform`,
-`maskFootprints`, `standards`, `contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health`
-and `projectStatus`. Seven of those carry contracts worth knowing before writing browser-mode code:
+`maskFootprints`, `facadeReceivers`, `standards`, `contours`, `loadTerrain`, `clearTerrain`,
+`defaultConfig`, `health` and `projectStatus`. Eight of those carry contracts worth knowing before
+writing browser-mode code:
 
 - **`rls19RoadGrid`** is the export an automatic-grid run uses. The request names its receivers as
   `grid: {origin_x, origin_y, resolution_m, width, height, height_m}` instead of a `receivers`
@@ -153,6 +154,13 @@ and `projectStatus`. Seven of those carry contracts worth knowing before writing
   cells are written as nodata on both targets; the receivers stay in the table. The frontend must
   not grow a point-in-polygon of its own for this: the rule on a facade (not masked) is the one
   place two implementations would disagree.
+- **`facadeReceivers`** places a facade run's receivers through `internal/facadeset`, the package
+  `aconiq run --receiver-mode facade` calls: the same building selection by id or address, the same
+  stations, storeys and party-wall mask, and the same refusals, the unconfirmed-point gate included.
+  It takes the buildings as a GeoJSON FeatureCollection already in the compute CRS, so the facade
+  keys it answers with are canonical in the CRS validation reads them in, and each receiver comes
+  back with the `placement_rule` / `facade` / `storey` of its receiver table row. The frontend must
+  not place a facade point of its own.
 - **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
   GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
   and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the
@@ -179,6 +187,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `domain/errors/`            | Error taxonomy (user input vs. internal), drives CLI exit codes                                                    |
 | `domain/project/`           | Core entities: `Project`, `Scenario`, `Run`, `StandardRef`, `ArtifactRef`, provenance                              |
 | `engine/`                   | Compute engine: chunked worker pool, progress events, cancellation, run/shared disk cache, deterministic reduction |
+| `facadeset/`                | Facade receivers of a run: building selection by id or address, generation per rule, the unconfirmed gate          |
 | `geo/`                      | CRS model and transforms, geometry primitives, spatial index, receiver sets                                        |
 | `geo/modelgeojson/`         | GeoJSON model normalization and validation                                                                         |
 | `geo/terrain/`              | Terrain model interface plus GeoTIFF DTM loading and bilinear elevation queries                                    |

@@ -2805,7 +2805,11 @@ round trip that breaks a tie on x renumbers them, which validation reports as `.
 receiver to the edge whose directed endpoints still match its `from` / `to`, within 1 mm unless
 `--max-shift-m` says otherwise, refuses to choose between two, and marks it `proposed`; it is a
 CLI step only, with no API, MCP or UI path. SoundPLAN-imported receivers stay rule-less (§7
-question 8) (#134). LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
+question 8) (#134). Browser mode places facade receivers too: the WASM kernel's
+`facadeReceivers` runs `internal/facadeset`, the package the CLI's facade mode now calls, so
+both targets select, place and refuse alike; the run dialog offers the mode in both modes where
+the standard's descriptor publishes a `facade_placement_rule`, with the opt-in for a normative
+standard; and the browser OSM import keeps `addr:*` (#135). LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
 (`bldg:Opening`), and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
 as it must be.
@@ -2856,21 +2860,27 @@ as it must be.
 Deterministic, no imagery. This is useful by itself (a facade level map per building), and it
 produces the candidates Phase D confirms or rejects.
 
-- [ ] **B6 Facade mode in browser mode.** The run dialog offers `auto-grid` and `custom` only, and
-      `browser-backend.ts` has no third branch, so a browser-mode project cannot place facade
-      receivers. The generator stays in Go: the WASM kernel exposes it, the frontend does not
-      reimplement it, and the rows it builds carry the same `placement_rule` / `facade` /
-      `storey` as `results.ReceiverRecord`. The browser OSM import keeps no `addr:*` tags yet, so
-      selecting a building by address there needs them too.
+- [ ] **B12 Browser custom mode skips the unconfirmed gate.** `prepareRLS19Request` builds a
+      custom run's receivers from id, point and height alone (`browser-backend.ts`, the `custom`
+      branch), so a normative browser run over hand-placed points carrying
+      `review_status: proposed`, a broken facade link or another standard's `placement_rule`
+      computes where the CLI refuses (B3). The gate is `facadeset.Gate`, which the kernel already
+      links for `facadeReceivers`; the custom branch needs the receivers' properties sent to it,
+      and the rejected points dropped, as `cli.customReceiverSet` does. Found while doing B6.
 - [ ] **B11 Keep facade keys stable through a map save.** The map save path sends a projected
       project's model through EPSG:4326 and back (§1.6), and a round trip renumbers the edges of
       a footprint whose vertices tie on x in the compute CRS, as an axis-aligned rectangle's do
       (`TestFacadeKeyIndicesRenumberWhenACRSRoundTripBreaksATie`; about four in ten positions
       probed). Every facade receiver on such a building is then `.moved` until
       `aconiq reattach-facades` re-keys it, and it is `proposed` again, so a person confirms it a
-      second time. Open before it starts: whether the save keeps the stored coordinates of
-      features it did not change, or the canonical start vertex is chosen so a sub-micrometre
-      shift cannot move it, which renumbers every key placed under today's rule.
+      second time. **Decided (2026-10-23): the save keeps the stored coordinates of features it
+      did not change.** `POST /api/v1/model`, given a model in another CRS, matches each incoming
+      feature to the stored one by id, and where the geometry has the same shape and every vertex
+      lies within 1 µm of the stored one after reprojection (§1.6 puts the round trip under
+      4e-9 m), keeps the stored project-CRS coordinates and facade `from` / `to`. That covers the
+      map and MCP `save_model`, and renumbers no key placed under today's rule; a re-import
+      through `aconiq import` stays uncovered. The tolerant start vertex was not chosen: any
+      tolerance has a threshold somewhere, so it makes the case rarer without removing it.
 
 ### Phase C — Windows as model features
 

@@ -240,13 +240,33 @@ export interface ModelSaveResult {
   hash: string | null;
 }
 
+/** `--facade-building`, `--facade-spacing-m` and `--facade-courtyard`. */
+export interface FacadeRunSpec {
+  buildings: string[];
+  spacingM: number;
+  includeCourtyard: boolean;
+}
+
 /** What the run dialog collects; `buildCreateRunRequest` maps it onto the API body. */
 export interface RunSpec {
   standardId: string;
   version: string;
   profile: string;
   params: Record<string, string>;
-  receiverMode: "auto-grid" | "custom";
+  receiverMode: "auto-grid" | "custom" | "facade";
+  /**
+   * The facade receiver set of a `facade` run: the buildings, each a feature
+   * id or "<street> <number>", the station spacing along each facade in
+   * metres, and whether courtyard facades carry points. Read only in that
+   * mode; it has no default spacing, as `aconiq run` has none.
+   */
+  facade?: FacadeRunSpec;
+  /**
+   * Run a normative standard over facade points nobody has confirmed, and have
+   * their counts recorded with the result. Never implied: without it such a
+   * run is refused.
+   */
+  allowUnconfirmed?: boolean;
   /**
    * The caller acknowledges that the selected standard is scaffold tier. It is
    * derived from the tier of the standard being run, never carried over from a

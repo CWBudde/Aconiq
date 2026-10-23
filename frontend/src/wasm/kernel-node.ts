@@ -27,6 +27,8 @@ import type {
   AnyComputeRequest,
   ContourRequest,
   ContourResult,
+  FacadeReceiversRequest,
+  FacadeReceiversResponse,
   FootprintMaskRequest,
   FootprintMaskResponse,
   GridComputeRequest,
@@ -73,6 +75,7 @@ interface GoRuntimeGlobal {
     estimate: (json: string) => Promise<string>;
     transform: (json: string) => Promise<string>;
     maskFootprints: (json: string) => Promise<string>;
+    facadeReceivers: (json: string) => Promise<string>;
     contours: (payload: Uint8Array, json: string) => Promise<string>;
     standards: () => string;
     loadTerrain: (data: Uint8Array, crs: string) => string;
@@ -211,6 +214,14 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
         exports.maskFootprints(JSON.stringify(req)),
       );
       return JSON.parse(json) as FootprintMaskResponse;
+    },
+    async facadeReceivers(
+      req: FacadeReceiversRequest,
+    ): Promise<FacadeReceiversResponse> {
+      const json = await withKernelErrors(
+        exports.facadeReceivers(JSON.stringify(req)),
+      );
+      return JSON.parse(json) as FacadeReceiversResponse;
     },
     async contours(
       payload: Uint8Array,
