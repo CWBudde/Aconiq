@@ -2827,11 +2827,11 @@ places only at windows. A window with a broken link or on a party wall refuses t
 the kernel, but neither draws nor edits them (C1, #138). A window whose head rises above its
 building's `height_m` is a validation warning (`window.frame.above_building`) that refuses the
 facade run when the window is sensitive, and the map validates a window's property shapes itself;
-where a window sits on its edge stays the Go code's to check (C1c, #PR). A CityGML import also
+where a window sits on its edge stays the Go code's to check (C1c, #139). A CityGML import also
 reads LoD3: each `bldg:Window` in a `WallSurface` becomes a window on the one edge whose line its
 outline lies within 0.5 m of, proposed and not sensitive, citing its `gml:id` and the file's
 sha256; doors, roof windows and openings in no facade plane or in two are reported in
-`citygml-import-report.json`, not placed (C1b, #PR). LGLN LoD2 carries building `gml:id`s but no
+`citygml-import-report.json`, not placed (C1b, #139). LGLN LoD2 carries building `gml:id`s but no
 openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
 as it must be.
