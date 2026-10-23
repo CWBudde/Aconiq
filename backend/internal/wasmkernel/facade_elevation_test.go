@@ -53,6 +53,11 @@ func TestFacadeElevationAnswersWhatFacadesetAnswers(t *testing.T) {
 	if !reflect.DeepEqual(got, want) || len(got.Facades) != 4 {
 		t.Errorf("kernel answered %+v, facadeset %+v", got, want)
 	}
+
+	// b stands against all of a's east wall, edge 1.
+	if walls := got.Facades[1].PartyWalls; !reflect.DeepEqual(walls, []geo.FacadeSpan{{FromUM: 0, ToUM: 8}}) {
+		t.Errorf("east wall party walls = %v, want all 8 m of it", walls)
+	}
 }
 
 func TestFacadeElevationRefuses(t *testing.T) {

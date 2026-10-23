@@ -156,3 +156,59 @@ func TestElevationRefuses(t *testing.T) {
 		t.Errorf("no height: err = %v", err)
 	}
 }
+
+// A neighbour against the east 6 m of the south facade makes that stretch a
+// party wall, and a window whose centre stands on it is flagged: exactly the
+// sensitive window a facade run refuses, and not the free one beside it.
+func TestElevationPartyWalls(t *testing.T) {
+	t.Parallel()
+
+	model := windowModel(
+		t,
+		windowSpec("free", 2, true, geo.ReviewStatusConfirmed),
+		windowSpec("against", 6, true, geo.ReviewStatusConfirmed),
+	)
+
+	height := 6.0
+	model.Features = append(model.Features, modelgeojson.Feature{
+		ID: "neighbour", Kind: modelgeojson.FeatureKindBuilding, GeometryType: modelgeojson.GeometryTypePolygon,
+		HeightM: &height,
+		Coordinates: []any{[]any{
+			[]any{547004.0, 5794990.0},
+			[]any{547010.0, 5794990.0},
+			[]any{547010.0, 5795000.0},
+			[]any{547004.0, 5795000.0},
+			[]any{547004.0, 5794990.0},
+		}},
+	})
+
+	elevation, err := Elevation(model, "house")
+	if err != nil {
+		t.Fatalf("Elevation: %v", err)
+	}
+
+	south := elevation.Facades[0]
+	if len(south.PartyWalls) != 1 || math.Abs(south.PartyWalls[0].FromUM-4) > 1e-9 || math.Abs(south.PartyWalls[0].ToUM-10) > 1e-9 {
+		t.Errorf("south party walls = %v, want [{4 10}]", south.PartyWalls)
+	}
+
+	for _, f := range elevation.Facades[1:] {
+		if f.PartyWalls == nil || len(f.PartyWalls) != 0 {
+			t.Errorf("facade %d party walls = %#v, want an empty list", f.Edge, f.PartyWalls)
+		}
+	}
+
+	flagged := map[string]bool{}
+	for _, w := range south.Windows {
+		flagged[w.ID] = w.OnPartyWall
+	}
+
+	if flagged["free"] || !flagged["against"] {
+		t.Errorf("on a party wall = %v, want only against", flagged)
+	}
+
+	_, _, err = Generate(houseRequest, rls19RoadID, model)
+	if err == nil || !strings.Contains(err.Error(), `"against"`) || strings.Contains(err.Error(), `"free"`) {
+		t.Errorf("Generate: err = %v, want the window against the party wall refused, and only it", err)
+	}
+}

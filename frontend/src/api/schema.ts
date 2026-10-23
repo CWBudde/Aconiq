@@ -488,6 +488,8 @@ export interface components {
                 message: string;
             }[];
             id: string;
+            /** @description The window's centre stands on a party wall of its facade, where facade mode places no point: a facade run over that facade refuses it while it is sensitive and not rejected. */
+            on_party_wall: boolean;
             /** @enum {string} */
             review_status: "proposed" | "confirmed" | "rejected";
             sensitive: boolean;
@@ -514,6 +516,11 @@ export interface components {
             from: number[];
             length_m: number;
             part: number;
+            /** @description The stretches, in metres along the facade, another building of the model stands against: facade mode places no point there, and a facade run over the facade refuses a sensitive window whose centre is on one. */
+            party_walls: {
+                from_um: number;
+                to_um: number;
+            }[];
             ring: number;
             to: number[];
             windows: components["schemas"]["ElevationWindow"][];
@@ -523,7 +530,7 @@ export interface components {
             building: string;
             /** @description CRS the model's coordinates are in. Send the compute CRS a facade run would use, so the facades are the edges its keys are numbered on. */
             crs: string;
-            /** @description A GeoJSON FeatureCollection in the v1 model schema, holding the building and its windows. */
+            /** @description A GeoJSON FeatureCollection in the v1 model schema, holding the building, its windows, and every building that could stand against it, which decide its party walls. */
             model: Record<string, never>;
         };
         FacadeElevationResponse: {

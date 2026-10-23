@@ -602,3 +602,115 @@ func TestFacadeFacingDeg(t *testing.T) {
 		}
 	}
 }
+
+// The east wall of a 10 × 8 house runs from (10, 0) to (10, 8): a party wall
+// is the stretch a neighbour east of it stands against, in metres along it.
+func TestPartyWallSpans(t *testing.T) {
+	t.Parallel()
+
+	own := rect(0, 0, 10, 8)
+	east := func(neighbours ...[]Point2D) []FacadeSpan {
+		footprints := make([][][]Point2D, 0, 1+len(neighbours))
+		footprints = append(footprints, [][]Point2D{own})
+
+		for _, n := range neighbours {
+			footprints = append(footprints, [][]Point2D{n})
+		}
+
+		return PartyWallSpans(Point2D{X: 10}, Point2D{X: 10, Y: 8}, footprints)
+	}
+
+	for name, tc := range map[string]struct {
+		got, want []FacadeSpan
+	}{
+		"free":                {east(), nil},
+		"far":                 {east(rect(10.5, 0, 20, 8)), nil},
+		"full":                {east(rect(10, 0, 20, 8)), []FacadeSpan{{0, 8}}},
+		"short":               {east(rect(10, 0, 20, 4)), []FacadeSpan{{0, 4}}},
+		"middle":              {east(rect(10, 2, 20, 5)), []FacadeSpan{{2, 5}}},
+		"two apart":           {east(rect(10, 0, 20, 2), rect(10, 6, 20, 8)), []FacadeSpan{{0, 2}, {6, 8}}},
+		"two abutting merged": {east(rect(10, 0, 20, 3), rect(10, 3, 20, 8)), []FacadeSpan{{0, 8}}},
+		"overhanging":         {east(rect(10, -5, 20, 20)), []FacadeSpan{{0, 8}}},
+	} {
+		if len(tc.got) != len(tc.want) {
+			t.Errorf("%s: spans %v, want %v", name, tc.got, tc.want)
+
+			continue
+		}
+
+		for i := range tc.want {
+			if math.Abs(tc.got[i].FromUM-tc.want[i].FromUM) > 1e-9 || math.Abs(tc.got[i].ToUM-tc.want[i].ToUM) > 1e-9 {
+				t.Errorf("%s: spans %v, want %v", name, tc.got, tc.want)
+			}
+		}
+	}
+}
+
+// The spans are the stretches Generate places no point on: every station a
+// neighbour drops lies in a span of its edge, and every one it keeps lies
+// outside them, on every edge, at a spacing fine enough to test the ends.
+func TestPartyWallSpansAreWhereGenerateDropsStations(t *testing.T) {
+	t.Parallel()
+
+	assertSpansMatchGenerate(
+		t, facadeSet(PlacementRLS19Facade, 0.1, "a"), house("a", rect(0, 0, 10, 8)),
+		house("east", rect(10, 1.3, 20, 5.7)),
+		house("west", []Point2D{{X: -4, Y: 2}, {X: 0, Y: 2.5}, {X: 0, Y: 6.2}, {X: -4, Y: 7}, {X: -4, Y: 2}}),
+		house("north", rect(3.3, 8, 4.1, 12)),
+	)
+
+	// A building standing in a courtyard against part of its walls: the
+	// courtyard ring's facades are probed outward, into the hole, too.
+	courtyard := facadeSet(PlacementRLS19Facade, 0.1, "block")
+	courtyard.IncludeCourtyard = true
+	assertSpansMatchGenerate(
+		t, courtyard, house("block", rect(0, 0, 20, 20), reversed(rect(5, 5, 15, 15))),
+		house("shed", rect(5, 5, 8, 11.5)),
+	)
+}
+
+func assertSpansMatchGenerate(t *testing.T, set FacadeReceiverSet, target FacadeBuilding, neighbours ...FacadeBuilding) {
+	t.Helper()
+
+	all := mustGenerate(t, set, target)
+	kept := make(map[string]bool)
+
+	for _, r := range mustGenerate(t, set, append([]FacadeBuilding{target}, neighbours...)...) {
+		kept[r.ID] = true
+	}
+
+	footprints := slices.Clone(target.Polygons)
+	for _, b := range neighbours {
+		footprints = append(footprints, b.Polygons...)
+	}
+
+	edges, err := FacadeEdges(target.Polygons)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dropped := 0
+
+	for _, e := range edges {
+		spans := PartyWallSpans(e.From, e.To, footprints)
+
+		for _, r := range all {
+			if r.Facade.Part != e.Part || r.Facade.Ring != e.Ring || r.Facade.Edge != e.Edge {
+				continue
+			}
+
+			in := slices.ContainsFunc(spans, func(s FacadeSpan) bool { return s.FromUM < r.StationUM && r.StationUM < s.ToUM })
+			if in == kept[r.ID] {
+				t.Errorf("ring %d edge %d: station at u = %g in a span %v, kept %v", e.Ring, e.Edge, r.StationUM, in, kept[r.ID])
+			}
+
+			if in {
+				dropped++
+			}
+		}
+	}
+
+	if dropped == 0 {
+		t.Fatal("no station was dropped: the neighbours test nothing")
+	}
+}

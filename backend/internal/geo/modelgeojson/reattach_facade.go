@@ -252,6 +252,41 @@ func newReattachIndex(model Model) reattachIndex {
 	return index
 }
 
+// footprints lists every building footprint of the model in the metric
+// frame, one per part, whatever its id: facade mode masks a party wall with
+// every building, not only those a facade can be keyed on. A footprint that
+// cannot be projected or parsed is left out; validation reports it, and a
+// facade run refuses the model.
+func (x reattachIndex) footprints(model Model) [][][]geo.Point2D {
+	var footprints [][][]geo.Point2D
+
+	for _, feature := range model.Features {
+		if featureKind(feature) != FeatureKindBuilding {
+			continue
+		}
+
+		measured := feature
+
+		if x.frame.pipeline != nil {
+			coords, err := transformCoordinates(feature.Coordinates, x.frame.pipeline)
+			if err != nil {
+				continue
+			}
+
+			measured.Coordinates = coords
+		}
+
+		polygons, err := FeaturePolygons(measured)
+		if err != nil {
+			continue
+		}
+
+		footprints = append(footprints, polygons...)
+	}
+
+	return footprints
+}
+
 func (x reattachIndex) reattach(receiver Feature, r FacadeReattachment, maxShiftM float64) FacadeReattachment {
 	if x.frame.failure != "" {
 		return unchecked(r, x.frame.failure)

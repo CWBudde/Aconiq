@@ -65,8 +65,9 @@ func openapiFacadeSchemas() map[string]any {
 						"so the facades are the edges its keys are numbered on.",
 				},
 				"model": map[string]any{
-					"type":        "object",
-					"description": "A GeoJSON FeatureCollection in the v1 model schema, holding the building and its windows.",
+					"type": "object",
+					"description": "A GeoJSON FeatureCollection in the v1 model schema, holding the building, its windows, " +
+						"and every building that could stand against it, which decide its party walls.",
 				},
 				facadeBuildingField: map[string]any{"type": "string", "description": "The building's feature id."},
 			},
@@ -99,32 +100,49 @@ func openapiFacadeSchemas() map[string]any {
 				},
 			},
 		},
-		"FacadeElevation": map[string]any{
-			"type":                 "object",
-			"additionalProperties": false,
-			"required":             []string{"part", "ring", "edge", "from", "to", "length_m", "facing_deg", "courtyard", "windows"},
-			"properties": map[string]any{
-				"part":     map[string]any{"type": "integer"},
-				"ring":     map[string]any{"type": "integer"},
-				"edge":     map[string]any{"type": "integer"},
-				"from":     pair,
-				"to":       pair,
-				"length_m": number,
-				"facing_deg": map[string]any{
-					"type":        "number",
-					"description": "The bearing the facade faces, its outward normal, in degrees clockwise from grid north in `crs`, in [0, 360).",
-				},
-				"courtyard": map[string]any{"type": "boolean", "description": "An inner ring's edge."},
-				"windows": map[string]any{
-					"type":  "array",
-					"items": map[string]any{"$ref": "#/components/schemas/ElevationWindow"},
-				},
-			},
-		},
+		"FacadeElevation":     openapiFacadeElevationSchema(number, pair),
 		"ElevationWindow":     openapiElevationWindowSchema(),
 		"FacadeWindowFrame":   openapiFacadeWindowFrameSchema(number),
 		"PlaceWindowRequest":  openapiPlaceWindowRequestSchema(),
 		"PlaceWindowResponse": openapiPlaceWindowResponseSchema(),
+	}
+}
+
+// openapiFacadeElevationSchema describes one facade of an elevation: its
+// canonical edge, its party walls and the windows keyed to it.
+func openapiFacadeElevationSchema(number, pair map[string]any) map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"part", "ring", "edge", "from", "to", "length_m", "facing_deg", "courtyard", "party_walls", "windows"},
+		"properties": map[string]any{
+			"part":     map[string]any{"type": "integer"},
+			"ring":     map[string]any{"type": "integer"},
+			"edge":     map[string]any{"type": "integer"},
+			"from":     pair,
+			"to":       pair,
+			"length_m": number,
+			"facing_deg": map[string]any{
+				"type":        "number",
+				"description": "The bearing the facade faces, its outward normal, in degrees clockwise from grid north in `crs`, in [0, 360).",
+			},
+			"courtyard": map[string]any{"type": "boolean", "description": "An inner ring's edge."},
+			"party_walls": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []string{"from_um", "to_um"},
+					"properties":           map[string]any{"from_um": number, "to_um": number},
+				},
+				"description": "The stretches, in metres along the facade, another building of the model stands against: " +
+					"facade mode places no point there, and a facade run over the facade refuses a sensitive window whose centre is on one.",
+			},
+			"windows": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"$ref": "#/components/schemas/ElevationWindow"},
+			},
+		},
 	}
 }
 
@@ -134,12 +152,17 @@ func openapiElevationWindowSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"id", facadeWindowField, "sensitive", "review_status", "findings"},
+		"required":             []string{"id", facadeWindowField, "sensitive", "review_status", "on_party_wall", "findings"},
 		"properties": map[string]any{
 			"id":              map[string]any{"type": "string"},
 			facadeWindowField: map[string]any{"$ref": "#/components/schemas/FacadeWindowFrame"},
 			"sensitive":       map[string]any{"type": "boolean"},
 			"review_status":   reviewStatusSchema(),
+			"on_party_wall": map[string]any{
+				"type": "boolean",
+				"description": "The window's centre stands on a party wall of its facade, where facade mode places no point: " +
+					"a facade run over that facade refuses it while it is sensitive and not rejected.",
+			},
 			"findings": map[string]any{
 				"type": "array",
 				"items": map[string]any{

@@ -207,9 +207,11 @@ type WindowSpec struct {
 }
 
 // WindowPlacer turns window specs into model features against one model's
-// buildings, each canonicalised once.
+// buildings, each canonicalised once. It keeps the model for Edges, which
+// finds party walls against every building's footprint.
 type WindowPlacer struct {
 	index reattachIndex
+	model Model
 }
 
 // NewWindowPlacer indexes the model's buildings in the frame validation
@@ -222,7 +224,7 @@ func NewWindowPlacer(model Model) (WindowPlacer, error) {
 		return WindowPlacer{}, errors.New(index.frame.failure)
 	}
 
-	return WindowPlacer{index: index}, nil
+	return WindowPlacer{index: index, model: model}, nil
 }
 
 // Feature places one window: its facade key from the canonical edge the spec
@@ -293,11 +295,13 @@ func (p WindowPlacer) Feature(spec WindowSpec) (Feature, error) {
 // PlacedEdge is one canonical edge of a building, as a window on it is keyed:
 // the key, with from / to in the project CRS, and the edge's length in metres
 // and the bearing it faces (geo.FacadeFacingDeg) in the frame the placer
-// measures in.
+// measures in. PartyWalls are the stretches of it another footprint of the
+// model stands against (geo.PartyWallSpans), where facade mode places nothing.
 type PlacedEdge struct {
-	Key       geo.FacadeKey
-	LengthM   float64
-	FacingDeg float64
+	Key        geo.FacadeKey
+	LengthM    float64
+	FacingDeg  float64
+	PartyWalls []geo.FacadeSpan
 }
 
 // Edges lists a building's canonical edges in canonical order: the facades a
@@ -311,6 +315,9 @@ func (p WindowPlacer) Edges(buildingRef string) ([]PlacedEdge, error) {
 
 	edges := p.index.buildings[building].edges
 	placed := make([]PlacedEdge, 0, len(edges))
+	// Projected here, not when the placer is built: placing a window never
+	// asks about party walls, and a large model is projected only once.
+	footprints := p.index.footprints(p.model)
 
 	for _, e := range edges {
 		key, err := p.index.keyOf(edgeMatch{building: building, edge: e})
@@ -318,7 +325,10 @@ func (p WindowPlacer) Edges(buildingRef string) ([]PlacedEdge, error) {
 			return nil, fmt.Errorf("building %q: %w", buildingRef, err)
 		}
 
-		placed = append(placed, PlacedEdge{Key: key, LengthM: geo.Distance(e.From, e.To), FacingDeg: geo.FacadeFacingDeg(e.From, e.To)})
+		placed = append(placed, PlacedEdge{
+			Key: key, LengthM: geo.Distance(e.From, e.To), FacingDeg: geo.FacadeFacingDeg(e.From, e.To),
+			PartyWalls: geo.PartyWallSpans(e.From, e.To, footprints),
+		})
 	}
 
 	return placed, nil
