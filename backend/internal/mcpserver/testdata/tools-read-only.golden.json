@@ -18,7 +18,7 @@
           "type": "boolean"
         },
         "facade_buildings": {
-          "description": "With receiver_mode facade: the building feature ids, from get_model, whose facades carry receivers.",
+          "description": "With receiver_mode facade: the buildings whose facades carry receivers, each a building feature id from get_model or \"\u003cstreet\u003e \u003cnumber\u003e\" as its addr:street and addr:housenumber spell it.",
           "items": {
             "type": "string"
           },

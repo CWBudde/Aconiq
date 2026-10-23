@@ -106,7 +106,7 @@ type propertyGeometry struct {
 var propertyGeometries = []propertyGeometry{
 	{container: "rls19_directional_sources", nested: []string{"centerline", "coordinates"}},
 	{container: "schall03_track_features", pointXY: [2]string{"x", "y"}},
-	{container: "facade", singleton: true, nested: []string{"from", "to"}},
+	{container: "facade", singleton: true, nested: []string{facadeFromMember, facadeToMember}},
 }
 
 // reprojectProperties returns properties whose embedded coordinates have been

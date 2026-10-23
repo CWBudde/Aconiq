@@ -406,15 +406,18 @@ a conformance defect in a normative module, not a modelling preference.
 7. **TA Lärm b):** which input carries the buildable area and the permitted storeys (a
    Bebauungsplan import does not exist), and what height practice uses there. Until then,
    `talaerm-buildable-edge` is reserved, not implemented.
-8. **SoundPLAN-imported receivers:** keep them rule-less with their SoundPLAN provenance, or map
-   them to a rule when their facade distance and floor heights match one. A mapping would let them
-   take part in the own-facade exclusion. Without it, B1's fix does not reach them unless they
-   also get a facade link.
+8. **SoundPLAN-imported receivers** (decided below).
 
 Decided in review (2026-10-22) and no longer open: the storey height `s` (Section 5) and whether
 unconfirmed points may enter a normative run
 ([Data model](#decision-what-the-run-does-with-proposed)). One rule governs both unconfirmed
 windows and assumed slab heights.
+
+Decided (2026-10-23), question 8: SoundPLAN-imported receivers stay rule-less, with their
+SoundPLAN provenance. They are not mapped to a rule when their facade distance and floor heights
+happen to match one, and `aconiq reattach-facades` does not touch them, because it re-keys only a
+receiver that already carries a facade link. The own-facade exclusion (B1) therefore does not
+reach them unless a person gives one a facade link.
 
 ## Sources
 
@@ -555,9 +558,26 @@ they are the same ring, and the order is total. The comparison is on the stored 
 values, with no tolerance: a tolerance would make the order depend on which neighbour is within
 it, and the `from` / `to` check below exists to catch a geometry that moved.
 
-- `from` / `to`: the edge's endpoints in the project CRS, as a check, not as the key. A re-import
-  whose canonical edge no longer has these endpoints (within a tolerance) is a validation
-  finding, not a silent re-attachment.
+**The indices are canonical in the compute CRS**: the project CRS when it is projected, and
+otherwise the UTM zone `aconiq run` projects a geographic project into
+(`geo.ComputeCRSForGeographic` at the centre of the model's extent). The generator runs on the
+model in that CRS, and validation, at import and again in the run, canonicalises there too.
+The order is not invariant under a change of CRS. Grid convergence turns an edge, so a
+footprint's lexicographically smallest vertex in degrees need not be its smallest in UTM. A
+CRS round trip moves each coordinate by about 1e-9 m. Where two vertices tie on x in the
+compute CRS, as the corners of an axis-aligned rectangle do, that is enough to break the tie
+the other way, start the canonical ring at the other vertex, and shift every edge index of the
+building by one. `TestFacadeKeyIndicesRenumberWhenACRSRoundTripBreaksATie` shows this for an
+EPSG:25832 → 4326 → 25832 round trip. It is never silent: the stored `from` / `to` then lie a
+whole edge away from the edge their index names, so every receiver of the building is
+`receiver.facade.moved`. `aconiq reattach-facades` re-keys them to the edge that still has
+those endpoints (Decision: what keys a building).
+
+- `from` / `to`: the edge's endpoints, as a check, not as the key. In the model they are in the
+  project CRS. In a run's receiver table they are in the run's compute CRS, like every coordinate
+  there (`docs/result-containers-v1.md`). Validation measures them in the compute CRS, in
+  metres. A re-import whose canonical edge no longer has these endpoints (within 1 mm) is a
+  validation finding, not a silent re-attachment.
 
 A balcony or loggia (`rls19-balcony`) needs a reference line that is not a footprint edge. That
 is open in Section 7 (questions 2 and 3), and the key may grow a `line` variant for it.
@@ -613,9 +633,24 @@ engagement's store, never a path that names the client.
 `id`. A receiver
 whose `building_ref` does not resolve, or whose `from` / `to` no longer match, is a validation
 finding (`receiver.facade.unresolved`, `receiver.facade.moved`) that blocks a normative run. An
-explicit re-attach action (CLI or UI) proposes matches by geometry and sets the matched points to
+explicit re-attach action proposes matches by geometry and sets the matched points to
 `review_status: proposed` until a person confirms them. A building that only has the
 `citygml-building-%03d` fallback id cannot carry facade receivers until it has a stable id.
+
+The re-attach action is `aconiq reattach-facades` (P18 B7). A receiver keeps only its key, not
+its building's old footprint, so the stored `from` / `to` are what it matches by. An edge matches
+when its start lies within `--max-shift-m` of `from` and its end within it of `to`, measured in
+metres in the compute CRS. The comparison is directed, so the neighbour across a party wall,
+which has the same edge walked the other way, never matches. The receiver's own building is
+searched first, so an edge a CRS round trip renumbered stays on it, and every other building only
+when it has no match. One match is a proposal; several are reported as ambiguous and none is
+chosen. The default `--max-shift-m` is the 1 mm validation tolerance, so by default only the same
+physical edge matches: a building re-imported under a new id, or one whose edges were renumbered.
+A wider tolerance follows real edits of a footprint, at the engineer's choice, and the endpoint
+shift and the receiver's distance from the new edge are reported for review. The command is a dry
+run without `--apply`. With it, a proposed receiver gets the new key and `review_status:
+proposed`; its id, position, height, storey and placement rule stay as they were. The model is
+written as a compare-and-write against the model the proposals were made from.
 
 ### Decision: what the run does with `proposed`
 

@@ -2799,7 +2799,13 @@ extra spaces, against `addr:street` / `addr:housenumber`, which the OSM import k
 CityGML import reads from `bldg:address` (a part inherits its building's; in the one LGLN tile
 checked, 994 of 2282 buildings carry a street and number); an address two buildings share is
 refused (#133). Validation measures a facade key's move in metres on a geographic project too
-(#133). LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
+(#133). A facade key's `part` / `ring` / `edge` are canonical in the compute CRS, and a CRS
+round trip that breaks a tie on x renumbers them, which validation reports as `.moved`
+(`facade-receivers.md`, The facade key). `aconiq reattach-facades` re-keys an unresolved or moved
+receiver to the edge whose directed endpoints still match its `from` / `to`, within 1 mm unless
+`--max-shift-m` says otherwise, refuses to choose between two, and marks it `proposed`; it is a
+CLI step only, with no API, MCP or UI path. SoundPLAN-imported receivers stay rule-less (§7
+question 8) (#134). LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
 (`bldg:Opening`), and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
 as it must be.
@@ -2856,19 +2862,15 @@ produces the candidates Phase D confirms or rejects.
       reimplement it, and the rows it builds carry the same `placement_rule` / `facade` /
       `storey` as `results.ReceiverRecord`. The browser OSM import keeps no `addr:*` tags yet, so
       selecting a building by address there needs them too.
-- [ ] **B7 Re-attach facade receivers.** A `receiver.facade.unresolved` or `.moved` finding blocks a
-      normative run and `--allow-unconfirmed` does not lift it, but nothing re-attaches such a
-      point yet: the explicit, reviewed step (CLI or UI) that proposes matches by footprint overlap
-      and the `from` / `to` endpoints and sets the matched points to `proposed`
-      (`facade-receivers.md`, Decision: what keys a building). Section 7 question 8, whether
-      SoundPLAN-imported receivers get a facade link, belongs here.
-- [ ] **B10 Say which CRS a facade key's indices are canonical in.** `part` / `ring` / `edge`
-      depend on the CRS the footprint is canonicalised in: the canonical start vertex is a
-      lexicographic minimum, and grid convergence can move it, so an edge index taken in degrees
-      can name another edge in UTM. The run and validation canonicalise in the compute CRS, but
-      `facade-receivers.md` (Data model) says only that `from` / `to` are in the project CRS.
-      State it there, and check whether a footprint with two vertices tied on x in the compute
-      CRS can renumber its edges after a CRS round trip (canonicalisation compares exactly).
+- [ ] **B11 Keep facade keys stable through a map save.** The map save path sends a projected
+      project's model through EPSG:4326 and back (§1.6), and a round trip renumbers the edges of
+      a footprint whose vertices tie on x in the compute CRS, as an axis-aligned rectangle's do
+      (`TestFacadeKeyIndicesRenumberWhenACRSRoundTripBreaksATie`; about four in ten positions
+      probed). Every facade receiver on such a building is then `.moved` until
+      `aconiq reattach-facades` re-keys it, and it is `proposed` again, so a person confirms it a
+      second time. Open before it starts: whether the save keeps the stored coordinates of
+      features it did not change, or the canonical start vertex is chosen so a sub-micrometre
+      shift cannot move it, which renumbers every key placed under today's rule.
 
 ### Phase C — Windows as model features
 

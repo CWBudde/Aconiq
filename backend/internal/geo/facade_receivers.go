@@ -516,6 +516,38 @@ func FacadeEdge(polygons [][][]Point2D, part, ring, edge int) (from, to Point2D,
 	return vertices[edge], vertices[(edge+1)%len(vertices)], true
 }
 
+// CanonicalFacadeEdge is one edge of a canonical footprint: the indices a
+// FacadeKey stores and the endpoints FacadeEdge returns for them.
+type CanonicalFacadeEdge struct {
+	Part, Ring, Edge int
+	From, To         Point2D
+}
+
+// FacadeEdges lists every edge of the canonical footprint of polygons, in
+// part, ring and edge order: what FacadeEdge answers one key at a time, for a
+// caller that has to search the edges rather than look one up.
+func FacadeEdges(polygons [][][]Point2D) ([]CanonicalFacadeEdge, error) {
+	parts, err := canonicalFootprint(polygons)
+	if err != nil {
+		return nil, err
+	}
+
+	var edges []CanonicalFacadeEdge
+
+	for p, rings := range parts {
+		for r, vertices := range rings {
+			for e := range vertices {
+				edges = append(edges, CanonicalFacadeEdge{
+					Part: p, Ring: r, Edge: e,
+					From: vertices[e], To: vertices[(e+1)%len(vertices)],
+				})
+			}
+		}
+	}
+
+	return edges, nil
+}
+
 // canonicalFootprint returns a footprint whose part, ring and edge indices do
 // not depend on how it was written (facade-receivers.md, The facade key).
 // Each ring loses its closing vertex and any repeated vertex, is oriented

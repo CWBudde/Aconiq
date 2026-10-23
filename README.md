@@ -39,19 +39,20 @@ Note that `just check-formatted` runs `treefmt --fail-on-change`, which formats 
 
 ## Command-Line Interface
 
-| Command           | Purpose                                                                                   |
-| ----------------- | ----------------------------------------------------------------------------------------- |
-| `aconiq init`     | Create a project (`.noise/`)                                                              |
-| `aconiq import`   | Import model data (see formats below)                                                     |
-| `aconiq validate` | Validate the normalized model and write a validation report                               |
-| `aconiq run`      | Run one scenario against one standard, version and profile                                |
-| `aconiq status`   | Report project, scenario and run state                                                    |
-| `aconiq compare`  | Compare results against imported SoundPLAN receiver results with a dB tolerance           |
-| `aconiq export`   | Export a run bundle, generate offline reports, and emit GIS formats                       |
-| `aconiq bench`    | Run synthetic benchmark scenarios and measure runtime, memory, cache IO and numeric drift |
-| `aconiq serve`    | Start the local HTTP API                                                                  |
-| `aconiq mcp`      | Serve the project to an AI agent over the Model Context Protocol (stdio)                  |
-| `aconiq openapi`  | Export the OpenAPI contract for the local API (default `.noise/api/openapi.v1.json`)      |
+| Command                   | Purpose                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `aconiq init`             | Create a project (`.noise/`)                                                              |
+| `aconiq import`           | Import model data (see formats below)                                                     |
+| `aconiq validate`         | Validate the normalized model and write a validation report                               |
+| `aconiq reattach-facades` | Re-key facade receivers whose building was re-imported, renumbered or moved               |
+| `aconiq run`              | Run one scenario against one standard, version and profile                                |
+| `aconiq status`           | Report project, scenario and run state                                                    |
+| `aconiq compare`          | Compare results against imported SoundPLAN receiver results with a dB tolerance           |
+| `aconiq export`           | Export a run bundle, generate offline reports, and emit GIS formats                       |
+| `aconiq bench`            | Run synthetic benchmark scenarios and measure runtime, memory, cache IO and numeric drift |
+| `aconiq serve`            | Start the local HTTP API                                                                  |
+| `aconiq mcp`              | Serve the project to an AI agent over the Model Context Protocol (stdio)                  |
+| `aconiq openapi`          | Export the OpenAPI contract for the local API (default `.noise/api/openapi.v1.json`)      |
 
 All commands accept `--project`, `--cache-dir`, `--verbose` and `--json`. A command's result goes
 to stdout and its log records to stderr; `--json` makes both JSON, and stdout then carries exactly
