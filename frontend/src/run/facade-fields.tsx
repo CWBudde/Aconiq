@@ -1,6 +1,10 @@
 import { useId } from "react";
 import { m } from "@/i18n/messages";
-import { facadeRunSpec, type FacadeDraft } from "@/run/facade-draft";
+import {
+  facadeOptInMissing,
+  facadeRunSpec,
+  type FacadeDraft,
+} from "@/run/facade-draft";
 import { Checkbox } from "@/ui/components/checkbox";
 import { Label } from "@/ui/components/label";
 import { UnitInput } from "@/ui/components/unit-input";
@@ -85,12 +89,19 @@ export function FacadeFields({
       </div>
 
       {normative ? (
-        <AllowUnconfirmedField
-          checked={draft.allowUnconfirmed}
-          onChange={(allowUnconfirmed) => {
-            onChange({ ...draft, allowUnconfirmed });
-          }}
-        />
+        <>
+          <AllowUnconfirmedField
+            checked={draft.allowUnconfirmed}
+            onChange={(allowUnconfirmed) => {
+              onChange({ ...draft, allowUnconfirmed });
+            }}
+          />
+          {facadeOptInMissing(draft, normative) ? (
+            <p className="text-xs text-warning">
+              {m.msg_facade_opt_in_required()}
+            </p>
+          ) : null}
+        </>
       ) : null}
 
       {incomplete ? (

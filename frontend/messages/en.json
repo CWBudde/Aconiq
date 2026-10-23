@@ -881,5 +881,6 @@
   "label_facade_courtyard": "Include courtyard facades",
   "label_allow_unconfirmed": "Run over unconfirmed points",
   "msg_allow_unconfirmed_help": "Generated facade points are proposed until someone confirms them. A normative run refuses them unless you opt in; their count is then recorded with the result.",
-  "msg_facade_incomplete": "Name at least one building and a spacing greater than 0 m."
+  "msg_facade_incomplete": "Name at least one building and a spacing greater than 0 m.",
+  "msg_facade_opt_in_required": "A normative standard runs over generated facade points only with this opt-in: they stay proposed until someone confirms them."
 }

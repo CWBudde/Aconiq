@@ -881,5 +881,6 @@
   "label_facade_courtyard": "Hoffassaden einbeziehen",
   "label_allow_unconfirmed": "Auch über unbestätigte Punkte rechnen",
   "msg_allow_unconfirmed_help": "Erzeugte Fassadenpunkte sind Vorschläge, bis jemand sie bestätigt. Eine normative Berechnung lehnt sie ohne diese Zustimmung ab; ihre Anzahl wird dann mit dem Ergebnis festgehalten.",
-  "msg_facade_incomplete": "Mindestens ein Gebäude und einen Abstand größer als 0 m angeben."
+  "msg_facade_incomplete": "Mindestens ein Gebäude und einen Abstand größer als 0 m angeben.",
+  "msg_facade_opt_in_required": "Eine normative Norm rechnet an erzeugten Fassadenpunkten nur mit dieser Zustimmung: Sie bleiben Vorschläge, bis jemand sie bestätigt."
 }

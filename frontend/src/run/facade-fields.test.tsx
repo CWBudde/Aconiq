@@ -4,6 +4,7 @@ import type { StandardDescriptor } from "@/api/client";
 import type { ModelReceiver } from "@/model/types";
 import {
   EMPTY_FACADE_DRAFT,
+  facadeOptInMissing,
   facadeRunSpec,
   offersFacadeMode,
   receiversCarryFacadeReview,
@@ -155,5 +156,40 @@ describe("AllowUnconfirmedField", () => {
 
     expect(onChange).toHaveBeenLastCalledWith(true);
     expect(screen.getByText(/Run over unconfirmed points/)).toBeTruthy();
+  });
+});
+
+/**
+ * Every point the generator places is `proposed`, so a normative facade run
+ * without the opt-in can only be refused. The dialog holds such a run back,
+ * and its estimate, rather than send a request whose answer is known.
+ */
+describe("facadeOptInMissing", () => {
+  it("is missing only for a normative standard without the tick", () => {
+    expect(facadeOptInMissing(EMPTY_FACADE_DRAFT, true)).toBe(true);
+    expect(
+      facadeOptInMissing(
+        { ...EMPTY_FACADE_DRAFT, allowUnconfirmed: true },
+        true,
+      ),
+    ).toBe(false);
+    expect(facadeOptInMissing(EMPTY_FACADE_DRAFT, false)).toBe(false);
+  });
+
+  it("says so beside the opt-in until it is ticked", () => {
+    const draft = { ...EMPTY_FACADE_DRAFT, buildings: "a", spacing: "4" };
+    const { rerender } = render(
+      <FacadeFields draft={draft} onChange={vi.fn()} normative={true} />,
+    );
+    expect(screen.getByText(/only with this opt-in/)).toBeTruthy();
+
+    rerender(
+      <FacadeFields
+        draft={{ ...draft, allowUnconfirmed: true }}
+        onChange={vi.fn()}
+        normative={true}
+      />,
+    );
+    expect(screen.queryByText(/only with this opt-in/)).toBeNull();
   });
 });
