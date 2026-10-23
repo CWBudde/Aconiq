@@ -536,7 +536,7 @@ export interface components {
             project_crs: string;
         };
         ModelSaveRequest: {
-            /** @description CRS of the model's coordinates, e.g. `EPSG:4326` for coordinates drawn on a web map. Like `aconiq import --input-crs`: when it differs from the project CRS every coordinate is reprojected; when omitted the coordinates are taken to be in the project CRS already. */
+            /** @description CRS of the model's coordinates, e.g. `EPSG:4326` for coordinates drawn on a web map. Like `aconiq import --input-crs`: when it differs from the project CRS every coordinate is reprojected; when omitted the coordinates are taken to be in the project CRS already. A feature that arrives, after reprojection, within 1 µm of the stored feature with its id keeps the stored coordinates, and so does its facade's `from` / `to`, so a round trip through the map renumbers no facade key. */
             crs?: string;
             /** @description Replace the model only if the stored one still has this SHA-256 — the hash the project status reports — or, as `none`, only if there is none. A mismatch is answered with 409 `hash_mismatch` and nothing is written. Omit it to replace unconditionally. */
             expected_hash?: string;

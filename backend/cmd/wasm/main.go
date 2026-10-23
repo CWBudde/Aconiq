@@ -413,6 +413,36 @@ func maskFootprintsFunc(_ js.Value, args []js.Value) any {
 	}))
 }
 
+// customReceiversFunc settles a custom run's receivers: which of the placed
+// points a run keeps, and whether it may run at all.
+// Signature: (json: string) => Promise<string> (JSON)
+//
+// A Promise like facadeReceivers, for the same reason: it validates the
+// model's facade links against every building. A refusal rejects with the
+// words `aconiq run --receiver-mode custom` refuses in.
+func customReceiversFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsReject("customReceivers: expected exactly 1 JSON string argument")
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		out, err := wasmkernel.CustomReceivers([]byte(input))
+		if err != nil {
+			reject.Invoke(js.ValueOf(err.Error()))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
 // facadeReceiversFunc places a facade run's receivers.
 // Signature: (json: string) => Promise<string> (JSON)
 //
@@ -665,6 +695,7 @@ func main() {
 	aconiq.Set("contours", js.FuncOf(contoursFunc))
 	aconiq.Set("maskFootprints", js.FuncOf(maskFootprintsFunc))
 	aconiq.Set("facadeReceivers", js.FuncOf(facadeReceiversFunc))
+	aconiq.Set("customReceivers", js.FuncOf(customReceiversFunc))
 	// The two synchronous exports that can fail go through the rethrowing
 	// wrapper; the ones below cannot fail, so they are registered bare.
 	aconiq.Set("standards", throwingSyncExport(js.FuncOf(standardsFunc)))

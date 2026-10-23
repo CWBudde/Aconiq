@@ -255,6 +255,12 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	model, err = h.keepStoredCoordinates(model, proj.CRS, req.CRS)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
 	report := modelgeojson.Validate(model)
 	if report.ErrorCount() > 0 {
 		writeAPIError(w, http.StatusBadRequest, apiError{
@@ -296,6 +302,43 @@ func (h Handler) handleModelSave(w http.ResponseWriter, r *http.Request) {
 		Hash:                 hash,
 		Warnings:             validationIssuesResponse(report.Warnings),
 	})
+}
+
+// keptCoordinateToleranceM is how far a vertex may arrive from where it is
+// stored and still count as not moved: 1 µm, far above the nanometres an
+// EPSG:4326 round trip moves it (PLAN.md §1.6) and far below anything a
+// person moves on a map.
+const keptCoordinateToleranceM = 1e-6
+
+// keepStoredCoordinates puts the stored coordinates back on every feature a
+// save through another CRS did not move (modelgeojson.KeepStoredCoordinates).
+// The map draws a projected project in EPSG:4326, and the nanometres the trip
+// back adds would renumber the facade keys of a footprint whose vertices tie
+// on x. A save in the project CRS, or into a project with no model yet, is
+// taken as it arrived.
+func (h Handler) keepStoredCoordinates(model modelgeojson.Model, projectCRS, requestCRS string) (modelgeojson.Model, error) {
+	if requestCRS == "" || requestCRS == projectCRS {
+		return model, nil
+	}
+
+	raw, err := h.store.ReadModel()
+	if err != nil {
+		var appErr *domainerrors.AppError
+		if stderrors.As(err, &appErr) && appErr.Kind == domainerrors.KindNotFound {
+			return model, nil
+		}
+
+		return modelgeojson.Model{}, fmt.Errorf("read the stored model: %w", err)
+	}
+
+	// A stored model that no longer parses is about to be replaced; there is
+	// nothing in it to keep.
+	stored, parseErr := modelgeojson.Normalize(raw, projectCRS, modelSaveSourceLabel)
+	if parseErr == nil {
+		model = modelgeojson.KeepStoredCoordinates(model, stored, keptCoordinateToleranceM)
+	}
+
+	return model, nil
 }
 
 // expectedHashField names the precondition in a JSON body and in a multipart

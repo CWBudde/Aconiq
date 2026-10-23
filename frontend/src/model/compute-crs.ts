@@ -399,6 +399,9 @@ function walkWorkspace(
           visit,
         ) as ModelReceiver["geometry"]["coordinates"],
       },
+      ...(receiver.properties === undefined
+        ? undefined
+        : { properties: mapFacadeEndpoints(receiver.properties, visit) }),
     })),
     calcArea:
       workspace.calcArea === null
@@ -414,6 +417,40 @@ function walkWorkspace(
             },
           },
   };
+}
+
+/**
+ * The members of a receiver's `facade` property that hold a coordinate: the
+ * endpoints of the building edge it was placed on, in the project CRS like
+ * the rest of the model. `geo/modelgeojson/reproject.go` moves the same two
+ * (its `propertyGeometries` facade entry); left behind, the kernel's
+ * facade-link check would measure degrees against metres.
+ */
+const FACADE_ENDPOINTS = ["from", "to"] as const;
+
+/**
+ * A receiver's properties with its facade endpoints moved by `visit`, rebuilt
+ * rather than written through. Anything that is not an object holding them is
+ * carried through as it is, as the Go side carries a malformed facade:
+ * validation reports it, and inventing a coordinate here would hide it.
+ */
+function mapFacadeEndpoints(
+  properties: Record<string, unknown>,
+  visit: CoordinateVisit,
+): Record<string, unknown> {
+  const facade = properties.facade;
+  if (typeof facade !== "object" || facade === null || Array.isArray(facade)) {
+    return properties;
+  }
+
+  const moved: Record<string, unknown> = { ...facade };
+  for (const member of FACADE_ENDPOINTS) {
+    if (member in moved) {
+      moved[member] = mapCoordinates(moved[member], visit);
+    }
+  }
+
+  return { ...properties, facade: moved };
 }
 
 /**

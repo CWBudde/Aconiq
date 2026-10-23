@@ -1,5 +1,6 @@
 import type { FacadeRunSpec } from "@/api/backend";
 import type { StandardDescriptor } from "@/api/client";
+import type { ModelReceiver } from "@/model/types";
 
 /**
  * What the facade fields hold while the user types: the text as entered, so a
@@ -52,6 +53,35 @@ export function facadeRunSpec(draft: FacadeDraft): FacadeRunSpec | null {
     spacingM: spacing,
     includeCourtyard: draft.includeCourtyard,
   };
+}
+
+/**
+ * The receiver properties `facadeset.AttributesOf` reads. A receiver carrying
+ * any of them is facade-linked, and a normative custom run over it may be
+ * refused as unconfirmed.
+ */
+const FACADE_REVIEW_PROPERTIES = [
+  "placement_rule",
+  "facade",
+  "storey",
+  "slab_height_source",
+  "review_status",
+] as const;
+
+/**
+ * Whether a custom run over these receivers could need the unconfirmed-point
+ * opt-in. It only decides whether the dialog offers the checkbox; whether the
+ * run is refused is the kernel's or the server's call, as it is for a facade
+ * run.
+ */
+export function receiversCarryFacadeReview(
+  receivers: readonly ModelReceiver[],
+): boolean {
+  return receivers.some((receiver) =>
+    FACADE_REVIEW_PROPERTIES.some(
+      (key) => receiver.properties !== undefined && key in receiver.properties,
+    ),
+  );
 }
 
 /**

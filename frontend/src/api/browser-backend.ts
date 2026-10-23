@@ -30,7 +30,7 @@ import type {
 import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
 import { resolveComputeModel } from "@/model/compute-crs";
-import { featuresToGeoJSON } from "@/model/to-geojson";
+import { featuresToGeoJSON, receiversToGeoJSON } from "@/model/to-geojson";
 import {
   gridShape,
   gridSizingFromParams,
@@ -54,6 +54,7 @@ import type {
   AnyComputeRequest,
   Barrier,
   Building,
+  CustomReceiversResponse,
   FacadeReceiversResponse,
   FootprintMaskRequest,
   PointReceiver,
@@ -1408,17 +1409,25 @@ function browserUnits(): Record<string, string> {
 }
 
 /**
- * The run's receiver table. A facade run's rows carry the placement rule,
- * facade and storey the kernel placed them with — as a set, the one shape
+ * What the kernel answered about a listed run's receivers: the facade points it
+ * placed (`facadeReceivers`), or the hand-placed points it kept
+ * (`customReceivers`). Both carry each receiver's table attributes and the
+ * counts `aconiq run` records.
+ */
+type ListedReceivers = FacadeReceiversResponse | CustomReceiversResponse;
+
+/**
+ * The run's receiver table. A facade-linked row carries the placement rule,
+ * facade and storey the kernel answered with — as a set, the one shape
  * `results.ReceiverTable` accepts — joined by id, as `cli.receiverSet`'s
  * `tableRecord` joins them on the CLI side.
  */
 function buildReceiverTable(
   outputs: ReceiverOutput[],
-  facade: FacadeReceiversResponse | null,
+  listed: ListedReceivers | null,
 ): ReceiverTable {
   const attributes = new Map(
-    (facade?.receivers ?? []).map((receiver) => [receiver.id, receiver]),
+    (listed?.receivers ?? []).map((receiver) => [receiver.id, receiver]),
   );
   return {
     indicator_order: BROWSER_INDICATORS,
@@ -1434,7 +1443,9 @@ function buildReceiverTable(
           LrDay: output.Indicators.lr_day,
           LrNight: output.Indicators.lr_night,
         },
-        ...(placed
+        ...(placed?.placement_rule !== undefined &&
+        placed.facade !== undefined &&
+        placed.storey !== undefined
           ? {
               placement_rule: placed.placement_rule,
               facade: placed.facade,
@@ -1644,7 +1655,7 @@ async function computeRLS19Road(
   const prepared = await prepareRLS19Request(kernel, spec, {
     maskFootprints: true,
   });
-  const { request, layout, maskedCells, projection, facade } = prepared;
+  const { request, layout, maskedCells, projection, listed } = prepared;
   const { sources, parking, buildings, receiverCount } = prepared;
 
   // The lock spans the compute, not just the persist: the id is minted
@@ -1671,7 +1682,7 @@ async function computeRLS19Road(
       throw cancelledRun("The run was cancelled before its results were saved");
     }
 
-    const receiverTable = buildReceiverTable(outputs, facade);
+    const receiverTable = buildReceiverTable(outputs, listed);
     const receiverCSV = buildReceiverTableCSV(receiverTable);
     const rasterMetadata: RasterMetadata = {
       width: layout.width,
@@ -1716,12 +1727,13 @@ async function computeRLS19Road(
       ...(maskedCells.length > 0
         ? { grid_masked_cells: maskedCells.length }
         : undefined),
-      // A facade run records what `aconiq run` records for it: the counts of
-      // unconfirmed points, each only when non-zero, and the request that
-      // defined the set — the rule, the buildings an address resolved to, the
-      // spacing, and the opt-in. The CLI writes the latter to provenance; a
-      // browser run has no provenance file, so the summary carries them.
-      ...(facade !== null ? facadeSummary(facade) : undefined),
+      // A listed run records what `aconiq run` records for it: the counts of
+      // unconfirmed and rejected points, each only when non-zero, and the
+      // request that defined the set — for a facade run the rule, the
+      // buildings an address resolved to and the spacing — and the opt-in.
+      // The CLI writes the latter to provenance; a browser run has no
+      // provenance file, so the summary carries them.
+      ...(listed !== null ? listedSummary(listed) : undefined),
       reporting_precision_db: 0.1,
       // The CLI's own key names (`cli.provenanceProjectCRSKey` and
       // `provenanceComputeCRSKey`), because results are expressed in the
@@ -1904,18 +1916,20 @@ async function computeRLS19Road(
   });
 }
 
-/** The summary keys of a facade run; see `cli.receiverSet.decorateSummary`. */
-function facadeSummary(
-  facade: FacadeReceiversResponse,
+/** The summary keys of a listed run; see `cli.receiverSet.decorateSummary`. */
+function listedSummary(
+  listed: ListedReceivers,
 ): Record<string, string | number> {
+  const rejected = "rejected_count" in listed ? listed.rejected_count : 0;
   return {
-    ...facade.metadata,
-    ...(facade.proposed_count > 0
-      ? { facade_proposed_count: facade.proposed_count }
+    ...listed.metadata,
+    ...(listed.proposed_count > 0
+      ? { facade_proposed_count: listed.proposed_count }
       : undefined),
-    ...(facade.assumed_height_count > 0
-      ? { facade_assumed_height_count: facade.assumed_height_count }
+    ...(listed.assumed_height_count > 0
+      ? { facade_assumed_height_count: listed.assumed_height_count }
       : undefined),
+    ...(rejected > 0 ? { facade_rejected_count: rejected } : undefined),
   };
 }
 
@@ -1963,9 +1977,9 @@ async function prepareRLS19Request(
   // Exactly one of these: the receivers the user placed or the kernel placed
   // on facades, or the grid that names the automatic ones.
   let listedReceivers: PointReceiver[] | null = null;
-  // A facade run's receivers as the kernel placed them, with the attributes
-  // their table rows carry.
-  let facade: FacadeReceiversResponse | null = null;
+  // A listed run's receivers as the kernel placed or kept them, with the
+  // attributes their table rows carry.
+  let listed: ListedReceivers | null = null;
   let receiverGrid: ReceiverGrid | null = null;
   let layout: BrowserGridLayout;
   // Indices of the grid receivers standing inside a building. They are
@@ -1985,15 +1999,43 @@ async function prepareRLS19Request(
     // whatever order the model gives it. The receiver table's row order is
     // what `output_hash` is computed over, so sorting here made the same model
     // hash differently in the two targets.
-    listedReceivers = storeReceivers.map((r) => ({
+    const placed = storeReceivers.map((r) => ({
       id: r.id,
       point: { x: r.geometry.coordinates[0], y: r.geometry.coordinates[1] },
       height_m: r.heightM,
     }));
+    // Which of them a run keeps is the kernel's call — `facadeset.Custom` and
+    // `Gate`, which `aconiq run --receiver-mode custom` calls — never this
+    // file's: a rejected point is dropped, and a normative run over
+    // unconfirmed points, a broken facade link or another standard's rule
+    // refuses here, before a run id is minted, in the CLI's words. The facade
+    // links are checked against the buildings, so those go too, all of them
+    // and in the compute CRS, where `resolveComputeModel` moved the links'
+    // endpoints along with everything else.
+    listed = await kernel.customReceivers({
+      crs: projection.computeCRS,
+      model: {
+        type: "FeatureCollection",
+        features: [
+          ...featuresToGeoJSON(
+            features.filter((feature) => feature.kind === "building"),
+          ).features,
+          ...receiversToGeoJSON(storeReceivers).features,
+        ],
+      },
+      standard_id: spec.standardId,
+      receivers: placed,
+      ...(spec.allowUnconfirmed === true ? { allow_unconfirmed: true } : {}),
+    });
+    listedReceivers = listed.receivers.map((receiver) => ({
+      id: receiver.id,
+      point: receiver.point,
+      height_m: receiver.height_m,
+    }));
     // Not a grid, and the layout says so: explicit receivers are points the
     // user placed, and no cell size describes where they sit. The shape still
     // describes the raster truthfully — one column, one row per receiver.
-    layout = { width: 1, height: storeReceivers.length };
+    layout = { width: 1, height: listedReceivers.length };
   } else if (spec.receiverMode === "facade") {
     if (spec.facade === undefined) {
       throw new Error(
@@ -2008,7 +2050,7 @@ async function prepareRLS19Request(
     // canonical in the CRS they are validated in. A refusal (an unconfirmed
     // normative run, an address two buildings share) rejects here, before a
     // run id is minted, in the words the CLI refuses in.
-    facade = await kernel.facadeReceivers({
+    const facade = await kernel.facadeReceivers({
       crs: projection.computeCRS,
       model: featuresToGeoJSON(
         features.filter((feature) => feature.kind === "building"),
@@ -2019,6 +2061,7 @@ async function prepareRLS19Request(
       ...(spec.facade.includeCourtyard ? { include_courtyard: true } : {}),
       ...(spec.allowUnconfirmed === true ? { allow_unconfirmed: true } : {}),
     });
+    listed = facade;
     listedReceivers = facade.receivers.map((receiver) => ({
       id: receiver.id,
       point: receiver.point,
@@ -2120,7 +2163,7 @@ async function prepareRLS19Request(
     layout,
     maskedCells,
     projection,
-    facade,
+    listed,
     sources,
     parking,
     buildings,

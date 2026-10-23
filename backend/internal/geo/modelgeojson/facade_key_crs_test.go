@@ -56,7 +56,9 @@ func renumberingPositions() [][2]float64 {
 // That is never silent. The stored from / to no longer match the edge their
 // index names, so validation reports every receiver of the building as moved,
 // both on the round-tripped model and on the model held in EPSG:4326, and a
-// normative run refuses them until they are re-attached.
+// normative run refuses them until they are re-attached. The map's save path
+// avoids it by keeping the stored coordinates (KeepStoredCoordinates); this
+// test pins what Reproject itself does.
 func TestFacadeKeyIndicesRenumberWhenACRSRoundTripBreaksATie(t *testing.T) {
 	t.Parallel()
 

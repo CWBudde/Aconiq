@@ -114,9 +114,9 @@ PLAN.md           Roadmap and the single status source
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
 `window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `rls19RoadGrid`, `estimate`, `transform`,
-`maskFootprints`, `facadeReceivers`, `standards`, `contours`, `loadTerrain`, `clearTerrain`,
-`defaultConfig`, `health` and `projectStatus`. Eight of those carry contracts worth knowing before
-writing browser-mode code:
+`maskFootprints`, `facadeReceivers`, `customReceivers`, `standards`, `contours`, `loadTerrain`,
+`clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Nine of those carry contracts worth
+knowing before writing browser-mode code:
 
 - **`rls19RoadGrid`** is the export an automatic-grid run uses. The request names its receivers as
   `grid: {origin_x, origin_y, resolution_m, width, height, height_m}` instead of a `receivers`
@@ -161,6 +161,13 @@ writing browser-mode code:
   keys it answers with are canonical in the CRS validation reads them in, and each receiver comes
   back with the `placement_rule` / `facade` / `storey` of its receiver table row. The frontend must
   not place a facade point of its own.
+- **`customReceivers`** settles a custom run's receivers through `facadeset.Custom` and
+  `facadeset.Gate`, the calls `aconiq run --receiver-mode custom` makes: a `rejected` point is
+  dropped and counted, and a normative run over unconfirmed points, a broken facade link or another
+  standard's `placement_rule` is refused in the run's words. It takes the buildings and receivers,
+  with their properties, already in the compute CRS, and `compute-crs.ts` moves a receiver's
+  `facade.from` / `to` there with it, as `modelgeojson.Reproject` does. The frontend must not
+  decide which hand-placed point a run may assess.
 - **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
   GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
   and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the

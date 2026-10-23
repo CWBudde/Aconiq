@@ -2809,7 +2809,13 @@ question 8) (#134). Browser mode places facade receivers too: the WASM kernel's
 `facadeReceivers` runs `internal/facadeset`, the package the CLI's facade mode now calls, so
 both targets select, place and refuse alike; the run dialog offers the mode in both modes where
 the standard's descriptor publishes a `facade_placement_rule`, with the opt-in for a normative
-standard; and the browser OSM import keeps `addr:*` (#135). LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
+standard; and the browser OSM import keeps `addr:*` (#135). Browser custom mode drops and refuses what
+`aconiq run --receiver-mode custom` does, through the kernel's `customReceivers`
+(`facadeset.Custom` and `Gate`), with a receiver's `facade.from` / `to` moved into the compute CRS
+alongside it. A save through another CRS (the map's EPSG:4326, MCP `save_model`) keeps the stored
+coordinates of every feature that arrived within 1 µm of them, and a facade's stored `from` / `to`,
+so a round trip renumbers no facade key; a re-import through `aconiq import` is not covered
+(#136). LGLN LoD2 and CityGML carry building `gml:id`s but no openings: windows are LoD3
 (`bldg:Opening`), and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
 as it must be.
@@ -2855,32 +2861,11 @@ as it must be.
       collections are CC BY 4.0 as the viewer says, and whether an access path exists that gives
       an image id to cite or a file to hash. Until then it is look only.
 
-### Phase B — Facade receivers from geometry alone
+### Phase B — Facade receivers from geometry alone — closed
 
 Deterministic, no imagery. This is useful by itself (a facade level map per building), and it
-produces the candidates Phase D confirms or rejects.
-
-- [ ] **B12 Browser custom mode skips the unconfirmed gate.** `prepareRLS19Request` builds a
-      custom run's receivers from id, point and height alone (`browser-backend.ts`, the `custom`
-      branch), so a normative browser run over hand-placed points carrying
-      `review_status: proposed`, a broken facade link or another standard's `placement_rule`
-      computes where the CLI refuses (B3). The gate is `facadeset.Gate`, which the kernel already
-      links for `facadeReceivers`; the custom branch needs the receivers' properties sent to it,
-      and the rejected points dropped, as `cli.customReceiverSet` does. Found while doing B6.
-- [ ] **B11 Keep facade keys stable through a map save.** The map save path sends a projected
-      project's model through EPSG:4326 and back (§1.6), and a round trip renumbers the edges of
-      a footprint whose vertices tie on x in the compute CRS, as an axis-aligned rectangle's do
-      (`TestFacadeKeyIndicesRenumberWhenACRSRoundTripBreaksATie`; about four in ten positions
-      probed). Every facade receiver on such a building is then `.moved` until
-      `aconiq reattach-facades` re-keys it, and it is `proposed` again, so a person confirms it a
-      second time. **Decided (2026-10-23): the save keeps the stored coordinates of features it
-      did not change.** `POST /api/v1/model`, given a model in another CRS, matches each incoming
-      feature to the stored one by id, and where the geometry has the same shape and every vertex
-      lies within 1 µm of the stored one after reprojection (§1.6 puts the round trip under
-      4e-9 m), keeps the stored project-CRS coordinates and facade `from` / `to`. That covers the
-      map and MCP `save_model`, and renumbers no key placed under today's rule; a re-import
-      through `aconiq import` stays uncovered. The tolerant start vertex was not chosen: any
-      tolerance has a threshold somewhere, so it makes the case rarer without removing it.
+produces the candidates Phase D confirms or rejects. Every item has landed (#126 to #136); what
+exists is summarised above.
 
 ### Phase C — Windows as model features
 

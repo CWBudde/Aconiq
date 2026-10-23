@@ -350,6 +350,42 @@ export interface FacadeReceiversResponse {
 }
 
 /**
+ * `wasmkernel.CustomReceiversRequest`: the receivers a custom run would compute
+ * at, as the browser placed them in model order, and the model they stand in —
+ * buildings and receivers with their properties, already in `crs`, the run's
+ * compute CRS. `allow_unconfirmed` is `--allow-unconfirmed`.
+ */
+export interface CustomReceiversRequest {
+  crs: string;
+  model: unknown;
+  standard_id: string;
+  receivers: PointReceiver[];
+  allow_unconfirmed?: boolean;
+}
+
+/**
+ * One receiver a custom run keeps, with the facade attributes its table row
+ * carries — present only as the complete set a row accepts.
+ */
+export interface CustomReceiver extends PointReceiver {
+  placement_rule?: string;
+  facade?: KernelReceiverFacade;
+  storey?: number;
+}
+
+/**
+ * The kept set, in the order a run computes it — rejected points dropped —
+ * with the counts and the provenance keys `aconiq run` records for it.
+ */
+export interface CustomReceiversResponse {
+  receivers: CustomReceiver[];
+  proposed_count: number;
+  assumed_height_count: number;
+  rejected_count: number;
+  metadata: Record<string, string>;
+}
+
+/**
  * Where the coordinates ended up. `target_crs` is the CRS they are actually in,
  * which for an `auto` request is the resolved zone. `applied` is false only
  * when nothing moved, and then `coordinates` are the input values verbatim.

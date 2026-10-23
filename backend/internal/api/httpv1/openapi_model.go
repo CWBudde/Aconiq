@@ -104,7 +104,10 @@ func openapiModelSchemas() map[string]any {
 					"type": "string",
 					"description": "CRS of the model's coordinates, e.g. `EPSG:4326` for coordinates drawn on a " +
 						"web map. Like `aconiq import --input-crs`: when it differs from the project CRS every " +
-						"coordinate is reprojected; when omitted the coordinates are taken to be in the project CRS already.",
+						"coordinate is reprojected; when omitted the coordinates are taken to be in the project CRS already. " +
+						"A feature that arrives, after reprojection, within 1 µm of the stored feature with its id keeps " +
+						"the stored coordinates, and so does its facade's `from` / `to`, so a round trip through the map " +
+						"renumbers no facade key.",
 				},
 				"model": map[string]any{
 					"type":        "object",

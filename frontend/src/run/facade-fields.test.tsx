@@ -1,14 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { StandardDescriptor } from "@/api/client";
+import type { ModelReceiver } from "@/model/types";
 import {
   EMPTY_FACADE_DRAFT,
   facadeOptInMissing,
   facadeRunSpec,
   offersFacadeMode,
+  receiversCarryFacadeReview,
   type FacadeDraft,
 } from "./facade-draft";
-import { FacadeFields } from "./facade-fields";
+import { AllowUnconfirmedField, FacadeFields } from "./facade-fields";
 
 function standard(rule?: string): StandardDescriptor {
   return {
@@ -109,6 +111,51 @@ describe("FacadeFields", () => {
     );
     expect(screen.queryByText(/Run over unconfirmed points/)).toBeNull();
     expect(screen.queryByText(/Name at least one building/)).toBeNull();
+  });
+});
+
+/**
+ * A custom run is refused over unconfirmed facade points just as a facade run
+ * is, so the dialog offers the same opt-in there — but only when a placed
+ * receiver carries something the gate reads. A plain receiver set never needs
+ * it, and a checkbox about facade points would only be noise.
+ */
+describe("receiversCarryFacadeReview", () => {
+  const receiver = (properties?: Record<string, unknown>): ModelReceiver => ({
+    id: "r",
+    heightM: 4,
+    ...(properties === undefined ? {} : { properties }),
+    geometry: { type: "Point", coordinates: [0, 0] },
+  });
+
+  it("is true once a receiver carries a facade property", () => {
+    expect(receiversCarryFacadeReview([receiver()])).toBe(false);
+    expect(
+      receiversCarryFacadeReview([receiver({ bimschv16_area_category: "WA" })]),
+    ).toBe(false);
+    for (const key of [
+      "placement_rule",
+      "facade",
+      "storey",
+      "slab_height_source",
+      "review_status",
+    ]) {
+      expect(
+        receiversCarryFacadeReview([receiver(), receiver({ [key]: 1 })]),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("AllowUnconfirmedField", () => {
+  it("reports the tick", () => {
+    const onChange = vi.fn();
+    render(<AllowUnconfirmedField checked={false} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    expect(onChange).toHaveBeenLastCalledWith(true);
+    expect(screen.getByText(/Run over unconfirmed points/)).toBeTruthy();
   });
 });
 

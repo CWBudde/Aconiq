@@ -222,6 +222,79 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     ).rejects.toThrow(/--allow-unconfirmed/);
   });
 
+  // Hand-placed facade points, as a person keeps them after reviewing what the
+  // kernel placed: the confirmed one is computed with its table attributes, the
+  // rejected one never enters the run, and a proposed one refuses a normative
+  // run without the opt-in.
+  it("decides which custom receivers a run keeps, as `aconiq run` does", async () => {
+    const kernel = await getNodeKernel();
+    const placed = await kernel.facadeReceivers({
+      crs: "EPSG:25832",
+      model: facadeModel,
+      standard_id: "rls19-road",
+      buildings: ["house"],
+      spacing_m: 4,
+      allow_unconfirmed: true,
+    });
+    const [first, second] = placed.receivers;
+    if (first === undefined || second === undefined) {
+      throw new Error("expected at least two facade receivers");
+    }
+
+    const asFeature = (receiver: typeof first, status: string) => ({
+      type: "Feature",
+      id: receiver.id,
+      properties: {
+        kind: "receiver",
+        height_m: receiver.height_m,
+        placement_rule: receiver.placement_rule,
+        facade: receiver.facade,
+        storey: receiver.storey,
+        slab_height_source: receiver.slab_height_source,
+        review_status: status,
+      },
+      geometry: {
+        type: "Point",
+        coordinates: [receiver.point.x, receiver.point.y],
+      },
+    });
+    const reviewed = (firstStatus: string) => ({
+      type: "FeatureCollection",
+      features: [
+        ...facadeModel.features,
+        asFeature(first, firstStatus),
+        asFeature(second, "rejected"),
+      ],
+    });
+    const receivers = [first, second].map(({ id, point, height_m }) => ({
+      id,
+      point,
+      height_m,
+    }));
+
+    const kept = await kernel.customReceivers({
+      crs: "EPSG:25832",
+      model: reviewed("confirmed"),
+      standard_id: "rls19-road",
+      receivers,
+    });
+
+    expect(kept.receivers.map((receiver) => receiver.id)).toEqual([first.id]);
+    expect(kept.rejected_count).toBe(1);
+    expect(kept.proposed_count).toBe(0);
+    expect(kept.receivers[0]?.facade).toEqual(first.facade);
+    expect(kept.receivers[0]?.placement_rule).toBe("rls19-facade");
+
+    await expect(
+      kernel.customReceivers({
+        crs: "EPSG:25832",
+        model: reviewed("proposed"),
+        standard_id: "rls19-road",
+        receivers,
+      }),
+    ).rejects.toThrow(/--allow-unconfirmed/);
+  });
+
   it("rejects a malformed request rather than answering it", async () => {
     const kernel = await getNodeKernel();
 

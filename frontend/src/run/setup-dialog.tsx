@@ -55,12 +55,13 @@ import { RunEstimateNote } from "@/run/run-estimate-note";
 
 import { gridSizingFromParams } from "@/model/grid-estimate";
 import { ParameterField } from "@/run/parameter-field";
-import { FacadeFields } from "@/run/facade-fields";
+import { AllowUnconfirmedField, FacadeFields } from "@/run/facade-fields";
 import {
   EMPTY_FACADE_DRAFT,
   facadeOptInMissing,
   facadeRunSpec,
   offersFacadeMode,
+  receiversCarryFacadeReview,
 } from "@/run/facade-draft";
 import {
   parameterDescription,
@@ -262,6 +263,9 @@ function RunSetupForm({
   const { data: standards, isLoading, error } = useStandards();
   const createRun = useCreateRun();
   const receiverCount = useModelStore((s) => s.receivers.length);
+  const receiversFacadeLinked = useModelStore((s) =>
+    receiversCarryFacadeReview(s.receivers),
+  );
   const calcArea = useModelStore((s) => s.calcArea);
   // Where a run reads the saved model, starting one with unsaved edits would
   // silently compute the project's older copy. The same save the header
@@ -324,6 +328,12 @@ function RunSetupForm({
   // The opt-in is offered, and so sent, only for a normative standard: the
   // only kind whose run refuses unconfirmed points.
   const facadeNormative = selectedStandard?.evidence_tier === "normative";
+  // A custom run is refused over unconfirmed facade points too, so it offers
+  // the same opt-in — where a placed receiver carries anything the gate reads.
+  const unconfirmedOptInOffered =
+    facadeNormative &&
+    (receiverMode === "facade" ||
+      (receiverMode === "custom" && receiversFacadeLinked));
   // A facade run the backend can only refuse is not sent, nor estimated:
   // incomplete, or normative over generated (always proposed) points without
   // the opt-in.
@@ -386,9 +396,7 @@ function RunSetupForm({
     ...(receiverMode === "facade" && facadeSpec !== null
       ? { facade: facadeSpec }
       : {}),
-    ...(receiverMode === "facade" &&
-    facadeNormative &&
-    facadeDraft.allowUnconfirmed
+    ...(unconfirmedOptInOffered && facadeDraft.allowUnconfirmed
       ? { allowUnconfirmed: true }
       : {}),
     // Derived from the tier of the standard being run, so a normative one
@@ -681,6 +689,14 @@ function RunSetupForm({
               <p className="text-xs text-muted-foreground">
                 {m.msg_receivers_placed({ count: receiverCount })}
               </p>
+            ) : null}
+            {receiverMode === "custom" && unconfirmedOptInOffered ? (
+              <AllowUnconfirmedField
+                checked={facadeDraft.allowUnconfirmed}
+                onChange={(allowUnconfirmed) => {
+                  setFacadeDraft((draft) => ({ ...draft, allowUnconfirmed }));
+                }}
+              />
             ) : null}
             {receiverMode === "custom" &&
             backend.capabilities.runsAgainstSavedModel ? (

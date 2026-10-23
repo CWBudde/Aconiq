@@ -30,6 +30,8 @@ import {
   type ContourResult,
   type FacadeReceiversRequest,
   type FacadeReceiversResponse,
+  type CustomReceiversRequest,
+  type CustomReceiversResponse,
   type FootprintMaskRequest,
   type FootprintMaskResponse,
   type GridComputeRequest,
@@ -471,6 +473,18 @@ export class KernelClient implements AconiqKernel {
     return JSON.parse(
       KernelClient.json(value, "facadeReceivers"),
     ) as FacadeReceiversResponse;
+  }
+
+  async customReceivers(
+    req: CustomReceiversRequest,
+  ): Promise<CustomReceiversResponse> {
+    const value = await this.call(
+      (id) => ({ id, method: "customReceivers", json: JSON.stringify(req) }),
+      [],
+    );
+    return JSON.parse(
+      KernelClient.json(value, "customReceivers"),
+    ) as CustomReceiversResponse;
   }
 
   async contours(

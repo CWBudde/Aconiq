@@ -571,7 +571,13 @@ building by one. `TestFacadeKeyIndicesRenumberWhenACRSRoundTripBreaksATie` shows
 EPSG:25832 → 4326 → 25832 round trip. It is never silent: the stored `from` / `to` then lie a
 whole edge away from the edge their index names, so every receiver of the building is
 `receiver.facade.moved`. `aconiq reattach-facades` re-keys them to the edge that still has
-those endpoints (Decision: what keys a building).
+those endpoints (Decision: what keys a building). The map's save does not take that path: it
+draws a projected project in EPSG:4326, and `POST /api/v1/model`, given a model in another CRS,
+puts the stored project-CRS coordinates back on every feature that arrived within 1 µm of where
+it is stored, matched by id, and keeps a facade's stored `from` / `to` the same way
+(`modelgeojson.KeepStoredCoordinates`). A save that moved nothing leaves the model byte for byte
+as it was, and a receiver moved on the map keeps the endpoints of its building's edge. A
+re-import through `aconiq import --input-crs` is not covered: it replaces the model.
 
 - `from` / `to`: the edge's endpoints, as a check, not as the key. In the model they are in the
   project CRS. In a run's receiver table they are in the run's compute CRS, like every coordinate

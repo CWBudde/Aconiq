@@ -15,7 +15,11 @@ import { isRunCancelled } from "./backend";
 import * as storage from "./browser-storage";
 import { useModelStore } from "@/model/model-store";
 import type { ModelFeature } from "@/model/types";
-import type { ComputeRequest, GridComputeRequest } from "@/wasm/types";
+import type {
+  ComputeRequest,
+  CustomReceiversRequest,
+  GridComputeRequest,
+} from "@/wasm/types";
 import { CancelledErrorName } from "@/wasm/kernel-client";
 import type { KernelProgressListener } from "@/wasm/protocol";
 
@@ -100,6 +104,16 @@ vi.mock("@/wasm/kernel", () => ({
           target_crs: req.source_crs,
           applied: false,
           coordinates: req.coordinates,
+        }),
+      // A custom run keeps every receiver here: which ones it may compute at
+      // is `browser-backend.test.ts`'s subject, not cancellation's.
+      customReceivers: (req: CustomReceiversRequest) =>
+        Promise.resolve({
+          receivers: req.receivers,
+          proposed_count: 0,
+          assumed_height_count: 0,
+          rejected_count: 0,
+          metadata: {},
         }),
       standards: () =>
         Promise.resolve([
