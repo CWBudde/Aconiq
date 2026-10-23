@@ -114,9 +114,9 @@ PLAN.md           Roadmap and the single status source
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
 `window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `rls19RoadGrid`, `estimate`, `transform`,
-`maskFootprints`, `facadeReceivers`, `customReceivers`, `standards`, `contours`, `loadTerrain`,
-`clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Nine of those carry contracts worth
-knowing before writing browser-mode code:
+`maskFootprints`, `facadeReceivers`, `customReceivers`, `facadeElevation`, `standards`, `contours`,
+`loadTerrain`, `clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Ten of those carry
+contracts worth knowing before writing browser-mode code:
 
 - **`rls19RoadGrid`** is the export an automatic-grid run uses. The request names its receivers as
   `grid: {origin_x, origin_y, resolution_m, width, height, height_m}` instead of a `receivers`
@@ -168,6 +168,13 @@ knowing before writing browser-mode code:
   with their properties, already in the compute CRS, and `compute-crs.ts` moves a receiver's
   `facade.from` / `to` there with it, as `modelgeojson.Reproject` does. The frontend must not
   decide which hand-placed point a run may assess.
+- **`facadeElevation`** unfolds one building for the facade elevation view through
+  `facadeset.Elevation`, which `POST /api/v1/facades/elevation` answers from too: each canonical
+  edge with its length and the bearing it faces, the storeys' slab heights facade mode places at,
+  and the windows keyed to each edge with their validation findings, the ones whose key names no
+  edge listed apart. The frontend sends the model in the compute CRS a facade run would use
+  (`resolveComputeModel`), so the edges are numbered as the run's keys are. It must not grow a
+  facade frame of its own: which edge, how long and which way `u` runs are the Go code's.
 - **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
   GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
   and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the
@@ -271,6 +278,7 @@ POST /api/v1/import/terrain            replace the DTM (`expected_hash` makes it
 GET  /api/v1/model                     the saved model, optionally reprojected (`?crs=`)
 POST /api/v1/model                     replace the project model (the `aconiq import` GeoJSON contract; `expected_hash` as above)
 POST /api/v1/transform                 project a coordinate batch between two CRS (`target_crs: "auto"` picks the zone `aconiq run` would)
+POST /api/v1/facades/elevation         one building of the model in the body, unfolded into facades, storeys and windows
 GET  /api/v1/openapi.json
 ```
 

@@ -544,6 +544,17 @@ building's base, the lowest z of its `GroundSurface`. The window arrives `propos
 sha256 as evidence (`kind: citygml-lod3`). Doors, skylights and an opening in no facade plane or
 in two are reported in the import report, not placed.
 
+The map shows windows in a building's facade elevation (C2), opened from the building's editor.
+It lists the building's facades, one canonical edge each, by the bearing their outward normal
+faces and their length, and draws the chosen one as its length by the building's `height_m`, with
+a line at each storey's ceiling slab — the heights facade mode places a storey's points at — and
+each window as its rectangle, the windows a finding flags outlined and the windows whose key no
+longer names an edge of the building listed apart. None of it is measured in the browser: the
+frontend projects the model into the compute CRS a facade run would use and asks
+`facadeset.Elevation`, through the WASM kernel's `facadeElevation` in browser mode and
+`POST /api/v1/facades/elevation` in API mode, so the edges are numbered and measured as the run
+numbers and measures them.
+
 The point is derived at run time, never stored. In facade receiver mode, a facade that carries a
 sensitive window that is not `rejected` gets one point per such window instead of its station
 grid; a facade without one keeps its stations. The point stands at the window centre's `u`, and:

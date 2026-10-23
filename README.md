@@ -71,7 +71,8 @@ one JSON document. `--help` and `--version` are the exceptions: they print text 
   the existing model rather than replacing it (see below)
 - **CSV** attribute/traffic tables merged into model features via `--traffic`
 - **Window lists** (CSV or JSON, each window a rectangle in its facade's frame) via `--windows` —
-  merged into the existing model; `--receiver-mode facade` places its points at the sensitive ones
+  merged into the existing model; `--receiver-mode facade` places its points at the sensitive ones,
+  and the map draws them in each building's facade elevation
 - **GeoTIFF** digital terrain models via `--terrain`, queried with bilinear interpolation
 
 The official **LGLN LoD2 buildings** for a box in Lower Saxony load through `aconiq import
