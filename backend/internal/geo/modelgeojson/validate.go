@@ -106,6 +106,22 @@ func featureKind(feature Feature) string {
 	return strings.ToLower(strings.TrimSpace(feature.Kind))
 }
 
+// geometryOnlyKinds are the kinds whose one feature-level rule is their
+// geometry type. Neither carries height_m.
+//
+// A calculation area is a footprint on the ground bounding the receiver grid,
+// not an object sound travels around. MultiPolygon is refused rather than
+// reduced to its envelope: a disjoint multi-part area would silently become one
+// bbox spanning the gap between its parts, computing receivers over ground the
+// user drew around. Widening this later is cheap; the reverse is not.
+//
+// A window's size is its frame property; its Point marks the window centre on
+// the facade, for the map only.
+var geometryOnlyKinds = map[string]string{
+	FeatureKindCalcArea: GeometryTypePolygon,
+	FeatureKindWindow:   GeometryTypePoint,
+}
+
 func validateFeature(feature Feature, report *ValidationReport) []point2 {
 	id := feature.ID
 	kind := featureKind(feature)
@@ -141,19 +157,17 @@ func validateFeature(feature Feature, report *ValidationReport) []point2 {
 		if geomType != GeometryTypePolygon {
 			addError(report, "groundzone.geometry.invalid", id, "ground-zone geometry must be Polygon")
 		}
-	case FeatureKindCalcArea:
-		// No height_m check: a calculation area is a footprint on the ground
-		// bounding the receiver grid, not an object sound travels around.
-		//
-		// MultiPolygon is refused rather than reduced to its envelope. A
-		// disjoint multi-part area would silently become one bbox spanning the
-		// gap between its parts, computing receivers over ground the user drew
-		// around. Widening this later is cheap; the reverse is not.
-		if geomType != GeometryTypePolygon {
-			addError(report, "calcarea.geometry.invalid", id, "calc-area geometry must be Polygon")
-		}
 	default:
-		addError(report, "feature.kind.invalid", id, "kind must be one of "+strings.Join(FeatureKinds, "|"))
+		want, ok := geometryOnlyKinds[kind]
+		if !ok {
+			addError(report, "feature.kind.invalid", id, "kind must be one of "+strings.Join(FeatureKinds, "|"))
+
+			break
+		}
+
+		if geomType != want {
+			addError(report, strings.ReplaceAll(kind, "-", "")+".geometry.invalid", id, kind+" geometry must be "+want)
+		}
 	}
 
 	points, ok := validateGeometry(feature, report)

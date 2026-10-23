@@ -37,6 +37,12 @@ const (
 // middle and receiver regions of each path instead of reading one global
 // number three times. Like calc-area it is a footprint on the ground rather
 // than an object sound travels around, so it carries no height_m.
+//
+// FeatureKindWindow is a window in a building's facade: a rectangle in the
+// facade frame of the edge its facade key names, with a Point at its centre on
+// the facade plane for the map. No standard computes over it; facade receiver
+// mode places a sensitive window's Immissionsort from it (validate_window.go).
+// Its size is a property, so it carries no height_m either.
 const (
 	FeatureKindSource     = "source"
 	FeatureKindBuilding   = "building"
@@ -44,6 +50,7 @@ const (
 	FeatureKindReceiver   = "receiver"
 	FeatureKindCalcArea   = "calc-area"
 	FeatureKindGroundZone = "ground-zone"
+	FeatureKindWindow     = "window"
 )
 
 // FeatureKinds is every kind schema v1 accepts. The validator builds its
@@ -56,6 +63,7 @@ var FeatureKinds = []string{
 	FeatureKindReceiver,
 	FeatureKindCalcArea,
 	FeatureKindGroundZone,
+	FeatureKindWindow,
 }
 
 // Property names schema v1 reads off a feature, for the kinds whose payload is
@@ -76,6 +84,19 @@ const (
 	PropertyStationUM        = "station_u_m"
 	PropertySlabHeightSource = "slab_height_source"
 	PropertyReviewStatus     = "review_status"
+	// PropertyWindow is a window's rectangle in its facade frame,
+	// {u_m, sill_z_m, width_m, height_m}: on a window feature its shape, on a
+	// receiver placed at a window the window it was placed at.
+	PropertyWindow = "window"
+	// PropertySensitive marks a window of a schutzbedürftiger Raum, the
+	// windows facade receiver mode places at. Absent is false: the window is
+	// kept as context.
+	PropertySensitive = "sensitive"
+	// PropertyEvidence lists where a window's placement came from.
+	PropertyEvidence = "evidence"
+	// PropertyHeightBasis names what a receiver placed at a window took its
+	// height from (geo.HeightBasis*).
+	PropertyHeightBasis = "height_basis"
 )
 
 // Source geometry classes accepted by model schema v1 (Feature.SourceType).

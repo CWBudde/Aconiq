@@ -70,9 +70,20 @@ type facadeTracker struct {
 	pending   []pendingFacade
 }
 
+// pendingFacade is a well-formed key awaiting resolution: a receiver's, or a
+// window's together with its frame, which must also fit the edge.
 type pendingFacade struct {
-	receiverID string
-	key        geo.FacadeKey
+	featureID string
+	kind      string
+	key       geo.FacadeKey
+	frame     *geo.FacadeWindow
+}
+
+// facadeCodes are the warning codes of a receiver's and of a window's
+// facade link.
+var facadeCodes = map[string]struct{ unresolved, moved string }{
+	FeatureKindReceiver: {CodeReceiverFacadeUnresolved, CodeReceiverFacadeMoved},
+	FeatureKindWindow:   {CodeWindowFacadeUnresolved, CodeWindowFacadeMoved},
 }
 
 // observe records a building, or checks a receiver's facade properties and
@@ -93,7 +104,12 @@ func (t *facadeTracker) observe(feature Feature, featureID string, report *Valid
 	case FeatureKindReceiver:
 		key, ok := validateFacadeProperties(feature, featureID, report)
 		if ok {
-			t.pending = append(t.pending, pendingFacade{receiverID: featureID, key: key})
+			t.pending = append(t.pending, pendingFacade{featureID: featureID, kind: FeatureKindReceiver, key: key})
+		}
+	case FeatureKindWindow:
+		key, frame, ok := validateWindowProperties(feature, featureID, report)
+		if ok {
+			t.pending = append(t.pending, pendingFacade{featureID: featureID, kind: FeatureKindWindow, key: key, frame: &frame})
 		}
 	}
 }
@@ -109,11 +125,13 @@ func (t *facadeTracker) resolve(model Model, report *ValidationReport) {
 	frame := newMetricFrame(model)
 
 	for _, p := range t.pending {
+		codes := facadeCodes[p.kind]
+
 		building, ok := t.buildings[p.key.BuildingRef]
 		if !ok {
-			addWarning(report, CodeReceiverFacadeUnresolved, p.receiverID, fmt.Sprintf(
-				"receiver %q: facade.building_ref %q names no %s feature in the model",
-				p.receiverID, p.key.BuildingRef, FeatureKindBuilding,
+			addWarning(report, codes.unresolved, p.featureID, fmt.Sprintf(
+				"%s %q: facade.building_ref %q names no %s feature in the model",
+				p.kind, p.featureID, p.key.BuildingRef, FeatureKindBuilding,
 			))
 
 			continue
@@ -121,11 +139,41 @@ func (t *facadeTracker) resolve(model Model, report *ValidationReport) {
 
 		reason, moved := frame.facadeMoved(building, p.key)
 		if moved {
-			addWarning(report, CodeReceiverFacadeMoved, p.receiverID, fmt.Sprintf(
-				"receiver %q: facade (part %d, ring %d, edge %d) of building %q %s",
-				p.receiverID, p.key.Part, p.key.Ring, p.key.Edge, p.key.BuildingRef, reason,
+			addWarning(report, codes.moved, p.featureID, fmt.Sprintf(
+				"%s %q: facade (part %d, ring %d, edge %d) of building %q %s",
+				p.kind, p.featureID, p.key.Part, p.key.Ring, p.key.Edge, p.key.BuildingRef, reason,
 			))
+
+			continue
 		}
+
+		if p.frame != nil {
+			frame.checkWindowFits(p, report)
+		}
+	}
+}
+
+// checkWindowFits reports a window its edge no longer has room for. The key
+// matched its edge, so the stored from / to measure the edge's length.
+func (f metricFrame) checkWindowFits(p pendingFacade, report *ValidationReport) {
+	from, to := p.key.From, p.key.To
+
+	if f.pipeline != nil {
+		var fromErr, toErr error
+
+		from, fromErr = f.pipeline.ApplyPoint(from)
+		to, toErr = f.pipeline.ApplyPoint(to)
+
+		if errors.Join(fromErr, toErr) != nil {
+			return
+		}
+	}
+
+	if length := geo.Distance(from, to); !p.frame.Fits(length) {
+		addWarning(report, CodeWindowOutsideFacade, p.featureID, fmt.Sprintf(
+			"window %q: u_m %g + width_m %g runs past the end of its %.3f m facade (part %d, ring %d, edge %d) of building %q",
+			p.featureID, p.frame.UM, p.frame.WidthM, length, p.key.Part, p.key.Ring, p.key.Edge, p.key.BuildingRef,
+		))
 	}
 }
 
