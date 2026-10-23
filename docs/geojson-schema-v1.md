@@ -257,20 +257,28 @@ frame: `u` along the edge from its start vertex, `z` above the ground.
 - The id must not contain `/`, which separates the parts of the receiver ids
   placed at it.
 
-| Code                       | Level   | Raised when                                                                       |
-| -------------------------- | ------- | --------------------------------------------------------------------------------- |
-| `window.invalid`           | error   | A property above is missing or does not have its shape; one issue per property.   |
-| `window.geometry.invalid`  | error   | The geometry is not a `Point`.                                                    |
-| `window.facade.unresolved` | warning | `facade.building_ref` names no `building` feature in the model.                   |
-| `window.facade.moved`      | warning | The building exists, but the key no longer names its edge (as for a receiver).    |
-| `window.frame.outside`     | warning | `u_m + width_m` runs more than 1 mm past the end of the edge, measured in metres. |
+| Code                          | Level   | Raised when                                                                                          |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `window.invalid`              | error   | A property above is missing or does not have its shape; one issue per property.                      |
+| `window.geometry.invalid`     | error   | The geometry is not a `Point`.                                                                       |
+| `window.facade.unresolved`    | warning | `facade.building_ref` names no `building` feature in the model.                                      |
+| `window.facade.moved`         | warning | The building exists, but the key no longer names its edge (as for a receiver).                       |
+| `window.frame.outside`        | warning | `u_m + width_m` runs more than 1 mm past the end of the edge, measured in metres.                    |
+| `window.frame.above_building` | warning | `sill_z_m + height_m` is more than 1 mm above the building's `height_m`: no storey holds the window. |
 
 The warnings are warnings for a facade receiver's reason: a re-import that
 changed the building has to succeed. `aconiq run --receiver-mode facade`
 refuses to place at a sensitive window that has one, for every standard, and
 `aconiq reattach-facades` re-keys a window as it re-keys a receiver. Unlike a
 receiver's position, the window's `Point` moves with the key: to its centre on
-the new edge.
+the new edge. It moves no window down, so one above its building stays for a
+person to correct.
+
+The map checks a window's properties and geometry itself, so `window.invalid`
+and `window.geometry.invalid` show before a save. The four warnings measure
+the window against its edge in the metric frame, which only the Go code
+holds: browser mode meets them when its facade run hands the model to the
+WASM kernel, which refuses in the CLI's words.
 
 No standard computes over a window. `aconiq run --receiver-mode facade` places
 one point per sensitive window that is not `rejected`, in place of the station
@@ -282,6 +290,24 @@ inherits the window's `review_status`, and the run records
 `facade_window_count` and `facade_window_height_basis` in its provenance. A
 sensitive window on a party wall refuses the run rather than being dropped. `aconiq import --windows` writes window
 features from a window list.
+
+A CityGML import writes them too, from each LoD3 `bldg:Window` in a
+`WallSurface` (P18 C1b). The window goes on the one edge of its building
+whose line every vertex of its outline lies within 0.5 m of (a window sits in
+its reveal) and inside whose span it falls; `u_m` and `width_m` are the
+outline's extent along that edge, `sill_z_m` and `height_m` its extent in z
+above the building's base, the lowest z of its `GroundSurface` (of its
+geometry, for a building or part without one). It is
+`proposed` and not `sensitive`, since LoD3 says where a window is and never
+what the room behind it is used for, and its `evidence` is
+`{kind: "citygml-lod3", source_id: <gml:id>, content_sha256: <the file's>}`.
+A window in a roof or another non-wall surface, one in no facade plane or in
+two, one without an inline 3D outline (an `xlink:href` or implicit geometry
+is not followed), and every `bldg:Door` are not imported. A window across a
+vertex where a wall turns by nothing, splitting it into two collinear edges,
+lies wholly on neither and is not imported either. The
+`openings` section of `.noise/model/citygml-import-report.json` and the
+command's output name each one and why.
 
 ## Standard-Specific Geometry Conventions
 
@@ -582,6 +608,7 @@ bump would be a stamp nobody consults. v1 has been widened in place before, for
 - **2026-10-23 — `window` feature kind.** Windows in their facade's frame,
   from which facade receiver mode places its points (P18 C1). The same
   older-binary limitation the `calc-area` entry below records applies.
+  The same day, `window.frame.above_building` joined its codes (P18 C1c).
 
 - **2026-09-19 — `ground-zone` feature kind.** Ground-category areas, from which
   ISO 9613-2 resolves G per region instead of reading one global number three
