@@ -296,6 +296,38 @@ describe("httpBackend.placeWindow", () => {
   });
 });
 
+describe("httpBackend.rectifyFacade", () => {
+  it("posts the point pairs, and nothing else, to the rectify endpoint", async () => {
+    const answer = {
+      matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      inverse: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    };
+    const mock = stubFetch(jsonResponse(answer));
+    const req = {
+      image_points: [
+        [0, 10],
+        [10, 10],
+        [10, 0],
+        [0, 0],
+      ] as [number, number][],
+      facade_points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [0, 10],
+      ] as [number, number][],
+    };
+
+    const result = await httpBackend.rectifyFacade(req);
+
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/facades/rectify"));
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify(req));
+    expect(result).toEqual(answer);
+  });
+});
+
 describe("httpBackend.transformCoordinates", () => {
   it("posts the flat batch to the transform endpoint and returns what it answers", async () => {
     const mock = stubFetch(

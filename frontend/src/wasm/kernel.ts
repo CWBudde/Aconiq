@@ -37,6 +37,8 @@ import {
   type FacadeReceiversResponse,
   type PlaceWindowRequest,
   type PlaceWindowResponse,
+  type PhotoTransform,
+  type Rectification,
   type CustomReceiversRequest,
   type CustomReceiversResponse,
   type FootprintMaskRequest,
@@ -158,6 +160,14 @@ export interface AconiqKernel {
    * building does not have, a window its edge has no room for.
    */
   placeWindow(req: PlaceWindowRequest): Promise<PlaceWindowResponse>;
+  /**
+   * The homography that draws a facade photo onto the elevation view, by
+   * `facadeset.Rectify` — the code `POST /api/v1/facades/rectify` answers
+   * from, and the solve window validation checks photo evidence with. It
+   * rejects corners that are not a convex quadrilateral in the order given,
+   * and a mirrored photo. It takes the point pairs only, never the photo.
+   */
+  rectifyFacade(req: PhotoTransform): Promise<Rectification>;
   /**
    * Trace ISO-band contour lines over a run's raster.
    *
@@ -376,6 +386,7 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
     customReceivers: (req) => client.customReceivers(req),
     facadeElevation: (req) => client.facadeElevation(req),
     placeWindow: (req) => client.placeWindow(req),
+    rectifyFacade: (req) => client.rectifyFacade(req),
     contours: (payload, req) => client.contours(payload, req),
     standards: () => client.standards(),
     defaultConfig: () => client.defaultConfig(),

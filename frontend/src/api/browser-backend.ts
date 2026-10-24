@@ -61,6 +61,8 @@ import type {
   FootprintMaskRequest,
   PlaceWindowRequest,
   PlaceWindowResponse,
+  PhotoTransform,
+  Rectification,
   PointReceiver,
   ReceiverGrid,
   ReceiverOutput,
@@ -2271,6 +2273,11 @@ export const browserBackend = {
   async placeWindow(req: PlaceWindowRequest): Promise<PlaceWindowResponse> {
     const kernel = await getKernel();
     return kernel.placeWindow(req);
+  },
+
+  async rectifyFacade(req: PhotoTransform): Promise<Rectification> {
+    const kernel = await getKernel();
+    return kernel.rectifyFacade(req);
   },
 
   async getHealth(): Promise<HealthResponse> {

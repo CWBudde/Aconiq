@@ -33,6 +33,8 @@ import type {
   FacadeReceiversResponse,
   PlaceWindowRequest,
   PlaceWindowResponse,
+  PhotoTransform,
+  Rectification,
   CustomReceiversRequest,
   CustomReceiversResponse,
   FootprintMaskRequest,
@@ -85,6 +87,7 @@ interface GoRuntimeGlobal {
     customReceivers: (json: string) => Promise<string>;
     facadeElevation: (json: string) => Promise<string>;
     placeWindow: (json: string) => Promise<string>;
+    rectifyFacade: (json: string) => Promise<string>;
     contours: (payload: Uint8Array, json: string) => Promise<string>;
     standards: () => string;
     loadTerrain: (data: Uint8Array, crs: string) => string;
@@ -253,6 +256,12 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
         exports.placeWindow(JSON.stringify(req)),
       );
       return JSON.parse(json) as PlaceWindowResponse;
+    },
+    async rectifyFacade(req: PhotoTransform): Promise<Rectification> {
+      const json = await withKernelErrors(
+        exports.rectifyFacade(JSON.stringify(req)),
+      );
+      return JSON.parse(json) as Rectification;
     },
     async contours(
       payload: Uint8Array,

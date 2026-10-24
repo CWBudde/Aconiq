@@ -66,6 +66,7 @@ interface AconiqExports {
   customReceivers(json: string): Promise<string>;
   facadeElevation(json: string): Promise<string>;
   placeWindow(json: string): Promise<string>;
+  rectifyFacade(json: string): Promise<string>;
   contours(payload: Uint8Array, json: string): Promise<string>;
   standards(): string;
   loadTerrain(data: Uint8Array, crs: string): string;
@@ -243,6 +244,8 @@ async function dispatch(call: KernelCall): Promise<string | null> {
       return exports.facadeElevation(call.json);
     case "placeWindow":
       return exports.placeWindow(call.json);
+    case "rectifyFacade":
+      return exports.rectifyFacade(call.json);
     case "contours":
       // The bytes arrived transferred, so this view owns them outright; Go
       // copies them in with js.CopyBytesToGo either way.

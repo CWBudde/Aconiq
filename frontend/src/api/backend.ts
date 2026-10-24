@@ -33,6 +33,8 @@ import type {
   FacadeElevationResponse,
   PlaceWindowRequest,
   PlaceWindowResponse,
+  PhotoTransform,
+  Rectification,
   TransformRequest,
   TransformResponse,
 } from "@/wasm/types";
@@ -439,6 +441,13 @@ export interface Backend {
    * it.
    */
   placeWindow(req: PlaceWindowRequest): Promise<PlaceWindowResponse>;
+  /**
+   * The homography that draws a facade photo onto the elevation view, solved
+   * from the four corners clicked in it by `facadeset.Rectify` — the WASM
+   * kernel in browser mode, `POST /api/v1/facades/rectify` in API mode. Only
+   * the point pairs are sent; the photo stays in the browser.
+   */
+  rectifyFacade(req: PhotoTransform): Promise<Rectification>;
   /**
    * Listen to the project's event stream until the returned function is
    * called. The stream reconnects on its own while it is open; the listener

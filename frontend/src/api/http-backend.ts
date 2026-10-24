@@ -31,6 +31,7 @@ import type { GeoJSONFeatureCollection } from "@/model/types";
 import type {
   FacadeElevationResponse,
   PlaceWindowResponse,
+  Rectification,
   TransformResponse,
 } from "@/wasm/types";
 import type { RunEstimate } from "@/model/run-estimate";
@@ -359,6 +360,10 @@ export const httpBackend: Backend = {
 
   placeWindow(req) {
     return postJSON<PlaceWindowResponse>("/api/v1/facades/window", req);
+  },
+
+  rectifyFacade(req) {
+    return postJSON<Rectification>("/api/v1/facades/rectify", req);
   },
 
   subscribeProjectEvents(listener) {
