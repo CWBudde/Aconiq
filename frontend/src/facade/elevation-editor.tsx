@@ -170,7 +170,8 @@ export function ElevationEditor({
   // A photo is rectified onto the facade's frame as it was measured. When
   // the model changes the facade's length or height, the corners stand for a
   // rectangle it no longer has, so they are asked for again rather than
-  // recorded on the next window.
+  // recorded on the next window. Another facade is another editor: the
+  // dialog keys it by building and edge.
   const frameKey = `${String(facade.length_m)}x${String(heightM)}`;
   const rectifiedFor = useRef(frameKey);
   useEffect(() => {

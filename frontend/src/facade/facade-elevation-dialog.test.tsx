@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { m } from "@/i18n/messages";
 import { getLocale, overwriteGetLocale } from "@/i18n/runtime";
@@ -9,6 +15,7 @@ import type {
   ElevationWindow,
   FacadeElevationRequest,
   FacadeElevationResponse,
+  Rectification,
   TransformRequest,
 } from "@/wasm/types";
 import FacadeElevationDialog from "./facade-elevation-dialog";
@@ -34,6 +41,12 @@ vi.mock("@/api/backend", () => ({
       kernel.asked.push(req);
       return kernel.answer();
     },
+    // A straight-on photo, 100 px to the metre.
+    rectifyFacade: (): Promise<Rectification> =>
+      Promise.resolve({
+        matrix: [0.01, 0, 0, 0, -0.01, 9, 0, 0, 1],
+        inverse: [100, 0, 0, 0, -100, 900, 0, 0, 1],
+      }),
     // `auto` leaves a projected workspace where it is, as the kernel does.
     transformCoordinates: (req: TransformRequest) =>
       Promise.resolve({
@@ -124,6 +137,9 @@ beforeEach(() => {
   resetComputeModelCacheForTests();
   kernel.asked = [];
   kernel.answer = () => Promise.resolve(house);
+  // jsdom has no object URLs; the editor only needs one to hand to an <img>.
+  URL.createObjectURL = vi.fn(() => "blob:facade-photo");
+  URL.revokeObjectURL = vi.fn();
   useModelStore.getState().reset();
   useModelStore.getState().loadModel({
     features: [
@@ -230,6 +246,62 @@ describe("FacadeElevationDialog", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByText(m.msg_facade_no_windows())).toBeInTheDocument();
+  });
+
+  it("drops a facade's photo when another building's facade takes its place", async () => {
+    const { rerender } = renderDialog();
+    await screen.findByLabelText(m.label_facade_select());
+    fireEvent.change(screen.getByLabelText(m.label_photo_file()), {
+      target: { files: [new File(["not really a jpeg"], "IMG_0042.jpg")] },
+    });
+    await screen.findByRole("region", { name: m.heading_photo_corners() });
+    const labels = [
+      m.label_corner_bottom_left(),
+      m.label_corner_bottom_right(),
+      m.label_corner_top_right(),
+      m.label_corner_top_left(),
+    ];
+    const corners = [
+      [0, 900],
+      [1000, 900],
+      [1000, 0],
+      [0, 0],
+    ];
+    labels.forEach((corner, i) => {
+      fireEvent.change(
+        screen.getByLabelText(m.label_photo_corner_x({ corner })),
+        { target: { value: String(corners[i]?.[0]) } },
+      );
+      fireEvent.change(
+        screen.getByLabelText(m.label_photo_corner_y({ corner })),
+        { target: { value: String(corners[i]?.[1]) } },
+      );
+    });
+    fireEvent.change(screen.getByLabelText(m.label_photo_reference()), {
+      target: { value: "store/0042" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_rectify_photo() }),
+    );
+    await waitFor(() => {
+      expect(document.querySelector("img[data-facade-photo]")).not.toBeNull();
+    });
+
+    // A barn of the same size: its first facade has the house's length and
+    // height, and the house's photo stands for none of it.
+    kernel.answer = () => Promise.resolve({ ...house, building_ref: "barn" });
+    rerender(
+      <FacadeElevationDialog buildingId="barn" open onOpenChange={() => {}} />,
+    );
+    await waitFor(() => {
+      expect(kernel.asked).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(document.querySelector("img[data-facade-photo]")).toBeNull();
+    });
+    expect(
+      screen.queryByRole("button", { name: m.action_remove_photo() }),
+    ).toBeNull();
   });
 
   it("hatches the party walls and names the windows on them", async () => {
