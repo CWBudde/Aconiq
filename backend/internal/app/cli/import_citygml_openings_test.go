@@ -25,11 +25,19 @@ func TestImportCityGMLLoD3Windows(t *testing.T) {
 
 	projectDir := t.TempDir()
 	mustRunCLI(t, "--project", projectDir, "init", "--name", "LoD3", "--crs", "EPSG:25832")
-	mustRunCLI(t, "--project", projectDir, "import", "--input", testdataPath(t, "p18c1b", "lod3-house.gml"))
+	out := runCLIOutput(t, "--project", projectDir, "import", "--input", testdataPath(t, "p18c1b", "lod3-house.gml"))
 
 	report := readCityGMLReport(t, projectDir)
 	if o := report.Openings; o == nil || o.Windows != 4 || o.Imported != 2 || o.Doors != 1 || len(o.Skipped) != 2 {
 		t.Fatalf("openings report = %+v, want 4 windows, 2 imported, 1 door, 2 skipped", report.Openings)
+	}
+
+	if doors := report.Openings.SkippedDoors; len(doors) != 1 || doors[0].ID != "door-1" || doors[0].Reason == "" {
+		t.Errorf("skipped doors = %+v, want door-1 named, with its reason", doors)
+	}
+
+	if !strings.Contains(out, "skipped door door-1: ") {
+		t.Errorf("import output does not name the door:\n%s", out)
 	}
 
 	skipped := map[string]string{}

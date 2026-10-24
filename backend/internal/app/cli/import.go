@@ -553,6 +553,10 @@ func printCityGMLImportReport(cmd *cobra.Command, r citygmlimport.ImportReport) 
 		for _, s := range o.Skipped {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  skipped window %s: %s\n", s.ID, s.Reason)
 		}
+
+		for _, s := range o.SkippedDoors {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  skipped door %s: %s\n", s.ID, s.Reason)
+		}
 	}
 }
 

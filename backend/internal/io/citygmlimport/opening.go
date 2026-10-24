@@ -26,15 +26,20 @@ type Opening struct {
 // OpeningReport summarises a document's openings. Windows counts every
 // bldg:Window, Imported the ones that became window features, which only the
 // caller placing them knows; Doors counts the bldg:Doors, which are not
-// imported. Skipped names each window that was not imported, and why.
+// imported. Skipped names each window that was not imported, and why, and
+// SkippedDoors each door.
 type OpeningReport struct {
-	Windows  int              `json:"windows"`
-	Imported int              `json:"imported"`
-	Doors    int              `json:"doors_not_imported"`
-	Skipped  []SkippedOpening `json:"skipped_windows,omitempty"`
+	Windows      int              `json:"windows"`
+	Imported     int              `json:"imported"`
+	Doors        int              `json:"doors_not_imported"`
+	Skipped      []SkippedOpening `json:"skipped_windows,omitempty"`
+	SkippedDoors []SkippedOpening `json:"skipped_doors,omitempty"`
 }
 
-// SkippedOpening records a window that was not imported.
+// skipDoor is why a bldg:Door is not imported.
+const skipDoor = "it is a door: only windows are placed on a facade"
+
+// SkippedOpening records a window or door that was not imported.
 type SkippedOpening struct {
 	ID       string `json:"id"`
 	Building string `json:"building,omitempty"`
@@ -266,20 +271,21 @@ func (w *openingWalk) base(z float64) {
 }
 
 // close counts a closed opening and keeps a window that can be placed,
-// recording why one cannot.
+// recording why one cannot, and names a door.
 func (w *openingWalk) close(o pendingOpening) {
+	building := ""
+	if o.owner != nil {
+		building = o.owner.id
+	}
+
 	if o.door {
 		w.report.Doors++
+		w.report.SkippedDoors = append(w.report.SkippedDoors, SkippedOpening{ID: o.id, Building: building, Reason: skipDoor})
 
 		return
 	}
 
 	w.report.Windows++
-
-	building := ""
-	if o.owner != nil {
-		building = o.owner.id
-	}
 
 	var reason string
 

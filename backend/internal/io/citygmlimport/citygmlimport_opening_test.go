@@ -90,6 +90,14 @@ func TestReadOpeningsFromLoD3(t *testing.T) {
 	if !strings.Contains(reasons["flat"], "shed: ") || !strings.Contains(reasons["flat"], "2D") {
 		t.Errorf("flat = %q, want it refused for stating no z", reasons["flat"])
 	}
+
+	if len(report.SkippedDoors) != 1 {
+		t.Fatalf("skipped doors = %+v, want door-1 named", report.SkippedDoors)
+	}
+
+	if door := report.SkippedDoors[0]; door.ID != "door-1" || door.Building != "house" || !strings.Contains(door.Reason, "door") {
+		t.Errorf("door = %+v, want door-1 of the house, with the reason it is not imported", door)
+	}
 }
 
 // A document without a single opening reports none: LoD2, as LGLN
