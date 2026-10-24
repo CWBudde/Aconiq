@@ -301,13 +301,13 @@ export function ElevationEditor({
       case "move":
         setGesture({
           ...gesture,
-          frame: movedFrame(gesture.origin, du, dz, facade.length_m),
+          frame: movedFrame(gesture.origin, du, dz, facade.length_m, heightM),
         });
         break;
       case "resize":
         setGesture({
           ...gesture,
-          frame: resizedFrame(gesture.origin, du, dz, facade.length_m),
+          frame: resizedFrame(gesture.origin, du, dz, facade.length_m, heightM),
         });
         break;
       case "draw":
@@ -365,6 +365,7 @@ export function ElevationEditor({
       event.key,
       event.shiftKey,
       facade.length_m,
+      heightM,
     );
     if (frame === null) return;
     event.preventDefault();

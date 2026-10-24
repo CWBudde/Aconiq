@@ -19,31 +19,46 @@ describe("frame edits", () => {
   });
 
   it("keeps a moved window on its facade and above the ground", () => {
-    expect(movedFrame(frame, 1.02, 0.5, 10)).toEqual({
+    expect(movedFrame(frame, 1.02, 0.5, 10, 9)).toEqual({
       ...frame,
       u_m: 3,
       sill_z_m: 1.5,
     });
-    expect(movedFrame(frame, 20, -5, 10)).toEqual({
+    expect(movedFrame(frame, 20, -5, 10, 9)).toEqual({
       ...frame,
       u_m: 8.8,
       sill_z_m: 0,
     });
-    expect(movedFrame(frame, -5, 0, 10).u_m).toBe(0);
+    expect(movedFrame(frame, -5, 0, 10, 9).u_m).toBe(0);
+  });
+
+  it("keeps a moved window's top under the facade's", () => {
+    expect(movedFrame(frame, 0, 20, 10, 9).sill_z_m).toBe(7.5);
+    expect(
+      nudgedFrame({ ...frame, sill_z_m: 7.5 }, "ArrowUp", false, 10, 9),
+    ).toEqual({ ...frame, sill_z_m: 7.5 });
+    // A window taller than the facade keeps its height and sits on the
+    // ground, rather than taking a sill below it.
+    expect(movedFrame({ ...frame, height_m: 10 }, 0, 1, 10, 9)).toEqual({
+      ...frame,
+      sill_z_m: 0,
+      height_m: 10,
+    });
   });
 
   it("resizes from the top right corner, no smaller than a window", () => {
-    expect(resizedFrame(frame, 0.3, 0.5, 10)).toEqual({
+    expect(resizedFrame(frame, 0.3, 0.5, 10, 9)).toEqual({
       ...frame,
       width_m: 1.5,
       height_m: 2,
     });
-    expect(resizedFrame(frame, -5, -5, 10)).toEqual({
+    expect(resizedFrame(frame, -5, -5, 10, 9)).toEqual({
       ...frame,
       width_m: MIN_WINDOW_M,
       height_m: MIN_WINDOW_M,
     });
-    expect(resizedFrame(frame, 50, 0, 10).width_m).toBe(8);
+    expect(resizedFrame(frame, 50, 0, 10, 9).width_m).toBe(8);
+    expect(resizedFrame(frame, 0, 20, 10, 9).height_m).toBe(8);
   });
 
   it("draws between two points in either order, clipped to the facade", () => {
@@ -63,11 +78,11 @@ describe("frame edits", () => {
   });
 
   it("nudges with the arrow keys, a metre with Shift", () => {
-    expect(nudgedFrame(frame, "ArrowRight", false, 10)?.u_m).toBe(2.1);
-    expect(nudgedFrame(frame, "ArrowLeft", true, 10)?.u_m).toBe(1);
-    expect(nudgedFrame(frame, "ArrowUp", false, 10)?.sill_z_m).toBe(1.1);
-    expect(nudgedFrame(frame, "ArrowDown", true, 10)?.sill_z_m).toBe(0);
-    expect(nudgedFrame(frame, "Enter", false, 10)).toBeNull();
+    expect(nudgedFrame(frame, "ArrowRight", false, 10, 9)?.u_m).toBe(2.1);
+    expect(nudgedFrame(frame, "ArrowLeft", true, 10, 9)?.u_m).toBe(1);
+    expect(nudgedFrame(frame, "ArrowUp", false, 10, 9)?.sill_z_m).toBe(1.1);
+    expect(nudgedFrame(frame, "ArrowDown", true, 10, 9)?.sill_z_m).toBe(0);
+    expect(nudgedFrame(frame, "Enter", false, 10, 9)).toBeNull();
   });
 
   it("adds a window that fits even a small facade", () => {

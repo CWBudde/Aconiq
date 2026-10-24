@@ -325,6 +325,30 @@ describe("ElevationEditor", () => {
     expect(w1?.geometry.coordinates).toEqual([547003, 5795000]);
   });
 
+  it("stops a dragged window at the top of the facade", async () => {
+    renderEditor();
+    const rect = drawing().querySelector('[data-window-id="w1"]');
+
+    fireEvent.pointerDown(rect as Element, {
+      button: 0,
+      pointerId: 1,
+      clientX: x(2.5),
+      clientY: y(1.5),
+    });
+    fireEvent.pointerMove(drawing(), {
+      pointerId: 1,
+      clientX: x(2.5),
+      clientY: y(20),
+    });
+    fireEvent.pointerUp(drawing(), { pointerId: 1 });
+
+    await waitFor(() => {
+      expect(kernel.placed).toHaveLength(1);
+    });
+    // 9 m of facade, 1.5 m of window.
+    expect(kernel.placed[0]?.window.window.sill_z_m).toBe(7.5);
+  });
+
   it("does not place a window a click left where it was", () => {
     renderEditor();
     const rect = drawing().querySelector('[data-window-id="w1"]');

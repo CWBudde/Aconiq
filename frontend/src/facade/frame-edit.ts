@@ -27,34 +27,44 @@ function clamp(value: number, lo: number, hi: number): number {
   return Math.min(Math.max(value, lo), Math.max(lo, hi));
 }
 
-/** The window moved by (du, dz) metres, kept on the facade and above ground. */
+/**
+ * The window moved by (du, dz) metres, kept on the facade: along it, above the
+ * ground and under the eaves. A window taller than the facade keeps its height
+ * and sits on the ground.
+ */
 export function movedFrame(
   frame: FacadeWindowFrame,
   du: number,
   dz: number,
   lengthM: number,
+  heightM: number,
 ): FacadeWindowFrame {
   return {
     ...frame,
     u_m: clamp(snap(frame.u_m + du), 0, lengthM - frame.width_m),
-    sill_z_m: Math.max(0, snap(frame.sill_z_m + dz)),
+    sill_z_m: clamp(snap(frame.sill_z_m + dz), 0, heightM - frame.height_m),
   };
 }
 
 /**
  * The window resized from its top right corner: wider by du, taller by dz,
- * its left edge and sill where they were.
+ * its left edge and sill where they were, its corner on the facade.
  */
 export function resizedFrame(
   frame: FacadeWindowFrame,
   du: number,
   dz: number,
   lengthM: number,
+  heightM: number,
 ): FacadeWindowFrame {
   return {
     ...frame,
     width_m: clamp(snap(frame.width_m + du), MIN_WINDOW_M, lengthM - frame.u_m),
-    height_m: Math.max(MIN_WINDOW_M, snap(frame.height_m + dz)),
+    height_m: clamp(
+      snap(frame.height_m + dz),
+      MIN_WINDOW_M,
+      heightM - frame.sill_z_m,
+    ),
   };
 }
 
@@ -89,17 +99,18 @@ export function nudgedFrame(
   key: string,
   shift: boolean,
   lengthM: number,
+  heightM: number,
 ): FacadeWindowFrame | null {
   const step = shift ? NUDGE_SHIFT_M : NUDGE_M;
   switch (key) {
     case "ArrowLeft":
-      return movedFrame(frame, -step, 0, lengthM);
+      return movedFrame(frame, -step, 0, lengthM, heightM);
     case "ArrowRight":
-      return movedFrame(frame, step, 0, lengthM);
+      return movedFrame(frame, step, 0, lengthM, heightM);
     case "ArrowUp":
-      return movedFrame(frame, 0, step, lengthM);
+      return movedFrame(frame, 0, step, lengthM, heightM);
     case "ArrowDown":
-      return movedFrame(frame, 0, -step, lengthM);
+      return movedFrame(frame, 0, -step, lengthM, heightM);
     default:
       return null;
   }
