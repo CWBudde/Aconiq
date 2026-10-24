@@ -149,6 +149,27 @@ export function ElevationEditor({
     };
   }
 
+  /**
+   * What a placement of window `id` is computed from: the CRS its answer is
+   * moved back into, the building it is keyed against, and the window where
+   * it stands — or, for a new one, that nothing holds its id. The store
+   * replaces whatever an edit or an undo changes, so a change to any of these
+   * shows as a different object here; a review field written beside them
+   * keeps the window's geometry, `facade` and `window` as they were.
+   */
+  function placementBasis(id: string): readonly unknown[] {
+    const s = useModelStore.getState();
+    const window = s.features.find((f) => f.id === id);
+    return [
+      s.crs,
+      s.features.find((f) => f.id === buildingId),
+      window?.geometry,
+      window?.properties?.facade,
+      window?.properties?.window,
+      s.receivers.find((r) => r.id === id),
+    ];
+  }
+
   /** Places one window; resolves whether the model took it. */
   async function place(
     id: string,
@@ -160,20 +181,30 @@ export function ElevationEditor({
     if (!isNew && before === undefined) return false;
     placing.current = true;
     setPending({ id, frame });
+    const basis = placementBasis(id);
     try {
       const placed = await placeWindowFeature(
         backend,
         workspaceNow(),
         placementOf(id, frame, before),
       );
+      // An undo — Ctrl+Z is live while this is in flight — or a reshape of
+      // the building since the request makes the answer one for a model that
+      // is no longer there: writing it would put the window back over what
+      // the undo restored, or key it to the building's old outline.
+      const now = placementBasis(id);
+      if (basis.some((held, i) => held !== now[i])) {
+        setPending(null);
+        return false;
+      }
       setError(null);
       if (isNew) {
         addFeature(placed);
         setSelectedId(id);
         return true;
       }
-      // Read again: a review field changed, or an undo, while the placement
-      // was in flight must not be written back over.
+      // Read again: a review field changed while the placement was in flight
+      // must not be written back over.
       const current = getFeatureById(id);
       if (current === undefined) {
         setPending(null);

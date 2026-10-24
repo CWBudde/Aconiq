@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -29,7 +30,9 @@ const kernel = vi.hoisted(() => {
   const value: {
     placed: PlaceWindowRequest[];
     refuse: string | null;
-  } = { placed: [], refuse: null };
+    /** When set, every answer waits for it: a placement held in flight. */
+    gate: Promise<void> | null;
+  } = { placed: [], refuse: null, gate: null };
   return value;
 });
 
@@ -40,7 +43,7 @@ vi.mock("@/api/backend", () => ({
       if (kernel.refuse !== null) {
         return Promise.reject(new Error(kernel.refuse));
       }
-      return Promise.resolve({
+      const answer: PlaceWindowResponse = {
         feature: {
           type: "Feature",
           id: req.window.id,
@@ -64,7 +67,8 @@ vi.mock("@/api/backend", () => ({
             coordinates: [547000 + req.window.window.u_m, 5795000],
           },
         },
-      });
+      };
+      return (kernel.gate ?? Promise.resolve()).then(() => answer);
     },
     transformCoordinates: (req: TransformRequest) =>
       Promise.resolve({
@@ -130,6 +134,7 @@ beforeEach(() => {
   resetComputeModelCacheForTests();
   kernel.placed = [];
   kernel.refuse = null;
+  kernel.gate = null;
   useModelStore.getState().reset();
   useModelStore.getState().loadModel({
     features: [
@@ -188,6 +193,21 @@ function renderEditor(facade: FacadeElevation = south) {
 
 function stored(id: string) {
   return useModelStore.getState().getFeatureById(id);
+}
+
+/** Holds every placement until the returned function is called. */
+function holdPlacements(): () => Promise<void> {
+  let release = () => {};
+  kernel.gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  return async () => {
+    await act(async () => {
+      release();
+      // A macrotask, so every continuation of the answer has run.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  };
 }
 
 function drawing() {
@@ -375,6 +395,102 @@ describe("ElevationEditor", () => {
     await waitFor(() => {
       expect(kernel.placed.at(-1)?.window.window.sill_z_m).toBe(2);
     });
+  });
+
+  it("drops a placement an undo overtook", async () => {
+    renderEditor();
+    const w1 = screen.getByRole("button", { name: /^Window w1/ });
+
+    fireEvent.keyDown(w1, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(stored("w1")?.properties?.window).toEqual({
+        ...bedroomFrame,
+        u_m: 2.1,
+      });
+    });
+
+    const release = holdPlacements();
+    fireEvent.keyDown(w1, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(kernel.placed).toHaveLength(2);
+    });
+    useModelStore.getState().undo();
+    await release();
+
+    // The answer was for the window at 2.1 m; the undo put it back at 2 m.
+    expect(stored("w1")?.properties?.window).toEqual(bedroomFrame);
+    expect(stored("w1")?.geometry).toEqual(bedroom.geometry);
+  });
+
+  it("drops a placement measured on a building since reshaped", async () => {
+    renderEditor();
+    const w1 = screen.getByRole("button", { name: /^Window w1/ });
+
+    const release = holdPlacements();
+    fireEvent.keyDown(w1, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(kernel.placed).toHaveLength(1);
+    });
+    useModelStore.getState().updateFeatureGeometry("house", {
+      type: "Polygon",
+      coordinates: [
+        [
+          [547000, 5795000],
+          [547012, 5795000],
+          [547012, 5795008],
+          [547000, 5795008],
+          [547000, 5795000],
+        ],
+      ],
+    });
+    await release();
+
+    expect(stored("w1")?.properties?.window).toEqual(bedroomFrame);
+  });
+
+  it("drops a new window whose id an undo gave back", async () => {
+    useModelStore.getState().addFeature({ ...bedroom, id: "win-1" });
+    useModelStore.getState().removeFeature("win-1");
+    renderEditor();
+
+    const release = holdPlacements();
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_add_window() }),
+    );
+    await waitFor(() => {
+      expect(kernel.placed[0]?.window.id).toBe("win-1");
+    });
+    useModelStore.getState().undo();
+    await release();
+
+    expect(
+      useModelStore.getState().features.filter((f) => f.id === "win-1"),
+    ).toHaveLength(1);
+  });
+
+  it("keeps a review field set while a placement was in flight", async () => {
+    renderEditor();
+    const w1 = screen.getByRole("button", { name: /^Window w1/ });
+    fireEvent.focus(w1);
+    const form = screen.getByRole("region", {
+      name: m.heading_window_edit({ id: "w1" }),
+    });
+
+    const release = holdPlacements();
+    fireEvent.keyDown(w1, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(kernel.placed).toHaveLength(1);
+    });
+    fireEvent.change(within(form).getByLabelText(m.label_window_review()), {
+      target: { value: "rejected" },
+    });
+    await release();
+
+    expect(stored("w1")?.properties?.window).toEqual({
+      ...bedroomFrame,
+      u_m: 2.1,
+    });
+    expect(stored("w1")?.properties?.review_status).toBe("rejected");
   });
 
   it("shows a refusal and leaves the model as it was", async () => {
