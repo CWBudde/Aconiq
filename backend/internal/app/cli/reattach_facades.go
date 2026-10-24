@@ -36,7 +36,8 @@ func newReattachFacadesCommand() *cobra.Command {
 			"then every other one. Several matches are ambiguous and none is chosen; none is no match.\n\n" +
 			"Without --apply nothing is written. With it, each proposed receiver gets the new key and " +
 			"review_status proposed, so a normative run refuses it until a person confirms it, or runs it " +
-			"with --allow-unconfirmed. Its position, height, storey and placement rule stay as they are.\n\n" +
+			"with --allow-unconfirmed. Its position, height, storey and placement rule stay as they are. A " +
+			"window is re-keyed the same way, and its point moves to its centre on the new edge.\n\n" +
 			"The default --max-shift-m is the 1 mm validation tolerance, which matches only the same edge: " +
 			"a building re-imported under a new id, or one whose edges a CRS round trip renumbered. A wider " +
 			"tolerance follows real edits of a footprint, and the shift is reported for review.",

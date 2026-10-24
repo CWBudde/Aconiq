@@ -3,6 +3,7 @@ package modelgeojson
 import (
 	"maps"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -283,5 +284,58 @@ func TestReattachWindowAfterARenumbering(t *testing.T) {
 
 	if status := fixed.Features[1].Properties[PropertyReviewStatus]; status != geo.ReviewStatusProposed {
 		t.Errorf("review_status = %v, want proposed after a re-attach", status)
+	}
+}
+
+// A window's Point is its centre on the facade, so re-attaching it to an
+// edge that moved moves the Point with it: onto the new edge, at the frame's
+// centre u. The frame itself stays as it was.
+func TestReattachWindowMovesItsCentreOntoTheNewEdge(t *testing.T) {
+	t.Parallel()
+
+	model, window := oneWindow(t)
+	model = withBuilding(model, "b1", [][][]geo.Point2D{{facadeRect(facadeX0+0.3, facadeY0+0.2, facadeX0+20.3, facadeY0+12.2)}})
+
+	reattachments := mustPropose(t, model, 0.5)
+	if len(reattachments) != 1 || reattachments[0].Outcome != ReattachProposed || reattachments[0].ReceiverID != "w1" {
+		t.Fatalf("reattachments = %+v, want w1 proposed", reattachments)
+	}
+
+	fixed, applied := ApplyFacadeReattachments(model, reattachments)
+	if applied != 1 {
+		t.Fatalf("applied = %d, want 1", applied)
+	}
+
+	assertCleanReport(t, Validate(fixed))
+
+	got, err := WindowOf(fixed.Features[1])
+	if err != nil {
+		t.Fatalf("WindowOf: %v", err)
+	}
+
+	if got.Frame != bedroomSpec("").Frame {
+		t.Errorf("frame = %+v, want %+v unchanged", got.Frame, bedroomSpec("").Frame)
+	}
+
+	coords, ok := fixed.Features[1].Coordinates.([]any)
+	if !ok || len(coords) != 2 {
+		t.Fatalf("coordinates = %#v, want a Point", fixed.Features[1].Coordinates)
+	}
+
+	x, _ := coords[0].(float64)
+	y, _ := coords[1].(float64)
+	centre := geo.Point2D{X: x, Y: y}
+	want := geo.FacadePoint(got.Facade.From, got.Facade.To, got.Frame.CentreUM(), 0)
+
+	if d := geo.Distance(centre, want); d > 1e-9 {
+		t.Errorf("centre = %+v, want %+v on the new edge (%g m off)", centre, want, d)
+	}
+
+	if d := geo.DistancePointToSegment(centre, got.Facade.From, got.Facade.To); d > 1e-9 {
+		t.Errorf("centre is %g m off the new edge", d)
+	}
+
+	if old, _ := window.Coordinates.([]any); slices.Equal(coords, old) {
+		t.Error("the window Point stayed where the old edge put it")
 	}
 }

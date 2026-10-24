@@ -117,8 +117,12 @@ func ProposeFacadeReattachments(model Model, maxShiftM float64) ([]FacadeReattac
 // ApplyFacadeReattachments re-keys every proposed receiver and marks it
 // proposed, so a person confirms it before a normative run assesses it. Its
 // id, position, height, storey and placement rule stay as they are: a run
-// never recomputes a position from the key. The model passed in is not
-// modified. It returns the new model and the number of receivers re-keyed.
+// never recomputes a position from the key. A window's Point is not a
+// position but its centre on the facade (geojson-schema-v1.md), so it moves
+// with the key: to the frame's centre u on the new edge, measured in the frame
+// validation measures in. A window whose centre cannot be placed there is not
+// re-keyed either. The model passed in is not modified. It returns the new
+// model and the number of receivers and windows re-keyed.
 func ApplyFacadeReattachments(model Model, reattachments []FacadeReattachment) (Model, int) {
 	proposed := make(map[string]geo.FacadeKey)
 
@@ -131,11 +135,22 @@ func ApplyFacadeReattachments(model Model, reattachments []FacadeReattachment) (
 	out := model
 	out.Features = slices.Clone(model.Features)
 	applied := 0
+	// Only the frame: re-keying needs no building canonicalised.
+	frame := reattachIndex{frame: newMetricFrame(model)}
 
 	for i, feature := range out.Features {
 		key, ok := proposed[strings.TrimSpace(feature.ID)]
 		if !ok || !carriesFacadeLink(feature) {
 			continue
+		}
+
+		if featureKind(feature) == FeatureKindWindow {
+			centre, err := frame.windowCentreOn(key, feature.Properties[PropertyWindow])
+			if err != nil {
+				continue
+			}
+
+			feature.Coordinates = []any{centre.X, centre.Y}
 		}
 
 		props := maps.Clone(feature.Properties)
@@ -370,6 +385,39 @@ func (x reattachIndex) keyOf(m edgeMatch) (geo.FacadeKey, error) {
 		Part:        m.edge.Part, Ring: m.edge.Ring, Edge: m.edge.Edge,
 		From: from, To: to,
 	}, nil
+}
+
+// windowCentre is a window's Point on the edge from / to, both in the
+// metric frame: its frame's centre u on the facade plane, in the project CRS.
+func (x reattachIndex) windowCentre(from, to geo.Point2D, frame geo.FacadeWindow) (geo.Point2D, error) {
+	centre, err := x.toProject(geo.FacadePoint(from, to, frame.CentreUM(), 0))
+	if err != nil {
+		return geo.Point2D{}, fmt.Errorf("the window centre cannot be projected back (%w)", err)
+	}
+
+	return centre, nil
+}
+
+// windowCentreOn is windowCentre on the edge a key names, from the key's
+// from / to in the project CRS and the window property as the model holds it.
+func (x reattachIndex) windowCentreOn(key geo.FacadeKey, window any) (geo.Point2D, error) {
+	if x.frame.failure != "" {
+		return geo.Point2D{}, errors.New(x.frame.failure)
+	}
+
+	frame, problem := parseWindowFrame(window)
+	if problem != "" {
+		return geo.Point2D{}, errors.New("window " + problem)
+	}
+
+	from, fromErr := x.toMetric(key.From)
+	to, toErr := x.toMetric(key.To)
+
+	if err := errors.Join(fromErr, toErr); err != nil {
+		return geo.Point2D{}, err
+	}
+
+	return x.windowCentre(from, to, frame)
 }
 
 func (x reattachIndex) toMetric(p geo.Point2D) (geo.Point2D, error) {

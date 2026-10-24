@@ -268,7 +268,9 @@ frame: `u` along the edge from its start vertex, `z` above the ground.
 The warnings are warnings for a facade receiver's reason: a re-import that
 changed the building has to succeed. `aconiq run --receiver-mode facade`
 refuses to place at a sensitive window that has one, for every standard, and
-`aconiq reattach-facades` re-keys a window as it re-keys a receiver.
+`aconiq reattach-facades` re-keys a window as it re-keys a receiver. Unlike a
+receiver's position, the window's `Point` moves with the key: to its centre on
+the new edge.
 
 No standard computes over a window. `aconiq run --receiver-mode facade` places
 one point per sensitive window that is not `rejected`, in place of the station

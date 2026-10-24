@@ -261,9 +261,9 @@ func (p WindowPlacer) Feature(spec WindowSpec) (Feature, error) {
 		return Feature{}, fmt.Errorf("window %q: %w", id, err)
 	}
 
-	centre, err := p.index.toProject(geo.FacadePoint(edge.From, edge.To, spec.Frame.CentreUM(), 0))
+	centre, err := p.index.windowCentre(edge.From, edge.To, spec.Frame)
 	if err != nil {
-		return Feature{}, fmt.Errorf("window %q: the window centre cannot be projected back (%w)", id, err)
+		return Feature{}, fmt.Errorf("window %q: %w", id, err)
 	}
 
 	props := map[string]any{
