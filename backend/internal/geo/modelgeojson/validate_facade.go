@@ -149,7 +149,24 @@ func (t *facadeTracker) resolve(model Model, report *ValidationReport) {
 
 		if p.frame != nil {
 			frame.checkWindowFits(p, report)
+			checkWindowBelowRoof(p, building, report)
 		}
+	}
+}
+
+// checkWindowBelowRoof reports a window whose head rises above its
+// building's height_m, within the tolerance a window may reach past its edge.
+// A building without a valid height is already an error of its own.
+func checkWindowBelowRoof(p pendingFacade, building Feature, report *ValidationReport) {
+	if building.HeightM == nil || !(*building.HeightM > 0) {
+		return
+	}
+
+	if head := p.frame.HeadZM(); head > *building.HeightM+geo.FacadeWindowFitToleranceM {
+		addWarning(report, CodeWindowAboveBuilding, p.featureID, fmt.Sprintf(
+			"window %q: its head at %g m (sill_z_m %g + height_m %g) is above building %q's height_m %g",
+			p.featureID, head, p.frame.SillZM, p.frame.HeightM, p.key.BuildingRef, *building.HeightM,
+		))
 	}
 }
 

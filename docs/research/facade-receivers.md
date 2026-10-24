@@ -534,6 +534,16 @@ edit one window at a time. `aconiq import --windows` reads a window list (CSV, o
 and its rectangle; it places the key in the compute CRS and writes `from` / `to` in the project
 CRS, as `aconiq reattach-facades` does.
 
+A client's CityGML LoD3 model is the other source (C1b). Its import reads each `bldg:Window` in
+a `WallSurface`, with a token walk of its own because go-citygml decodes no openings, and puts it
+on the one edge whose line every vertex of its outline lies within 0.5 m of: a LoD3 window sits
+in its reveal, recessed from the wall's outer face, while a window on another wall lies metres
+from that line. The rectangle is the outline's extent along the edge and in z above the
+building's base, the lowest z of its `GroundSurface`. The window arrives `proposed` and not
+`sensitive`, whatever the model says about the room, and cites its `gml:id` and the file's
+sha256 as evidence (`kind: citygml-lod3`). Doors, skylights and an opening in no facade plane or
+in two are reported in the import report, not placed.
+
 The point is derived at run time, never stored. In facade receiver mode, a facade that carries a
 sensitive window that is not `rejected` gets one point per such window instead of its station
 grid; a facade without one keeps its stations. The point stands at the window centre's `u`, and:
@@ -551,8 +561,9 @@ The window fixes the height, so the point has no `slab_height_source`; its `stor
 only, the storey whose ceiling slab is the first at or above the window centre. It inherits the
 window's `review_status`, so a proposed window refuses a normative run as a proposed point does.
 Its id names the window in place of station and storey: `facade/<building>/p…r…e…/w/<window>`.
-A sensitive window whose key is unresolved or moved, that its edge has no room for, or that stands
-on a party wall, refuses the run for every standard, opt-in or not, until it is re-attached or
+A sensitive window whose key is unresolved or moved, that its edge has no room for, whose head
+rises above its building's `height_m` (no storey holds it), or that stands on a party wall, refuses
+the run for every standard, opt-in or not, until it is re-attached or
 corrected: dropping it would report fewer Immissionsorte than the window list holds. The courtyard
 switch applies to windows as to stations. Provenance (in browser mode, the run summary) records
 `facade_window_count` and `facade_window_height_basis`, so the borrowed RLS-19 height travels with
@@ -648,8 +659,8 @@ that carries them computes exactly what it would without them, apart from the ow
 exclusion that reads `facade` (B1).
 
 Each `evidence` entry carries the fields `docs/research/facade-evidence-sources.md` derives per
-source kind: `kind` (`orthophoto`, `oblique`, `street-level`, `site-photo` or `plan`; there is no
-`google` kind), `source_id`, `content_sha256`, `captured_at`, `retrieved_at`, `licence` (an SPDX id,
+source kind: `kind` (`orthophoto`, `oblique`, `street-level`, `site-photo`, `plan` or
+`citygml-lod3`; there is no `google` kind), `source_id`, `content_sha256`, `captured_at`, `retrieved_at`, `licence` (an SPDX id,
 or `own` / `client-engagement`), `terms_url`, `attribution`, and for D1 the `transform`: the four
 image-to-facade point pairs. A site photo's `source_id` is an opaque reference into the
 engagement's store, never a path that names the client.

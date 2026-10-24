@@ -14,15 +14,19 @@ import (
 // CodeWindowInvalid is an error: a window whose facade key, frame or review
 // properties do not have their documented shape cannot be placed at.
 //
-// The other three are warnings, for the reason a receiver's are
+// The other four are warnings, for the reason a receiver's are
 // (validate_facade.go): they describe a window whose building changed under
 // it, and the import that changed it has to succeed. Facade receiver mode
 // refuses to place at such a window; re-attaching it is a reviewed step.
+// CodeWindowAboveBuilding is a window whose head rises above its building's
+// height_m: no storey holds it, and a point at it would stand above the roof
+// the model gives the building.
 const (
 	CodeWindowInvalid          = "window.invalid"
 	CodeWindowFacadeUnresolved = "window.facade.unresolved"
 	CodeWindowFacadeMoved      = "window.facade.moved"
 	CodeWindowOutsideFacade    = "window.frame.outside"
+	CodeWindowAboveBuilding    = "window.frame.above_building"
 )
 
 // Window is a window feature as facade receiver mode reads it. ReviewStatus

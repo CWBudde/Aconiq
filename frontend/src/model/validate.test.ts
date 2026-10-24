@@ -612,3 +612,95 @@ describe("self-intersection", () => {
     );
   });
 });
+
+// A window the CLI imported (`aconiq import --windows`) is checked here for
+// the shape of what it carries, so a malformed one shows before the save does
+// rather than when the kernel refuses the facade run. Where it sits on its
+// edge is the Go validator's to say: the canonical edge exists only there.
+describe("window validation", () => {
+  const facade = {
+    building_ref: "bld-1",
+    part: 0,
+    ring: 0,
+    edge: 0,
+    from: [0, 0],
+    to: [1, 0],
+  };
+
+  function windowFeature(
+    properties: Record<string, unknown>,
+    geometry: ModelFeature["geometry"] = {
+      type: "Point",
+      coordinates: [0.5, 0],
+    },
+  ): ModelFeature {
+    return {
+      id: "w1",
+      kind: "window",
+      geometry,
+      properties: {
+        facade,
+        window: { u_m: 0.2, sill_z_m: 1, width_m: 0.6, height_m: 1.2 },
+        sensitive: true,
+        review_status: "proposed",
+        ...properties,
+      },
+    };
+  }
+
+  function windowFindings(feature: ModelFeature) {
+    const report = validateProjectModel([validBuilding, feature], []);
+    return report.errors.map((issue) => [issue.code, issue.params]);
+  }
+
+  it("accepts a well-formed window", () => {
+    expect(windowFindings(windowFeature({}))).toEqual([]);
+    expect(
+      windowFindings(
+        windowFeature({ sensitive: undefined, review_status: undefined }),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["facade", { facade: undefined }],
+    ["facade", { facade: { ...facade, edge: 1.5 } }],
+    ["facade", { facade: { ...facade, building_ref: " " } }],
+    ["facade", { facade: { ...facade, to: [1, "0"] } }],
+    ["window", { window: undefined }],
+    ["window", { window: { u_m: 0.2, sill_z_m: 1, width_m: 0, height_m: 1 } }],
+    ["window", { window: { u_m: -1, sill_z_m: 1, width_m: 1, height_m: 1 } }],
+    ["window", { window: { u_m: 0, sill_z_m: 1, width_m: 1 } }],
+    ["sensitive", { sensitive: "yes" }],
+    ["review_status", { review_status: "maybe" }],
+    ["evidence", { evidence: ["photo"] }],
+  ])("names the malformed %s", (field, properties) => {
+    expect(windowFindings(windowFeature(properties))).toEqual([
+      ["window.invalid", { field }],
+    ]);
+  });
+
+  it("names an id with a '/', which separates a receiver id's parts", () => {
+    const feature = { ...windowFeature({}), id: "w/1" };
+    expect(windowFindings(feature)).toEqual([
+      ["window.invalid", { field: "id" }],
+    ]);
+  });
+
+  it("refuses a window that is not a Point", () => {
+    expect(
+      windowFindings(
+        windowFeature(
+          {},
+          {
+            type: "LineString",
+            coordinates: [
+              [0, 0],
+              [1, 0],
+            ],
+          },
+        ),
+      ),
+    ).toEqual([["window.geometry.invalid", {}]]);
+  });
+});

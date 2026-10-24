@@ -106,6 +106,18 @@ const ISSUES: {
     featureId: "z1",
     params: {},
   },
+  "window.invalid": {
+    level: "error",
+    code: "window.invalid",
+    featureId: "w1",
+    params: { field: "review_status" },
+  },
+  "window.geometry.invalid": {
+    level: "error",
+    code: "window.geometry.invalid",
+    featureId: "w1",
+    params: {},
+  },
   "receiver.coordinates.invalid": {
     level: "error",
     code: "receiver.coordinates.invalid",

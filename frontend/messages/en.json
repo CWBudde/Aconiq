@@ -567,6 +567,8 @@
   "msg_validation_groundzone_geometry_invalid": "Ground zone geometry must be Polygon",
   "msg_validation_receiver_coordinates_invalid": "Receiver coordinates must be finite",
   "msg_validation_receiver_height_invalid": "Receiver height_m must be greater than 0",
+  "msg_validation_window_invalid": "Window property {field} is missing or malformed",
+  "msg_validation_window_geometry_invalid": "Window geometry must be Point",
   "msg_validation_source_rls19_surface_type_invalid": "RLS-19 surface_type \"{value}\" is not supported",
   "msg_validation_source_rls19_junction_type_invalid": "RLS-19 junction_type \"{value}\" is not supported",
   "msg_validation_source_rls19_gradient_invalid": "RLS-19 gradient_percent must be between {min} and {max}",

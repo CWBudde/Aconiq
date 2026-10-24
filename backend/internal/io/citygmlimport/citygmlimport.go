@@ -131,7 +131,7 @@ type addressWalk struct {
 
 func (w *addressWalk) start(t xml.StartElement) {
 	switch t.Name.Local {
-	case "Building", "BuildingPart":
+	case elemBuilding, elemBuildingPart:
 		w.owners = append(w.owners, gmlID(t))
 	case "Thoroughfare":
 		w.current = &thoroughfare{}
@@ -148,7 +148,7 @@ func (w *addressWalk) start(t xml.StartElement) {
 
 func (w *addressWalk) end(local string) {
 	switch local {
-	case "Building", "BuildingPart":
+	case elemBuilding, elemBuildingPart:
 		if len(w.owners) > 0 {
 			w.owners = w.owners[:len(w.owners)-1]
 		}
@@ -241,6 +241,8 @@ type ImportReport struct {
 	Imported int               `json:"imported"`
 	Skipped  int               `json:"skipped"`
 	Details  []SkippedBuilding `json:"skipped_buildings,omitempty"`
+	// Openings is nil for a document without a bldg:Window or bldg:Door.
+	Openings *OpeningReport `json:"openings,omitempty"`
 }
 
 // ReadResult holds the result of reading a CityGML document.
@@ -248,6 +250,9 @@ type ReadResult struct {
 	Collection modelgeojson.FeatureCollection
 	EPSGCode   int // 0 if CRS could not be determined
 	Report     ImportReport
+	// Openings are the LoD3 windows that can be placed on a facade, in the
+	// document's CRS; Report.Openings counts them all.
+	Openings []Opening
 }
 
 // Read reads a CityGML document and returns a GeoJSON-compatible
@@ -306,6 +311,9 @@ func ReadWithCRS(data []byte) (ReadResult, error) {
 	report.Imported = len(features)
 	report.Skipped = report.Total - report.Imported
 
+	openings, openingReport := readOpenings(data)
+	report.Openings = openingReport
+
 	if len(features) == 0 {
 		return ReadResult{Report: report}, ErrNoBuildings
 	}
@@ -317,6 +325,7 @@ func ReadWithCRS(data []byte) (ReadResult, error) {
 		},
 		EPSGCode: doc.CRS.Code,
 		Report:   report,
+		Openings: openings,
 	}, nil
 }
 

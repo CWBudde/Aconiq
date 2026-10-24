@@ -304,7 +304,8 @@ See `docs/project-format-v1.md` and `docs/project-migrations.md`.
 - `ground-zone` requires `Polygon` and a `ground_factor` in [0,1]; only `iso9613` reads it.
 - `window` requires `Point` (the window centre on its facade), a `facade` key and a `window`
   rectangle in the facade frame. No standard computes over it; `--receiver-mode facade` places
-  a point at each `sensitive` one that is not rejected, and `aconiq import --windows` writes them.
+  a point at each `sensitive` one that is not rejected, and `aconiq import --windows` writes them,
+  as does a CityGML import from a LoD3 `bldg:Window` in a `WallSurface`.
 
 See `docs/geojson-schema-v1.md`.
 

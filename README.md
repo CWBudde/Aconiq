@@ -64,7 +64,7 @@ one JSON document. `--help` and `--version` are the exceptions: they print text 
 `aconiq import` reads:
 
 - **GeoJSON** — the canonical model format for the main workflow
-- **GeoPackage** (`.gpkg`, with `--layer`), **FlatGeobuf** (`.fgb`), **CityGML** 1.0/2.0/3.0 (`.gml`/`.citygml`, every `BuildingPart` becomes its own building) — CRS auto-detected where the format carries it, otherwise `--input-crs`
+- **GeoPackage** (`.gpkg`, with `--layer`), **FlatGeobuf** (`.fgb`), **CityGML** 1.0/2.0/3.0 (`.gml`/`.citygml`, every `BuildingPart` becomes its own building; a LoD3 `bldg:Window` in a wall becomes a window on its facade, proposed and not sensitive) — CRS auto-detected where the format carries it, otherwise `--input-crs`
 - **SoundPLAN** project directories via `--from-soundplan`
 - **OpenStreetMap** via `--from-osm "south,west,north,east"` against an Overpass endpoint
 - **LGLN LoD2 buildings** (Lower Saxony) via `--from-lgln "south,west,north,east"` — merged into

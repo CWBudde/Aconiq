@@ -370,7 +370,9 @@ func listGenerated(generated []geo.FacadeReceiver) (Listed, int, string) {
 // buildings a point is placed at: the sensitive ones that are not rejected.
 // A window whose facade link validation reports broken refuses the run for
 // every standard, opt-in or not: its frame is measured along an edge that is
-// no longer the one it names, so no point can be placed from it honestly.
+// no longer the one it names, so no point can be placed from it honestly. So
+// does one that runs past its edge or rises above its building's height_m,
+// which no storey of the building holds.
 func sensitiveWindows(model modelgeojson.Model, buildingIDs []string) (map[string][]geo.FacadeBuildingWindow, error) {
 	requested := make(map[string]bool, len(buildingIDs))
 	for _, id := range buildingIDs {
@@ -412,7 +414,8 @@ func sensitiveWindows(model modelgeojson.Model, buildingIDs []string) (map[strin
 
 	for _, issue := range modelgeojson.Validate(model).Warnings {
 		switch issue.Code {
-		case modelgeojson.CodeWindowFacadeUnresolved, modelgeojson.CodeWindowFacadeMoved, modelgeojson.CodeWindowOutsideFacade:
+		case modelgeojson.CodeWindowFacadeUnresolved, modelgeojson.CodeWindowFacadeMoved, modelgeojson.CodeWindowOutsideFacade,
+			modelgeojson.CodeWindowAboveBuilding:
 			if placed[issue.FeatureID] {
 				broken = append(broken, issue.Code+": "+issue.Message)
 			}
@@ -421,8 +424,8 @@ func sensitiveWindows(model modelgeojson.Model, buildingIDs []string) (map[strin
 
 	if len(broken) > 0 {
 		return nil, domainerrors.New(domainerrors.KindUserInput, op, fmt.Sprintf(
-			"receiver mode facade cannot place at %d window(s) whose facade link broke: %s; "+
-				"re-attach them with aconiq reattach-facades, or correct them in the model",
+			"receiver mode facade cannot place at %d window(s) that no longer fit their facade: %s; "+
+				"re-attach a moved or unresolved one with aconiq reattach-facades, or correct them in the model",
 			len(broken), summarize(broken, 5),
 		), nil)
 	}
