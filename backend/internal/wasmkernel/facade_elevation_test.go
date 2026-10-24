@@ -130,3 +130,47 @@ func TestPlaceWindowAnswersWhatFacadesetAnswers(t *testing.T) {
 		t.Errorf("past the corner: err = %v", err)
 	}
 }
+
+// The kernel solves what facadeset solves, and refuses in its words.
+func TestRectifyFacadeAnswersWhatFacadesetAnswers(t *testing.T) {
+	t.Parallel()
+
+	transform := facadeset.PhotoTransform{
+		ImagePoints:  [][]float64{{100, 900}, {865.4, 846.2}, {885.1, 114.9}, {123.5, 139.4}},
+		FacadePoints: [][]float64{{0, 0}, {10, 0}, {10, 8}, {0, 8}},
+	}
+
+	in, err := json.Marshal(transform)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := wasmkernel.RectifyFacade(in)
+	if err != nil {
+		t.Fatalf("rectifyFacade: %v", err)
+	}
+
+	var got facadeset.Rectification
+
+	err = json.Unmarshal(out, &got)
+	if err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	want, err := facadeset.Rectify(transform)
+	if err != nil || got != want {
+		t.Errorf("kernel answered %+v, facadeset %+v (%v)", got, want, err)
+	}
+
+	mirrored := `{"image_points":[[1900,900],[1134.6,846.2],[1114.9,114.9],[1876.5,139.4]],` +
+		`"facade_points":[[0,0],[10,0],[10,8],[0,8]]}`
+	if _, err := wasmkernel.RectifyFacade([]byte(mirrored)); err == nil ||
+		!strings.Contains(err.Error(), "rectify facade: the photo cannot be rectified:") ||
+		!strings.Contains(err.Error(), "mirrored") {
+		t.Errorf("mirrored photo: err = %v", err)
+	}
+
+	if _, err := wasmkernel.RectifyFacade([]byte("{")); err == nil || !strings.Contains(err.Error(), "invalid input JSON") {
+		t.Errorf("bad json: err = %v", err)
+	}
+}

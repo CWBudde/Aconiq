@@ -136,12 +136,19 @@ func TestOpenAPIDocumentsFacadeElevation(t *testing.T) {
 
 	assertOperationResponses(t, window, "post", []string{"200", "400", "405", "413", "415"})
 
+	rectify, ok := paths["/api/v1/facades/rectify"].(map[string]any)
+	if !ok {
+		t.Fatal("expected /api/v1/facades/rectify path item")
+	}
+
+	assertOperationResponses(t, rectify, "post", []string{"200", "400", "405", "413", "415"})
+
 	components, _ := spec["components"].(map[string]any)
 	schemas, _ := components["schemas"].(map[string]any)
 
 	for _, name := range []string{
 		"FacadeElevationRequest", "FacadeElevationResponse", "FacadeElevation", "ElevationWindow",
-		"FacadeWindowFrame", "PlaceWindowRequest", "PlaceWindowResponse",
+		"FacadeWindowFrame", "PlaceWindowRequest", "PlaceWindowResponse", "PhotoTransform", "Rectification",
 	} {
 		if _, ok := schemas[name]; !ok {
 			t.Errorf("expected schema %s", name)
@@ -245,6 +252,92 @@ func TestPlaceWindowDTOsMatchTheFacadesetContract(t *testing.T) {
 	}
 
 	got, err := json.Marshal(placeWindowResponseOf(feature))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(got) != string(want) {
+		t.Errorf("response shapes differ:\n api: %s\n go:  %s", got, want)
+	}
+}
+
+const rectifyCorners = `"image_points":[[100,900],[865.4,846.2],[885.1,114.9],[123.5,139.4]],` +
+	`"facade_points":[[0,0],[10,0],[10,8],[0,8]]`
+
+func TestFacadeRectifyEndpoint(t *testing.T) {
+	t.Parallel()
+
+	post := func(body string) *httptest.ResponseRecorder {
+		req := newAPIRequest(http.MethodPost, "/api/v1/facades/rectify", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		rec := httptest.NewRecorder()
+		NewHandler(mustStore(t, "Facade Rectify"), nil).ServeHTTP(rec, req)
+
+		return rec
+	}
+
+	rec := post("{" + rectifyCorners + "}")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp rectifyFacadeResponse
+
+	decodeResponse(t, rec.Body.Bytes(), &resp)
+
+	want, err := facadeset.Rectify(facadeset.PhotoTransform{
+		ImagePoints:  [][]float64{{100, 900}, {865.4, 846.2}, {885.1, 114.9}, {123.5, 139.4}},
+		FacadePoints: [][]float64{{0, 0}, {10, 0}, {10, 8}, {0, 8}},
+	})
+	if err != nil || resp.Matrix != want.Matrix || resp.Inverse != want.Inverse {
+		t.Errorf("answered %+v, facadeset %+v (%v)", resp, want, err)
+	}
+
+	rec = post(`{"image_points":[[100,900],[865.4,846.2],[885.1,114.9]],"facade_points":[[0,0],[10,0],[10,8],[0,8]]}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "image_points must hold 4 points") {
+		t.Errorf("three corners: %d %s, want 400", rec.Code, rec.Body.String())
+	}
+}
+
+// The API spells a transform and its answer as facadeset and the kernel do.
+func TestRectifyFacadeDTOsMatchTheFacadesetContract(t *testing.T) {
+	t.Parallel()
+
+	transform := facadeset.PhotoTransform{
+		ImagePoints:  [][]float64{{1, 2}, {3, 4}, {5, 6}, {7, 8}},
+		FacadePoints: [][]float64{{0, 0}, {1, 0}, {1, 1}, {0, 1}},
+	}
+
+	raw, err := json.Marshal(transform)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var req rectifyFacadeRequest
+
+	err = json.Unmarshal(raw, &req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	back, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(back) != string(raw) {
+		t.Errorf("transform shapes differ:\n api:       %s\n facadeset: %s", back, raw)
+	}
+
+	rect := facadeset.Rectification{Matrix: [9]float64{1, 2, 3, 4, 5, 6, 7, 8, 9}, Inverse: [9]float64{9, 8, 7, 6, 5, 4, 3, 2, 1}}
+
+	want, err := json.Marshal(rect)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := json.Marshal(rectifyFacadeResponse{Matrix: rect.Matrix, Inverse: rect.Inverse})
 	if err != nil {
 		t.Fatal(err)
 	}

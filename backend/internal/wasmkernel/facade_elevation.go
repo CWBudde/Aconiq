@@ -104,3 +104,30 @@ func PlaceWindow(input []byte) ([]byte, error) {
 
 	return out, nil
 }
+
+// RectifyFacade solves the homography that draws a photo of a facade onto
+// the elevation view (P18 D1), through facadeset.Rectify — the code `POST
+// /api/v1/facades/rectify` answers from, and the solve window validation
+// checks a window's photo evidence with. It takes the four point pairs as
+// facadeset.PhotoTransform JSON and answers facadeset.Rectification. The
+// photo stays in the browser: only the pairs cross.
+func RectifyFacade(input []byte) ([]byte, error) {
+	var req facadeset.PhotoTransform
+
+	err := json.Unmarshal(input, &req)
+	if err != nil {
+		return nil, fmt.Errorf("invalid input JSON: %w", err)
+	}
+
+	rect, err := facadeset.Rectify(req)
+	if err != nil {
+		return nil, fmt.Errorf("rectify facade: %w", err)
+	}
+
+	out, err := json.Marshal(rect)
+	if err != nil {
+		return nil, fmt.Errorf("encode rectification: %w", err)
+	}
+
+	return out, nil
+}

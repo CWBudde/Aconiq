@@ -67,6 +67,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/facades/rectify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rectify a facade photo onto the facade's frame
+         * @description Solves the homography that maps a photo of a facade onto the facade's frame, from four point pairs: the facade's corners as clicked in the photo (pixels, y running down) and where they are on the facade (`u` and `z` in metres). The elevation view draws the photo with it, and a window drawn over the photo records the pairs and the photo's SHA-256 as its evidence, never the photo. It is the solve window validation checks that evidence with, so the same pairs always give the same matrix. It reads no project and writes nothing. The browser's WebAssembly kernel answers from the same Go code (`aconiq.rectifyFacade`).
+         */
+        post: operations["rectifyFacade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/facades/window": {
         parameters: {
             query?: never;
@@ -671,6 +691,12 @@ export interface components {
             /** @description Physical unit of the value as a short symbol (m, km/h, dB, dB/km, 1/h, 1/km, %, °C, °). Absent when the parameter is dimensionless or not numeric. */
             unit?: string;
         };
+        PhotoTransform: {
+            /** @description Where those corners are in the facade's frame: `u` along the facade and `z` above its base, in metres. */
+            facade_points: number[][];
+            /** @description The facade's corners in the photo, in pixels with y running down: bottom-left, bottom-right, top-right, top-left, seen from outside. */
+            image_points: number[][];
+        };
         PlaceWindowRequest: {
             /** @description CRS the model's coordinates are in: the one the elevation was asked in. */
             crs: string;
@@ -733,6 +759,12 @@ export interface components {
              * @description When the terrain artifact was last written
              */
             updated_at: string;
+        };
+        Rectification: {
+            /** @description Row-major 3×3 homography from (u, z) on the facade back to a pixel. */
+            inverse: number[];
+            /** @description Row-major 3×3 homography from a pixel to (u, z) on the facade, scaled so that w is positive over the photographed facade. */
+            matrix: number[];
         };
         /** @description What a run will cost in time. The same JSON `aconiq run --estimate --json` prints under `estimate` and the WASM kernel's `estimate` answers with. */
         RunEstimate: {
@@ -1165,6 +1197,96 @@ export interface operations {
                 };
             };
             /** @description Failed to encode the elevation */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    rectifyFacade: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Any non-empty value. A CORS simple request cannot set a custom header, so requiring one forces a preflight, which the origin allowlist then answers or does not. The value is never read. */
+                "X-Aconiq-Client": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoTransform"];
+            };
+        };
+        responses: {
+            /** @description The homography and its inverse */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rectification"];
+                };
+            };
+            /** @description Malformed body, a point list that is not four [x, y] pairs, a point that is not finite, corners that are not a convex quadrilateral in the order given, or a mirrored photo (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing request arrived without the X-Aconiq-Client header (`client_header_required`), or the project manifest named a path outside the project root (`forbidden_path`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body exceeds this endpoint's limit (`request_too_large`) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body was not sent as the media type this endpoint parses (`unsupported_media_type`) */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Failed to encode the rectification */
             500: {
                 headers: {
                     [name: string]: unknown;
