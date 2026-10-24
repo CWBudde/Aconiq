@@ -301,11 +301,7 @@ export function ElevationEditor({
     setGesture(null);
     if (gesture.kind === "draw") {
       if (gesture.frame !== null) {
-        void place(
-          nextWindowId(useModelStore.getState().features),
-          gesture.frame,
-          true,
-        );
+        void place(nextWindowId(useModelStore.getState()), gesture.frame, true);
       }
     } else if (!sameFrame(gesture.frame, gesture.origin)) {
       void place(gesture.id, gesture.frame, false);
@@ -357,7 +353,7 @@ export function ElevationEditor({
           className="h-8 text-xs"
           onClick={() => {
             void place(
-              nextWindowId(useModelStore.getState().features),
+              nextWindowId(useModelStore.getState()),
               defaultFrame(facade.length_m, heightM),
               true,
             );

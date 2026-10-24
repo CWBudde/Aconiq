@@ -16,7 +16,7 @@ import {
   type Workspace,
 } from "@/model/compute-crs";
 import { featuresToGeoJSON } from "@/model/to-geojson";
-import type { ModelFeature } from "@/model/types";
+import type { ModelFeature, ModelReceiver } from "@/model/types";
 import type { WindowPlacement } from "@/wasm/types";
 
 /**
@@ -75,9 +75,22 @@ export async function placeWindowFeature(
   return back.features[0] ?? placed;
 }
 
-/** The first `win-<n>` no feature of the model carries. */
-export function nextWindowId(features: readonly ModelFeature[]): string {
-  const taken = new Set(features.map((f) => f.id));
+/**
+ * The first `win-<n>` nothing in the model carries. Receivers count too:
+ * `validateProjectModel` checks feature and receiver ids as one namespace, so
+ * a window named after a receiver would be a `feature.id.duplicate`.
+ */
+export function nextWindowId({
+  features,
+  receivers,
+}: {
+  features: readonly ModelFeature[];
+  receivers: readonly ModelReceiver[];
+}): string {
+  const taken = new Set([
+    ...features.map((f) => f.id),
+    ...receivers.map((r) => r.id),
+  ]);
   let n = 1;
   while (taken.has(`win-${String(n)}`)) n += 1;
   return `win-${String(n)}`;

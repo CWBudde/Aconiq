@@ -220,6 +220,24 @@ describe("ElevationEditor", () => {
     expect(stored("win-1")).toBeUndefined();
   });
 
+  it("names a new window past a receiver's id", async () => {
+    useModelStore.getState().addReceiver({
+      id: "win-1",
+      heightM: 4,
+      geometry: { type: "Point", coordinates: [547005, 5795020] },
+    });
+    renderEditor();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_add_window() }),
+    );
+
+    await waitFor(() => {
+      expect(stored("win-2")).toBeDefined();
+    });
+    expect(stored("win-1")).toBeUndefined();
+  });
+
   it("draws a window by dragging on the wall", async () => {
     renderEditor();
     const wall = drawing().querySelector("[data-wall]");

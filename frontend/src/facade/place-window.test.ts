@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetComputeModelCacheForTests } from "@/model/compute-crs";
-import type { ModelFeature } from "@/model/types";
+import type { ModelFeature, ModelReceiver } from "@/model/types";
 import type {
   PlaceWindowRequest,
   PlaceWindowResponse,
@@ -205,13 +205,29 @@ describe("placeWindowFeature", () => {
 });
 
 describe("nextWindowId", () => {
+  const f = (id: string): ModelFeature => ({
+    id,
+    kind: "window",
+    geometry: { type: "Point", coordinates: [0, 0] },
+  });
+  const r = (id: string): ModelReceiver => ({
+    id,
+    heightM: 4,
+    geometry: { type: "Point", coordinates: [0, 0] },
+  });
+
   it("takes the first win-<n> no feature carries", () => {
-    const f = (id: string): ModelFeature => ({
-      id,
-      kind: "window",
-      geometry: { type: "Point", coordinates: [0, 0] },
-    });
-    expect(nextWindowId([])).toBe("win-1");
-    expect(nextWindowId([f("win-1"), f("win-3")])).toBe("win-2");
+    expect(nextWindowId({ features: [], receivers: [] })).toBe("win-1");
+    expect(
+      nextWindowId({ features: [f("win-1"), f("win-3")], receivers: [] }),
+    ).toBe("win-2");
+  });
+
+  // The validator checks feature and receiver ids as one namespace, so a
+  // window named after a receiver is a `feature.id.duplicate`.
+  it("steps past a receiver's id as well", () => {
+    expect(
+      nextWindowId({ features: [f("win-2")], receivers: [r("win-1")] }),
+    ).toBe("win-3");
   });
 });
