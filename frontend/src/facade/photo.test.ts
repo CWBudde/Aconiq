@@ -108,4 +108,32 @@ describe("photo evidence", () => {
       recordedPhoto(features, { ...facade, edge: 2 }, photo.sha256),
     ).toBeNull();
   });
+
+  it("reuses only a site photo's corners, never another kind's", () => {
+    // An orthophoto or a plan with the same hash and a transform is someone
+    // else's material: reusing it would relabel it as an own site photo.
+    const orthophoto = {
+      ...photoEvidence(photo),
+      kind: "orthophoto",
+      licence: "dl-de/by-2-0",
+    };
+    const features: ModelFeature[] = [
+      {
+        id: "w0",
+        kind: "window",
+        properties: {
+          facade: { building_ref: "house", part: 0, ring: 0, edge: 0 },
+          evidence: [orthophoto],
+        },
+        geometry: { type: "Point", coordinates: [0, 0] },
+      },
+    ];
+    expect(
+      recordedPhoto(
+        features,
+        { buildingId: "house", part: 0, ring: 0, edge: 0 },
+        photo.sha256,
+      ),
+    ).toBeNull();
+  });
 });

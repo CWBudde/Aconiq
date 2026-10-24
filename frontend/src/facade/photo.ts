@@ -111,6 +111,8 @@ export function withPhotoEvidence(
  * The corners and record a window on this facade already holds for the
  * photo with this hash, so opening the same photo again draws it exactly as
  * before, without clicking its corners again. Null when no window has it.
+ * Only a `site-photo` entry counts: another kind with the same hash is
+ * someone else's material, and reusing it would relabel it as an own photo.
  */
 export function recordedPhoto(
   features: readonly ModelFeature[],
@@ -132,7 +134,13 @@ export function recordedPhoto(
     const evidence = f.properties?.evidence;
     if (!Array.isArray(evidence)) continue;
     for (const e of evidence) {
-      if (!isRecord(e) || e.content_sha256 !== sha256) continue;
+      if (
+        !isRecord(e) ||
+        e.kind !== "site-photo" ||
+        e.content_sha256 !== sha256
+      ) {
+        continue;
+      }
       const transform = asTransform(e.transform);
       if (transform === null) continue;
       return {
