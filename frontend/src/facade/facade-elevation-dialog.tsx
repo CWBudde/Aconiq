@@ -156,9 +156,11 @@ function ElevationBody({
         </select>
       </div>
       <ElevationEditor
-        // A facade's selection and gesture are its own: switching facades
-        // starts from nothing selected.
-        key={selected}
+        // A facade's selection, gesture and photo are its own: switching
+        // facades, or to another building's facade at the same index, starts
+        // from nothing selected and no photo, and an answer still on its way
+        // for the old one lands nowhere.
+        key={`${elevation.building_ref}/${String(facade.part)}/${String(facade.ring)}/${String(facade.edge)}`}
         buildingId={elevation.building_ref}
         facade={facade}
         number={selected + 1}

@@ -243,13 +243,13 @@ the facade it belongs to, specified in
 [`docs/research/facade-receivers.md`](research/facade-receivers.md), The facade
 frame: `u` along the edge from its start vertex, `z` above the ground.
 
-| property        | shape                                                                                                                |
-| --------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `facade`        | Required. The facade key, as on a facade receiver: the building edge the window is in.                               |
-| `window`        | Required. `{u_m, sill_z_m, width_m, height_m}`: the u of its left edge, its sill height, its width and height, in m. |
-| `sensitive`     | `true` for a window of a _schutzbedürftiger Raum_. Absent is `false`: the window is kept as context.                 |
-| `review_status` | `proposed`, `confirmed` or `rejected`. Absent is `proposed`.                                                         |
-| `evidence`      | An array of objects, where the placement came from (facade-receivers.md, Receiver properties).                       |
+| property        | shape                                                                                                                                                                                                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `facade`        | Required. The facade key, as on a facade receiver: the building edge the window is in.                                                                                                                                                                                                                                             |
+| `window`        | Required. `{u_m, sill_z_m, width_m, height_m}`: the u of its left edge, its sill height, its width and height, in m.                                                                                                                                                                                                               |
+| `sensitive`     | `true` for a window of a _schutzbedürftiger Raum_. Absent is `false`: the window is kept as context.                                                                                                                                                                                                                               |
+| `review_status` | `proposed`, `confirmed` or `rejected`. Absent is `proposed`.                                                                                                                                                                                                                                                                       |
+| `evidence`      | An array of objects, where the placement came from (facade-receivers.md, Receiver properties). An entry's `content_sha256`, where present, is 64 lowercase hex digits; its `transform`, where present, is `{image_points, facade_points}`, four `[x, y]` pairs each, that solves to a homography (a site photo's corners, P18 D1). |
 
 - Geometry must be `Point`: the window centre on the facade plane. It is there
   for the map; nothing places from it, and the frame decides where the window is.

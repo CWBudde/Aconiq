@@ -303,3 +303,48 @@ func placeWindowResponseOf(f modelgeojson.GeoJSONFeature) placeWindowResponse {
 		Geometry:   placedGeometryResponse{Type: f.Geometry.Type, Coordinates: f.Geometry.Coordinates},
 	}}
 }
+
+// rectifyFacadeRequest is the body of POST /api/v1/facades/rectify, and
+// rectifyFacadeResponse is what it answers with; declared here for the reason
+// facadeElevationRequest is, and held to facadeset's JSON by
+// TestRectifyFacadeDTOsMatchTheFacadesetContract.
+type rectifyFacadeRequest struct {
+	ImagePoints  [][]float64 `json:"image_points"`
+	FacadePoints [][]float64 `json:"facade_points"`
+}
+
+type rectifyFacadeResponse struct {
+	Matrix  [9]float64 `json:"matrix"`
+	Inverse [9]float64 `json:"inverse"`
+}
+
+// handleFacadeRectify solves the homography the frontend draws a facade
+// photo onto the elevation view with in API mode (P18 D1), through
+// facadeset.Rectify — the code the WebAssembly kernel's `rectifyFacade`
+// calls, and the solve window validation checks a window's photo evidence
+// with. It takes the four corners clicked in the photo and where they are on
+// the facade; the photo stays in the browser. Like the elevation it is a pure
+// function of its body.
+func (h Handler) handleFacadeRectify(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req rectifyFacadeRequest
+	if !decodeJSONBody(w, r, maxRectifyBodyBytes, &req) {
+		return
+	}
+
+	rect, err := facadeset.Rectify(facadeset.PhotoTransform{ImagePoints: req.ImagePoints, FacadePoints: req.FacadePoints})
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    errorCodeBadRequest,
+			Message: err.Error(),
+			Hint:    "Send the photo's four facade corners as image_points, bottom-left, bottom-right, top-right, top-left, and where they are on the facade as facade_points.",
+		})
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, rectifyFacadeResponse{Matrix: rect.Matrix, Inverse: rect.Inverse})
+}

@@ -34,6 +34,8 @@ import {
   type FacadeReceiversResponse,
   type PlaceWindowRequest,
   type PlaceWindowResponse,
+  type PhotoTransform,
+  type Rectification,
   type CustomReceiversRequest,
   type CustomReceiversResponse,
   type FootprintMaskRequest,
@@ -511,6 +513,16 @@ export class KernelClient implements AconiqKernel {
     return JSON.parse(
       KernelClient.json(value, "placeWindow"),
     ) as PlaceWindowResponse;
+  }
+
+  async rectifyFacade(req: PhotoTransform): Promise<Rectification> {
+    const value = await this.call(
+      (id) => ({ id, method: "rectifyFacade", json: JSON.stringify(req) }),
+      [],
+    );
+    return JSON.parse(
+      KernelClient.json(value, "rectifyFacade"),
+    ) as Rectification;
   }
 
   async contours(

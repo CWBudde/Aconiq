@@ -129,6 +129,26 @@ func TestValidateWindowInvalid(t *testing.T) {
 		"evidence an object": func(w *Feature) { w.Properties[PropertyEvidence] = map[string]any{"kind": "plan"} },
 		"evidence of string": func(w *Feature) { w.Properties[PropertyEvidence] = []any{"photo.jpg"} },
 		"slash in id":        func(w *Feature) { w.ID = "w/1" },
+		"photo three points": func(w *Feature) {
+			w.Properties[PropertyEvidence] = []any{photoEvidence(func(e map[string]any) {
+				e["transform"].(map[string]any)["image_points"] = []any{
+					[]any{100.0, 900.0}, []any{865.0, 846.0}, []any{885.0, 115.0},
+				}
+			})}
+		},
+		"photo mirrored": func(w *Feature) {
+			w.Properties[PropertyEvidence] = []any{photoEvidence(func(e map[string]any) {
+				e["transform"].(map[string]any)["image_points"] = []any{
+					[]any{1900.0, 900.0}, []any{1135.0, 846.0}, []any{1115.0, 115.0}, []any{1877.0, 139.0},
+				}
+			})}
+		},
+		"photo transform a string": func(w *Feature) {
+			w.Properties[PropertyEvidence] = []any{photoEvidence(func(e map[string]any) { e["transform"] = "4 corners" })}
+		},
+		"photo hash not hex": func(w *Feature) {
+			w.Properties[PropertyEvidence] = []any{photoEvidence(func(e map[string]any) { e["content_sha256"] = "IMG_0042.jpg" })}
+		},
 	}
 
 	for name, mutate := range cases {
@@ -153,6 +173,43 @@ func TestValidateWindowInvalid(t *testing.T) {
 
 	if report := Validate(model); len(issuesWithCode(report.Errors, "window.geometry.invalid")) != 1 {
 		t.Errorf("errors = %#v, want window.geometry.invalid", report.Errors)
+	}
+}
+
+// photoEvidence is a D1 evidence entry as a model read from disk holds it:
+// a site photo's hash and the four corners clicked in it, and where they are
+// on the facade, edited by edit.
+func photoEvidence(edit func(map[string]any)) map[string]any {
+	e := map[string]any{
+		"kind":           "site-photo",
+		"source_id":      "engagement-store/0042",
+		"content_sha256": strings.Repeat("ab", 32),
+		"licence":        "own",
+		"transform": map[string]any{
+			"image_points": []any{
+				[]any{100.0, 900.0}, []any{865.0, 846.0}, []any{885.0, 115.0}, []any{123.0, 139.0},
+			},
+			"facade_points": []any{[]any{0.0, 0.0}, []any{10.0, 0.0}, []any{10.0, 8.0}, []any{0.0, 8.0}},
+		},
+	}
+	edit(e)
+
+	return e
+}
+
+// A window rectified from a photo carries the four point pairs and the
+// photo's hash, and they are what the window's coordinates follow from: a
+// transform that solves to a homography passes, one that does not is an
+// error, as a frame that is not a rectangle is.
+func TestValidateWindowPhotoEvidence(t *testing.T) {
+	t.Parallel()
+
+	model, window := oneWindow(t)
+	window.Properties[PropertyEvidence] = []any{photoEvidence(func(map[string]any) {})}
+	model.Features[1] = window
+
+	if report := Validate(model); !report.Valid {
+		t.Errorf("errors = %#v, want a site photo's evidence to pass", report.Errors)
 	}
 }
 

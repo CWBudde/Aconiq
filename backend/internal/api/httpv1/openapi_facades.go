@@ -3,7 +3,8 @@ package httpv1
 // openapiFacadePathItems describes the facade elevation and window endpoints.
 func openapiFacadePathItems() map[string]any {
 	return map[string]any{
-		"/api/v1/facades/window": openapiFacadeWindowPathItem(),
+		"/api/v1/facades/window":  openapiFacadeWindowPathItem(),
+		"/api/v1/facades/rectify": openapiFacadeRectifyPathItem(),
 		"/api/v1/facades/elevation": map[string]any{
 			"post": map[string]any{
 				"summary":     "Unfold a building into its facades, storeys and windows",
@@ -105,6 +106,8 @@ func openapiFacadeSchemas() map[string]any {
 		"FacadeWindowFrame":   openapiFacadeWindowFrameSchema(number),
 		"PlaceWindowRequest":  openapiPlaceWindowRequestSchema(),
 		"PlaceWindowResponse": openapiPlaceWindowResponseSchema(),
+		"PhotoTransform":      openapiPhotoTransformSchema(pair),
+		"Rectification":       openapiRectificationSchema(number),
 	}
 }
 
@@ -285,6 +288,90 @@ func openapiPlaceWindowResponseSchema() map[string]any {
 				"description": "The window feature: `kind: window`, its `facade` key and `window` frame, " +
 					"`sensitive` and `review_status`, and a Point geometry at its centre, in the request's `crs`.",
 			},
+		},
+	}
+}
+
+// openapiFacadeRectifyPathItem describes the photo rectification endpoint.
+func openapiFacadeRectifyPathItem() map[string]any {
+	return map[string]any{
+		"post": map[string]any{
+			"summary":     "Rectify a facade photo onto the facade's frame",
+			"operationId": "rectifyFacade",
+			"description": "Solves the homography that maps a photo of a facade onto the facade's frame, from four " +
+				"point pairs: the facade's corners as clicked in the photo (pixels, y running down) and where they " +
+				"are on the facade (`u` and `z` in metres). The elevation view draws the photo with it, and a window " +
+				"drawn over the photo records the pairs and the photo's SHA-256 as its evidence, never the photo. It " +
+				"is the solve window validation checks that evidence with, so the same pairs always give the same " +
+				"matrix. It reads no project and writes nothing. The browser's WebAssembly kernel answers from the " +
+				"same Go code (`aconiq.rectifyFacade`).",
+			"requestBody": map[string]any{
+				"required": true,
+				"content": map[string]any{
+					"application/json": map[string]any{
+						"schema": map[string]any{"$ref": "#/components/schemas/PhotoTransform"},
+					},
+				},
+			},
+			"responses": map[string]any{
+				"200": map[string]any{
+					"description": "The homography and its inverse",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{"$ref": "#/components/schemas/Rectification"},
+						},
+					},
+				},
+				"400": openapiErrorResponse(
+					"Malformed body, a point list that is not four [x, y] pairs, a point that is not finite, " +
+						"corners that are not a convex quadrilateral in the order given, or a mirrored photo (`" +
+						errorCodeBadRequest + "`).",
+				),
+				"405": methodNotAllowedResponse(),
+				"500": openapiErrorResponse("Failed to encode the rectification"),
+			},
+		},
+	}
+}
+
+// openapiPhotoTransformSchema is the four point pairs of a photo, as a
+// window's evidence `transform` records them.
+func openapiPhotoTransformSchema(pair map[string]any) map[string]any {
+	four := func(description string) map[string]any {
+		return map[string]any{
+			"type": "array", "items": pair, "minItems": 4, "maxItems": 4, "description": description,
+		}
+	}
+
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"image_points", "facade_points"},
+		"properties": map[string]any{
+			"image_points": four("The facade's corners in the photo, in pixels with y running down: " +
+				"bottom-left, bottom-right, top-right, top-left, seen from outside."),
+			"facade_points": four("Where those corners are in the facade's frame: `u` along the facade and `z` " +
+				"above its base, in metres."),
+		},
+	}
+}
+
+// openapiRectificationSchema is the homography a PhotoTransform solves to.
+func openapiRectificationSchema(number map[string]any) map[string]any {
+	nine := func(description string) map[string]any {
+		return map[string]any{
+			"type": "array", "items": number, "minItems": 9, "maxItems": 9, "description": description,
+		}
+	}
+
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"matrix", "inverse"},
+		"properties": map[string]any{
+			"matrix": nine("Row-major 3×3 homography from a pixel to (u, z) on the facade, scaled so that w is " +
+				"positive over the photographed facade."),
+			"inverse": nine("Row-major 3×3 homography from (u, z) on the facade back to a pixel."),
 		},
 	}
 }

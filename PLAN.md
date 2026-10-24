@@ -2842,7 +2842,14 @@ placer `--windows` uses, and is one undo step. A drawn window starts `proposed` 
 with no evidence; a move keeps its review fields and evidence (C2b, #141). The view hatches each
 facade's party walls, found by the probe facade mode drops a point by (`geo.PartyWallSpans`), and
 flags a window whose centre stands on one; the frontend sends the buildings within 1 m of the one
-it unfolds for that (C2c, #142).
+it unfolds for that (C2c, #142). A photo of a facade can be laid under that view: the four corners
+clicked in it are solved against the frame corners (0, 0), (L, 0), (L, `height_m`), (0, `height_m`)
+by `geo.FacadeHomography` (the kernel's `rectifyFacade`, `POST /api/v1/facades/rectify`), and a
+window drawn, moved or confirmed over it records a `site-photo` evidence entry with the photo's
+SHA-256 and the four pairs as `transform`, which validation re-solves; reopening the same photo
+reuses those corners. The photo stays an object URL in the open view and reaches neither the
+kernel, the API nor the model. A ridge `height_m` makes the top corners a judgement, and no other
+reference points are offered (D1, #143).
 LGLN LoD2 carries building `gml:id`s but no
 openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
@@ -2906,12 +2913,6 @@ exists is summarised above.
 
 ### Phase D — Mapping windows from images
 
-- [ ] **D1 Rectify a facade photo onto the facade plane.** The user clicks the facade's four corners
-      in the photo. Their facade-frame coordinates are known (edge length from the footprint, height
-      from the model), so one homography maps the photo into the elevation view of C2. There the
-      user draws windows, or accepts proposed ones. The stored evidence is the four point pairs
-      and the image's content hash, never the image. The same evidence always gives the same
-      window coordinates.
 - [ ] **D2 Proposals from a vision model, through MCP.** Aconiq ships no detection model. An agent
       on `aconiq mcp` (SL-1) reads the image on the client side, proposes window rectangles in
       the facade frame, and writes them as `review_status: proposed` through a write tool under

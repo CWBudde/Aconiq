@@ -40,6 +40,11 @@ export interface ElevationSvgProps {
   draft: FacadeWindowFrame | null;
   /** The id of the text that says what the hatched party walls are. */
   describedBy?: string | undefined;
+  /**
+   * A rectified photo is drawn under the drawing (P18 D1), so the wall is
+   * left transparent for it to show through.
+   */
+  photoBackdrop?: boolean;
   svgRef?: Ref<SVGSVGElement>;
   onPointerDown?: (event: ReactPointerEvent<SVGSVGElement>) => void;
   onPointerMove?: (event: ReactPointerEvent<SVGSVGElement>) => void;
@@ -72,6 +77,7 @@ export function ElevationSvg({
   selectedId,
   draft,
   describedBy,
+  photoBackdrop = false,
   svgRef,
   onPointerDown,
   onPointerMove,
@@ -93,7 +99,7 @@ export function ElevationSvg({
     <svg
       ref={svgRef}
       viewBox={`0 0 ${String(ELEVATION_VIEW_WIDTH)} ${String(ELEVATION_VIEW_HEIGHT)}`}
-      className="h-auto w-full touch-none select-none"
+      className="relative h-auto w-full touch-none select-none"
       role="group"
       aria-label={m.label_facade_elevation_svg({
         n: number,
@@ -131,7 +137,10 @@ export function ElevationSvg({
         y={top}
         width={right - left}
         height={ground - top}
-        className="fill-muted stroke-border"
+        className={cn(
+          photoBackdrop ? "fill-transparent" : "fill-muted",
+          "stroke-border",
+        )}
         strokeWidth={1}
       />
       {facade.party_walls.map((span) => (

@@ -533,6 +533,37 @@ func placeWindowFunc(_ js.Value, args []js.Value) any {
 	}))
 }
 
+// rectifyFacadeFunc solves the homography that draws a photo of a facade
+// onto the elevation view, from the four corners clicked in it.
+// Signature: (json: string) => Promise<string> (JSON)
+//
+// A Promise like placeWindow, which the elevation view awaits beside it: a
+// refusal — corners that are no convex quadrilateral, a mirrored photo —
+// rejects with the words POST /api/v1/facades/rectify answers in. Only the
+// point pairs cross; the photo never reaches the kernel.
+func rectifyFacadeFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsReject("rectifyFacade: expected exactly 1 JSON string argument")
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		out, err := wasmkernel.RectifyFacade([]byte(input))
+		if err != nil {
+			reject.Invoke(js.ValueOf(err.Error()))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
 // contoursFunc traces ISO-band contour lines over a run's raster.
 // Signature: (payload: Uint8Array, request: string) => Promise<string> (JSON)
 //
@@ -758,6 +789,7 @@ func main() {
 	aconiq.Set("customReceivers", js.FuncOf(customReceiversFunc))
 	aconiq.Set("facadeElevation", js.FuncOf(facadeElevationFunc))
 	aconiq.Set("placeWindow", js.FuncOf(placeWindowFunc))
+	aconiq.Set("rectifyFacade", js.FuncOf(rectifyFacadeFunc))
 	// The two synchronous exports that can fail go through the rethrowing
 	// wrapper; the ones below cannot fail, so they are registered bare.
 	aconiq.Set("standards", throwingSyncExport(js.FuncOf(standardsFunc)))

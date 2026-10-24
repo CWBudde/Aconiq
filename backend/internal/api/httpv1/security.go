@@ -75,6 +75,9 @@ const (
 	// came from — no nesting, no properties, no per-feature envelope — so a
 	// district model of ~250 000 points encodes to well under half of this.
 	maxTransformBodyBytes = 16 << 20
+	// maxRectifyBodyBytes bounds eight point pairs: a photo's four corners and
+	// the facade points they stand for. The photo itself is never sent.
+	maxRectifyBodyBytes   = 4 << 10
 	maxTerrainUploadBytes = 50 << 20 // 50 MB, the whole multipart body
 	maxTerrainMemoryBytes = 8 << 20  // buffered in memory; the rest would spill to a temp file
 )

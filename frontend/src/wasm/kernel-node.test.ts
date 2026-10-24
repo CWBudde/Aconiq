@@ -313,6 +313,52 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     ).rejects.toThrow("runs past the end");
   });
 
+  it("rectifies a facade photo from the four corners clicked in it", async () => {
+    const kernel = await getNodeKernel();
+    const corners: [number, number][] = [
+      [100, 900],
+      [865.4, 846.2],
+      [885.1, 114.9],
+      [123.5, 139.4],
+    ];
+    const facade: [number, number][] = [
+      [0, 0],
+      [10, 0],
+      [10, 8],
+      [0, 8],
+    ];
+
+    const { matrix, inverse } = await kernel.rectifyFacade({
+      image_points: corners,
+      facade_points: facade,
+    });
+
+    expect(matrix).toHaveLength(9);
+    expect(inverse).toHaveLength(9);
+    corners.forEach(([x, y], i) => {
+      const [m0, m1, m2, m3, m4, m5, m6, m7, m8] = matrix as [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+      ];
+      const w = m6 * x + m7 * y + m8;
+      expect((m0 * x + m1 * y + m2) / w).toBeCloseTo(facade[i]?.[0] ?? NaN, 9);
+      expect((m3 * x + m4 * y + m5) / w).toBeCloseTo(facade[i]?.[1] ?? NaN, 9);
+    });
+    await expect(
+      kernel.rectifyFacade({
+        image_points: corners.map(([x, y]): [number, number] => [2000 - x, y]),
+        facade_points: facade,
+      }),
+    ).rejects.toThrow("mirrored");
+  });
+
   it("places a sensitive window's point in place of its facade's stations", async () => {
     const kernel = await getNodeKernel();
 

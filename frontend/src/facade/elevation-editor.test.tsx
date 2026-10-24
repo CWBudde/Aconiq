@@ -14,11 +14,13 @@ import { useModelStore } from "@/model/model-store";
 import type { ModelFeature } from "@/model/types";
 import type {
   FacadeElevation,
+  PhotoTransform,
   PlaceWindowRequest,
   PlaceWindowResponse,
   TransformRequest,
 } from "@/wasm/types";
 import { ElevationEditor } from "./elevation-editor";
+import { hashPhoto } from "./photo";
 
 /**
  * The editor only gestures; the placement is the backend's. So the backend
@@ -29,10 +31,18 @@ import { ElevationEditor } from "./elevation-editor";
 const kernel = vi.hoisted(() => {
   const value: {
     placed: PlaceWindowRequest[];
+    rectified: PhotoTransform[];
     refuse: string | null;
+    holdRectify: boolean;
     /** When set, every answer waits for it: a placement held in flight. */
     gate: Promise<void> | null;
-  } = { placed: [], refuse: null, gate: null };
+  } = {
+    placed: [],
+    rectified: [],
+    refuse: null,
+    holdRectify: false,
+    gate: null,
+  };
   return value;
 });
 
@@ -61,6 +71,10 @@ vi.mock("@/api/backend", () => ({
             window: req.window.window,
             sensitive: req.window.sensitive,
             review_status: req.window.review_status ?? "proposed",
+            // The Go placer keeps a placement's evidence on the feature.
+            ...(req.window.evidence === undefined
+              ? {}
+              : { evidence: req.window.evidence }),
           },
           geometry: {
             type: "Point",
@@ -69,6 +83,17 @@ vi.mock("@/api/backend", () => ({
         },
       };
       return (kernel.gate ?? Promise.resolve()).then(() => answer);
+    },
+    // A straight-on photo, 100 px to the metre: what is solved is not the
+    // editor's business, only what it sends and draws.
+    rectifyFacade: (req: PhotoTransform) => {
+      kernel.rectified.push(req);
+      // A rectification still on its way, for as long as the test needs.
+      if (kernel.holdRectify) return new Promise<never>(() => undefined);
+      return Promise.resolve({
+        matrix: [0.01, 0, 0, 0, -0.01, 9, 0, 0, 1],
+        inverse: [100, 0, 0, 0, -100, 900, 0, 0, 1],
+      });
     },
     transformCoordinates: (req: TransformRequest) =>
       Promise.resolve({
@@ -135,8 +160,13 @@ beforeEach(() => {
   overwriteGetLocale(() => "en");
   resetComputeModelCacheForTests();
   kernel.placed = [];
+  kernel.rectified = [];
   kernel.refuse = null;
+  kernel.holdRectify = false;
   kernel.gate = null;
+  // jsdom has no object URLs; the editor only needs one to hand to an <img>.
+  URL.createObjectURL = vi.fn(() => "blob:facade-photo");
+  URL.revokeObjectURL = vi.fn();
   useModelStore.getState().reset();
   useModelStore.getState().loadModel({
     features: [
@@ -622,5 +652,207 @@ describe("ElevationEditor", () => {
     expect(stored("w1")).toBeUndefined();
     useModelStore.getState().undo();
     expect(stored("w1")).toBeDefined();
+  });
+
+  describe("with a photo of the facade", () => {
+    const photoBytes = "not really a jpeg";
+    const corners: [number, number][] = [
+      [0, 900],
+      [1000, 900],
+      [1000, 0],
+      [0, 0],
+    ];
+
+    function choosePhoto() {
+      fireEvent.change(screen.getByLabelText(m.label_photo_file()), {
+        target: { files: [new File([photoBytes], "IMG_0042.jpg")] },
+      });
+    }
+
+    async function clickCorners({ drawn = true } = {}) {
+      await screen.findByRole("region", { name: m.heading_photo_corners() });
+      const labels = [
+        m.label_corner_bottom_left(),
+        m.label_corner_bottom_right(),
+        m.label_corner_top_right(),
+        m.label_corner_top_left(),
+      ];
+      corners.forEach(([px, py], i) => {
+        const corner = labels[i] ?? "";
+        fireEvent.change(
+          screen.getByLabelText(m.label_photo_corner_x({ corner })),
+          { target: { value: String(px) } },
+        );
+        fireEvent.change(
+          screen.getByLabelText(m.label_photo_corner_y({ corner })),
+          { target: { value: String(py) } },
+        );
+      });
+      fireEvent.change(screen.getByLabelText(m.label_photo_reference()), {
+        target: { value: "store/0042" },
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: m.action_rectify_photo() }),
+      );
+      if (!drawn) return;
+      await waitFor(() => {
+        expect(document.querySelector("img[data-facade-photo]")).not.toBeNull();
+      });
+    }
+
+    it("rectifies it from four corners and records it on a window drawn over it, never the image", async () => {
+      renderEditor();
+      choosePhoto();
+      await clickCorners();
+
+      // Only the corners were sent, against the facade's frame corners.
+      expect(kernel.rectified).toEqual([
+        {
+          image_points: corners,
+          facade_points: [
+            [0, 0],
+            [10, 0],
+            [10, 9],
+            [0, 9],
+          ],
+        },
+      ]);
+      expect(
+        document.querySelector<HTMLImageElement>("img[data-facade-photo]")
+          ?.style.transform,
+      ).toMatch(/^matrix3d\(/);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: m.action_add_window() }),
+      );
+      await waitFor(() => {
+        expect(stored("win-1")).toBeDefined();
+      });
+
+      const sha256 = await hashPhoto(new Blob([photoBytes]));
+      expect(stored("win-1")?.properties?.evidence).toEqual([
+        {
+          kind: "site-photo",
+          source_id: "store/0042",
+          content_sha256: sha256,
+          licence: "own",
+          transform: kernel.rectified[0],
+        },
+      ]);
+      const model = JSON.stringify(useModelStore.getState().features);
+      expect(model).not.toContain("blob:");
+      expect(model).not.toContain("data:");
+      expect(model).not.toContain("IMG_0042");
+    });
+
+    it("adds the photo to a window moved over it, keeping its other evidence", async () => {
+      renderEditor();
+      choosePhoto();
+      await clickCorners();
+
+      const window = within(drawing()).getByRole("button", {
+        name: /^Window w1/,
+      });
+      fireEvent.focus(window);
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+
+      await waitFor(() => {
+        expect(stored("w1")?.properties?.evidence).toHaveLength(2);
+      });
+      const evidence = stored("w1")?.properties?.evidence as Record<
+        string,
+        unknown
+      >[];
+      expect(evidence[0]).toEqual({ kind: "plan", source_id: "A-12" });
+      expect(evidence[1]).toMatchObject({
+        kind: "site-photo",
+        transform: kernel.rectified[0],
+      });
+    });
+
+    it("rectifies the next photo after one abandoned while its rectification was on its way", async () => {
+      renderEditor();
+      choosePhoto();
+      kernel.holdRectify = true;
+      await clickCorners({ drawn: false });
+      fireEvent.click(screen.getByRole("button", { name: m.action_cancel() }));
+
+      kernel.holdRectify = false;
+      choosePhoto();
+      await clickCorners();
+      expect(kernel.rectified).toHaveLength(2);
+    });
+
+    it("draws the same photo again from the corners a window recorded, without asking for them", async () => {
+      const sha256 = await hashPhoto(new Blob([photoBytes]));
+      const transform = {
+        image_points: corners,
+        facade_points: [
+          [0, 0],
+          [10, 0],
+          [10, 9],
+          [0, 9],
+        ],
+      };
+      useModelStore.getState().updateFeature({
+        ...bedroom,
+        properties: {
+          ...bedroom.properties,
+          evidence: [
+            {
+              kind: "site-photo",
+              source_id: "store/0042",
+              content_sha256: sha256,
+              licence: "own",
+              transform,
+            },
+          ],
+        },
+      });
+      renderEditor();
+      choosePhoto();
+
+      await waitFor(() => {
+        expect(document.querySelector("img[data-facade-photo]")).not.toBeNull();
+      });
+      expect(
+        screen.queryByRole("region", { name: m.heading_photo_corners() }),
+      ).toBeNull();
+      expect(kernel.rectified).toEqual([transform]);
+      expect(screen.getByText(new RegExp(m.msg_photo_reused()))).toBeTruthy();
+    });
+
+    it("asks for the corners again when they were recorded against a facade of another size", async () => {
+      const sha256 = await hashPhoto(new Blob([photoBytes]));
+      useModelStore.getState().updateFeature({
+        ...bedroom,
+        properties: {
+          ...bedroom.properties,
+          evidence: [
+            {
+              kind: "site-photo",
+              source_id: "store/0042",
+              content_sha256: sha256,
+              licence: "own",
+              transform: {
+                image_points: corners,
+                // The building was 8 m high then; it is 9 m now.
+                facade_points: [
+                  [0, 0],
+                  [10, 0],
+                  [10, 8],
+                  [0, 8],
+                ],
+              },
+            },
+          ],
+        },
+      });
+      renderEditor();
+      choosePhoto();
+
+      await screen.findByRole("region", { name: m.heading_photo_corners() });
+      expect(kernel.rectified).toEqual([]);
+    });
   });
 });

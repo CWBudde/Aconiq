@@ -460,6 +460,28 @@ export interface PlaceWindowResponse {
 }
 
 /**
+ * `facadeset.PhotoTransform`, and the body of `POST /api/v1/facades/rectify`:
+ * the four facade corners clicked in a photo, in pixels with y running down —
+ * bottom-left, bottom-right, top-right, top-left, seen from outside — and
+ * where they are in the facade's frame, `[u, z]` in metres. It is also the
+ * `transform` a window's photo evidence records (P18 D1).
+ */
+export interface PhotoTransform {
+  image_points: [number, number][];
+  facade_points: [number, number][];
+}
+
+/**
+ * `facadeset.Rectification`: the homography a {@link PhotoTransform} solves
+ * to, row-major, from a pixel to `(u, z)` on the facade (`matrix`) and back
+ * (`inverse`), scaled so that w is positive over the photographed facade.
+ */
+export interface Rectification {
+  matrix: number[];
+  inverse: number[];
+}
+
+/**
  * One generated facade receiver and the attributes its table row carries. A
  * point placed at a window names the window and what its height was derived
  * from, and its `slab_height_source` is empty: the window fixes the height.

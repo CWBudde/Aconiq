@@ -19,6 +19,7 @@ import type {
   ElevationWindow,
   FacadeElevation,
   FacadeWindowFrame,
+  PhotoTransform,
   WindowPlacement,
 } from "@/wasm/types";
 import { partyWallsLabel, reviewLabel } from "./elevation-labels";
@@ -36,6 +37,17 @@ import {
   resizedFrame,
   sameFrame,
 } from "./frame-edit";
+import {
+  facadeCorners,
+  hashPhoto,
+  photoEvidence,
+  photoMatrix3d,
+  recordedPhoto,
+  withPhotoEvidence,
+  type PhotoRecord,
+  type RectifiedPhoto,
+} from "./photo";
+import { PhotoCorners } from "./photo-corners";
 import { nextWindowId, placeWindowFeature } from "./place-window";
 
 const REVIEW_STATUSES = ["proposed", "confirmed", "rejected"] as const;
@@ -78,6 +90,13 @@ export interface ElevationEditorProps {
  * (an edge with no room for the window) is shown and leaves the model as it
  * was. A new window starts `proposed` and not sensitive, as an imported one
  * does: marking it sensitive and confirming it are a person's explicit acts.
+ *
+ * A photo of the facade can be laid under the drawing (P18 D1): its four
+ * corners are clicked once, `facadeset.Rectify` solves the homography, and
+ * while it is shown every window drawn, moved or confirmed records the
+ * photo's hash and those corners as evidence. Opening the same photo again
+ * finds them on a window and draws it as before. The photo is an object URL
+ * held here and nowhere else: never in the model, the store or a request.
  */
 export function ElevationEditor({
   buildingId,
@@ -111,7 +130,28 @@ export function ElevationEditor({
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
+  const drawingRef = useRef<HTMLDivElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  // The photo chosen last: a hash or a rectification that resolves after
+  // another photo was chosen, or this one removed, is dropped.
+  const photoToken = useRef(0);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoHash, setPhotoHash] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [rectifying, setRectifying] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [rectified, setRectified] = useState<RectifiedPhoto | null>(null);
+  const [photoReused, setPhotoReused] = useState(false);
+  const [photoShown, setPhotoShown] = useState(true);
+  const [cssPerUnit, setCssPerUnit] = useState(1);
+  const photoLegendId = useId();
+
   const getFeatureById = useModelStore((s) => s.getFeatureById);
+  const selectedEvidence = useModelStore((s) =>
+    selectedId === null
+      ? undefined
+      : s.features.find((f) => f.id === selectedId)?.properties?.evidence,
+  );
   const addFeature = useModelStore((s) => s.addFeature);
   const updateFeature = useModelStore((s) => s.updateFeature);
   const removeFeature = useModelStore((s) => s.removeFeature);
@@ -119,6 +159,47 @@ export function ElevationEditor({
   useEffect(() => {
     setPending(null);
   }, [facade]);
+
+  useEffect(
+    () => () => {
+      if (photoUrl !== null) URL.revokeObjectURL(photoUrl);
+    },
+    [photoUrl],
+  );
+
+  // A photo is rectified onto the facade's frame as it was measured. When
+  // the model changes the facade's length or height, the corners stand for a
+  // rectangle it no longer has, so they are asked for again rather than
+  // recorded on the next window. Another facade is another editor: the
+  // dialog keys it by building and edge.
+  const frameKey = `${String(facade.length_m)}x${String(heightM)}`;
+  const rectifiedFor = useRef(frameKey);
+  useEffect(() => {
+    if (rectifiedFor.current === frameKey) return;
+    rectifiedFor.current = frameKey;
+    if (rectified === null) return;
+    setRectified(null);
+    setPhotoReused(false);
+    setPicking(true);
+  }, [frameKey, rectified]);
+
+  // The photo is drawn in CSS pixels, so it follows the drawing's size on
+  // screen as the SVG's viewBox does.
+  useEffect(() => {
+    const el = drawingRef.current;
+    if (el === null || rectified === null) return;
+    const measure = () => {
+      const width = el.getBoundingClientRect().width;
+      if (width > 0) setCssPerUnit(width / ELEVATION_VIEW_WIDTH);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, [rectified]);
 
   const scale = elevationScale(facade.length_m, heightM);
 
@@ -135,6 +216,95 @@ export function ElevationEditor({
     return w;
   });
   const selected = windows.find((w) => w.id === selectedId) ?? null;
+  // What a window drawn, moved or confirmed now records: the photo shown
+  // under the drawing, if one is.
+  const photoEntry =
+    rectified !== null && photoShown ? photoEvidence(rectified) : null;
+
+  function removePhoto() {
+    // A rectification still on its way answers for a photo no longer here,
+    // so it is dropped, and its busy state with it: its own `finally` no
+    // longer clears it once the token has moved on.
+    photoToken.current += 1;
+    setRectifying(false);
+    setPhotoUrl(null);
+    setPhotoHash(null);
+    setPicking(false);
+    setRectified(null);
+    setPhotoReused(false);
+    setPhotoError(null);
+  }
+
+  async function choosePhoto(file: File) {
+    removePhoto();
+    const token = photoToken.current;
+    setPhotoUrl(URL.createObjectURL(file));
+    setPhotoShown(true);
+    try {
+      const sha256 = await hashPhoto(file);
+      if (token !== photoToken.current) return;
+      setPhotoHash(sha256);
+      const recorded = recordedPhoto(
+        useModelStore.getState().features,
+        {
+          buildingId,
+          part: facade.part,
+          ring: facade.ring,
+          edge: facade.edge,
+        },
+        sha256,
+      );
+      // Corners recorded against a facade of another size stood for a frame
+      // the facade no longer has: they are clicked again, not reused.
+      if (
+        recorded === null ||
+        !sameCorners(
+          recorded.transform.facade_points,
+          facadeCorners(facade.length_m, heightM),
+        )
+      ) {
+        setPicking(true);
+        return;
+      }
+      await rectify(sha256, recorded.transform, recorded.record, true);
+    } catch (err) {
+      if (token !== photoToken.current) return;
+      setPhotoError(
+        m.msg_photo_failed({
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  }
+
+  async function rectify(
+    sha256: string,
+    transform: PhotoTransform,
+    record: PhotoRecord,
+    reused: boolean,
+  ) {
+    const token = photoToken.current;
+    setRectifying(true);
+    try {
+      const rectification = await backend.rectifyFacade(transform);
+      if (token !== photoToken.current) return;
+      setRectified({ sha256, record, transform, rectification });
+      setPicking(false);
+      setPhotoReused(reused);
+      setPhotoError(null);
+    } catch (err) {
+      if (token !== photoToken.current) return;
+      setPhotoError(
+        m.msg_photo_failed({
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      // Corners a window recorded that no longer solve are clicked again.
+      if (reused) setPicking(true);
+    } finally {
+      if (token === photoToken.current) setRectifying(false);
+    }
+  }
 
   function placementOf(
     id: string,
@@ -152,7 +322,11 @@ export function ElevationEditor({
       window: frame,
       sensitive: props.sensitive === true,
       ...(isReviewStatus(status) ? { review_status: status } : {}),
-      ...(Array.isArray(props.evidence) ? { evidence: props.evidence } : {}),
+      ...(photoEntry !== null
+        ? { evidence: withPhotoEvidence(props.evidence, photoEntry) }
+        : Array.isArray(props.evidence)
+          ? { evidence: props.evidence }
+          : {}),
     };
   }
 
@@ -186,6 +360,7 @@ export function ElevationEditor({
     if (placing.current) return false;
     const before = isNew ? undefined : getFeatureById(id);
     if (!isNew && before === undefined) return false;
+    const entry = photoEntry;
     placing.current = true;
     setPending({ id, frame });
     const basis = placementBasis(id);
@@ -218,13 +393,22 @@ export function ElevationEditor({
         return false;
       }
       // A move keeps everything a person or an import said about the
-      // window; only where it is changes.
+      // window; only where it is changes, and the photo it was moved over
+      // joins its evidence.
       updateFeature({
         ...current,
         properties: {
           ...current.properties,
           facade: placed.properties?.facade,
           window: placed.properties?.window,
+          ...(entry !== null
+            ? {
+                evidence: withPhotoEvidence(
+                  current.properties?.evidence,
+                  entry,
+                ),
+              }
+            : {}),
         },
         geometry: placed.geometry,
       });
@@ -385,39 +569,144 @@ export function ElevationEditor({
         <p className="text-xs text-muted-foreground">
           {m.msg_elevation_edit_help()}
         </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => {
-            void place(
-              nextWindowId(useModelStore.getState()),
-              defaultFrame(facade.length_m, heightM),
-              true,
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label={m.label_photo_file()}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Cleared, so choosing the same photo again is a change.
+              e.target.value = "";
+              if (file !== undefined) void choosePhoto(file);
+            }}
+          />
+          {rectified !== null && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setPhotoShown((shown) => !shown);
+                }}
+              >
+                {photoShown ? m.action_hide_photo() : m.action_show_photo()}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={removePhoto}
+              >
+                {m.action_remove_photo()}
+              </Button>
+            </>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => photoInputRef.current?.click()}
+          >
+            {m.action_add_photo()}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => {
+              void place(
+                nextWindowId(useModelStore.getState()),
+                defaultFrame(facade.length_m, heightM),
+                true,
+              );
+            }}
+          >
+            {m.action_add_window()}
+          </Button>
+        </div>
+      </div>
+      {picking && photoUrl !== null && photoHash !== null && (
+        <PhotoCorners
+          url={photoUrl}
+          busy={rectifying}
+          error={photoError}
+          onSubmit={(points, record) => {
+            void rectify(
+              photoHash,
+              {
+                image_points: points,
+                facade_points: facadeCorners(facade.length_m, heightM),
+              },
+              record,
+              false,
             );
           }}
-        >
-          {m.action_add_window()}
-        </Button>
+          onCancel={removePhoto}
+        />
+      )}
+      {!picking && photoError !== null && (
+        <p role="alert" className="text-xs text-destructive">
+          {photoError}
+        </p>
+      )}
+      <div ref={drawingRef} className="relative overflow-hidden">
+        {rectified !== null && photoShown && photoUrl !== null && (
+          <img
+            data-facade-photo=""
+            src={photoUrl}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="pointer-events-none absolute left-0 top-0 max-w-none origin-top-left opacity-80"
+            style={{
+              transform: photoMatrix3d(
+                rectified.rectification.matrix,
+                scale,
+                cssPerUnit,
+              ),
+            }}
+          />
+        )}
+        <ElevationSvg
+          facade={facade}
+          number={number}
+          heightM={heightM}
+          slabHeightsM={slabHeightsM}
+          windows={windows}
+          selectedId={selectedId}
+          draft={gesture?.kind === "draw" ? gesture.frame : null}
+          svgRef={svgRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onSelect={setSelectedId}
+          onWindowKeyDown={handleWindowKeyDown}
+          describedBy={
+            [
+              hasPartyWalls ? legendId : null,
+              photoEntry !== null ? photoLegendId : null,
+            ]
+              .filter((id) => id !== null)
+              .join(" ") || undefined
+          }
+          photoBackdrop={photoEntry !== null}
+        />
       </div>
-      <ElevationSvg
-        facade={facade}
-        number={number}
-        heightM={heightM}
-        slabHeightsM={slabHeightsM}
-        windows={windows}
-        selectedId={selectedId}
-        draft={gesture?.kind === "draw" ? gesture.frame : null}
-        svgRef={svgRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onSelect={setSelectedId}
-        onWindowKeyDown={handleWindowKeyDown}
-        describedBy={hasPartyWalls ? legendId : undefined}
-      />
+      {photoEntry !== null && (
+        <p id={photoLegendId} className="text-xs text-muted-foreground">
+          {m.msg_photo_shown()}
+          {photoReused && ` ${m.msg_photo_reused()}`}
+        </p>
+      )}
       {hasPartyWalls && (
         <p id={legendId} className="text-xs text-muted-foreground">
           {partyWallsLabel(facade)}
@@ -432,6 +721,7 @@ export function ElevationEditor({
         <WindowForm
           key={selected.id}
           window={selected}
+          evidence={selectedEvidence}
           onFrame={(frame) =>
             sameFrame(frame, selected.window)
               ? Promise.resolve(true)
@@ -441,7 +731,15 @@ export function ElevationEditor({
             setReviewField(selected.id, { sensitive });
           }}
           onReviewStatus={(status) => {
-            setReviewField(selected.id, { review_status: status });
+            // Confirming a window over a photo is checking it against the
+            // photo, so the photo joins its evidence.
+            const evidence = getFeatureById(selected.id)?.properties?.evidence;
+            setReviewField(selected.id, {
+              review_status: status,
+              ...(status === "confirmed" && photoEntry !== null
+                ? { evidence: withPhotoEvidence(evidence, photoEntry) }
+                : {}),
+            });
           }}
           onDelete={() => {
             setConfirmingDelete(selected.id);
@@ -476,12 +774,15 @@ export function ElevationEditor({
  */
 function WindowForm({
   window: w,
+  evidence,
   onFrame,
   onSensitive,
   onReviewStatus,
   onDelete,
 }: {
   window: ElevationWindow;
+  /** The window feature's `evidence`, as the model holds it. */
+  evidence: unknown;
   /** Resolves whether the model took the frame. */
   onFrame: (frame: FacadeWindowFrame) => Promise<boolean>;
   onSensitive: (sensitive: boolean) => void;
@@ -495,6 +796,14 @@ function WindowForm({
     ["width_m", m.label_window_width()],
     ["height_m", m.label_window_height()],
   ] as const;
+  const sources = Array.isArray(evidence)
+    ? evidence.flatMap((e) => {
+        if (typeof e !== "object" || e === null) return [];
+        const { kind, source_id: source } = e as Record<string, unknown>;
+        if (typeof kind !== "string") return [];
+        return [typeof source === "string" ? `${kind} · ${source}` : kind];
+      })
+    : [];
 
   return (
     <section
@@ -513,6 +822,11 @@ function WindowForm({
           }
         >
           {m.msg_window_on_party_wall()}
+        </p>
+      )}
+      {sources.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {m.label_window_evidence()}: {sources.join("; ")}
         </p>
       )}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -641,4 +955,14 @@ function workspaceNow() {
     calcArea: s.calcArea,
     crs: s.crs,
   };
+}
+
+function sameCorners(
+  a: readonly (readonly number[])[],
+  b: readonly (readonly number[])[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((p, i) => p[0] === b[i]?.[0] && p[1] === b[i]?.[1])
+  );
 }

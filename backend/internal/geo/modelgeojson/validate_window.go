@@ -1,6 +1,7 @@
 package modelgeojson
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -173,12 +174,71 @@ func evidenceProblem(value any) string {
 	}
 
 	for i, entry := range entries {
-		if _, isObject := entry.(map[string]any); !isObject {
+		obj, isObject := entry.(map[string]any)
+		if !isObject {
 			return fmt.Sprintf("[%d] must be an object, got %T", i, entry)
+		}
+
+		if problem := photoEvidenceProblem(obj); problem != "" {
+			return fmt.Sprintf("[%d].%s", i, problem)
 		}
 	}
 
 	return ""
+}
+
+// photoEvidenceProblem checks the two fields of an evidence entry a window's
+// coordinates follow from (P18 D1), where the entry has them: the content
+// hash of the image, and the transform — the four image points a person
+// clicked and the facade points they stand for — which must solve to a
+// homography, so the same evidence always gives the same window. The other
+// fields are records for a reviewer and are not checked.
+func photoEvidenceProblem(entry map[string]any) string {
+	if v, ok := presentProperty(entry, "content_sha256"); ok {
+		if s, isString := v.(string); !isString || !isSHA256Hex(s) {
+			return fmt.Sprintf("content_sha256 %#v must be 64 lowercase hexadecimal digits", v)
+		}
+	}
+
+	v, ok := presentProperty(entry, "transform")
+	if !ok {
+		return ""
+	}
+
+	// Through JSON, so the transform reads exactly as the kernel and the API
+	// read one: a number where a number belongs, or a refusal.
+	encoded, err := json.Marshal(v)
+	if err != nil {
+		return "transform cannot be encoded: " + err.Error()
+	}
+
+	var transform geo.PhotoTransform
+
+	err = json.Unmarshal(encoded, &transform)
+	if err != nil {
+		return "transform must be {image_points, facade_points}, each four [x, y] pairs"
+	}
+
+	_, err = transform.Homography()
+	if err != nil {
+		return "transform " + err.Error()
+	}
+
+	return ""
+}
+
+func isSHA256Hex(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+
+	return true
 }
 
 // windowFrameProperty spells a frame the way a model read from disk holds it.
