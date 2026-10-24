@@ -35,6 +35,8 @@ import {
   type FacadeElevationResponse,
   type FacadeReceiversRequest,
   type FacadeReceiversResponse,
+  type PlaceWindowRequest,
+  type PlaceWindowResponse,
   type CustomReceiversRequest,
   type CustomReceiversResponse,
   type FootprintMaskRequest,
@@ -148,6 +150,14 @@ export interface AconiqKernel {
   facadeElevation(
     req: FacadeElevationRequest,
   ): Promise<FacadeElevationResponse>;
+  /**
+   * The window feature a window drawn or moved in the elevation view
+   * becomes, by `facadeset.PlaceWindow` — the placer `aconiq import
+   * --windows` uses, and the code `POST /api/v1/facades/window` answers
+   * from. It rejects what that import refuses, in its words: an edge the
+   * building does not have, a window its edge has no room for.
+   */
+  placeWindow(req: PlaceWindowRequest): Promise<PlaceWindowResponse>;
   /**
    * Trace ISO-band contour lines over a run's raster.
    *
@@ -365,6 +375,7 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
     facadeReceivers: (req) => client.facadeReceivers(req),
     customReceivers: (req) => client.customReceivers(req),
     facadeElevation: (req) => client.facadeElevation(req),
+    placeWindow: (req) => client.placeWindow(req),
     contours: (payload, req) => client.contours(payload, req),
     standards: () => client.standards(),
     defaultConfig: () => client.defaultConfig(),

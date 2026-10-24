@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/aconiq/backend/internal/facadeset"
+	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 	"github.com/aconiq/backend/internal/wasmkernel"
 )
@@ -72,5 +73,55 @@ func TestFacadeElevationRefuses(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
 		}
+	}
+}
+
+// The kernel places what facadeset places, and refuses in its words.
+func TestPlaceWindowAnswersWhatFacadesetAnswers(t *testing.T) {
+	t.Parallel()
+
+	placement := facadeset.WindowPlacement{
+		ID: "drawn", BuildingRef: "a",
+		Frame: geo.FacadeWindow{UM: 2, SillZM: 1, WidthM: 1.2, HeightM: 1.5},
+	}
+
+	in, err := json.Marshal(wasmkernel.PlaceWindowRequest{CRS: "EPSG:25832", Model: json.RawMessage(facadeTestModel), Window: placement})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := wasmkernel.PlaceWindow(in)
+	if err != nil {
+		t.Fatalf("placeWindow: %v", err)
+	}
+
+	model, err := modelgeojson.Normalize([]byte(facadeTestModel), "EPSG:25832", "test")
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+
+	feature, err := facadeset.PlaceWindow(model, placement)
+	if err != nil {
+		t.Fatalf("PlaceWindow: %v", err)
+	}
+
+	want, err := json.Marshal(wasmkernel.PlaceWindowResponse{Feature: feature})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(out) != string(want) {
+		t.Errorf("kernel answered %s, facadeset %s", out, want)
+	}
+
+	placement.Frame.UM = 9.5
+
+	in, err = json.Marshal(wasmkernel.PlaceWindowRequest{CRS: "EPSG:25832", Model: json.RawMessage(facadeTestModel), Window: placement})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := wasmkernel.PlaceWindow(in); err == nil || !strings.Contains(err.Error(), "place window:") || !strings.Contains(err.Error(), "runs past the end") {
+		t.Errorf("past the corner: err = %v", err)
 	}
 }

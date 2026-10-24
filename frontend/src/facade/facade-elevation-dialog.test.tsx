@@ -180,7 +180,7 @@ describe("FacadeElevationDialog", () => {
       ),
     ).toBeInTheDocument();
 
-    const drawing = screen.getByRole("img", {
+    const drawing = screen.getByRole("group", {
       name: m.label_facade_elevation_svg({
         n: 1,
         length: "10.0",
@@ -216,7 +216,7 @@ describe("FacadeElevationDialog", () => {
     await userEvent.selectOptions(facades, "1");
 
     expect(
-      screen.getByRole("img", {
+      screen.getByRole("group", {
         name: m.label_facade_elevation_svg({
           n: 2,
           length: "8.0",

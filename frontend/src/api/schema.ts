@@ -67,6 +67,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/facades/window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place a window drawn or moved in a facade elevation
+         * @description Turns a window given in its facade's frame — the building, the canonical part, ring and edge `/api/v1/facades/elevation` listed, and the rectangle — into the window feature the model stores: its facade key with `from` / `to` in the request's `crs`, and a Point at its centre. It is the placement `aconiq import --windows` makes, and refuses what that refuses. It reads no project and writes nothing: the client puts the feature in its model and saves it. The browser's WebAssembly kernel answers from the same Go code (`aconiq.placeWindow`).
+         */
+        post: operations["placeFacadeWindow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -471,13 +491,7 @@ export interface components {
             /** @enum {string} */
             review_status: "proposed" | "confirmed" | "rejected";
             sensitive: boolean;
-            /** @description The window's rectangle in its facade's frame, in metres. */
-            window: {
-                height_m: number;
-                sill_z_m: number;
-                u_m: number;
-                width_m: number;
-            };
+            window: components["schemas"]["FacadeWindowFrame"];
         };
         ErrorEnvelope: {
             error: components["schemas"]["APIError"];
@@ -524,6 +538,13 @@ export interface components {
             slab_height_source: "measured" | "levels" | "assumed";
             /** @description Each storey's ceiling slab above the ground, ground floor first. */
             slab_heights_m: number[];
+        };
+        /** @description The window's rectangle in its facade's frame, in metres. */
+        FacadeWindowFrame: {
+            height_m: number;
+            sill_z_m: number;
+            u_m: number;
+            width_m: number;
         };
         HealthResponse: {
             status: string;
@@ -642,6 +663,29 @@ export interface components {
             required: boolean;
             /** @description Physical unit of the value as a short symbol (m, km/h, dB, dB/km, 1/h, 1/km, %, °C, °). Absent when the parameter is dimensionless or not numeric. */
             unit?: string;
+        };
+        PlaceWindowRequest: {
+            /** @description CRS the model's coordinates are in: the one the elevation was asked in. */
+            crs: string;
+            /** @description A GeoJSON FeatureCollection in the v1 model schema, holding the window's building. */
+            model: Record<string, never>;
+            window: {
+                building_ref: string;
+                edge: number;
+                evidence?: Record<string, never>[];
+                /** @description The window's feature id, without '/'. */
+                id: string;
+                part: number;
+                /** @enum {string} */
+                review_status?: "proposed" | "confirmed" | "rejected";
+                ring: number;
+                sensitive: boolean;
+                window: components["schemas"]["FacadeWindowFrame"];
+            };
+        };
+        PlaceWindowResponse: {
+            /** @description The window feature: `kind: window`, its `facade` key and `window` frame, `sensitive` and `review_status`, and a Point geometry at its centre, in the request's `crs`. */
+            feature: Record<string, never>;
         };
         ProfileInfo: {
             name: string;
@@ -1114,6 +1158,96 @@ export interface operations {
                 };
             };
             /** @description Failed to encode the elevation */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    placeFacadeWindow: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Any non-empty value. A CORS simple request cannot set a custom header, so requiring one forces a preflight, which the origin allowlist then answers or does not. The value is never read. */
+                "X-Aconiq-Client": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceWindowRequest"];
+            };
+        };
+        responses: {
+            /** @description The window feature */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceWindowResponse"];
+                };
+            };
+            /** @description Malformed body, a missing `crs` or `model`, a model that is not a valid FeatureCollection, or a window that cannot be placed: a building not in the model, an edge it does not have, a frame that is not finite and positive, or one its edge has no room for (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing request arrived without the X-Aconiq-Client header (`client_header_required`), or the project manifest named a path outside the project root (`forbidden_path`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body exceeds this endpoint's limit (`request_too_large`) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body was not sent as the media type this endpoint parses (`unsupported_media_type`) */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Failed to encode the window */
             500: {
                 headers: {
                     [name: string]: unknown;

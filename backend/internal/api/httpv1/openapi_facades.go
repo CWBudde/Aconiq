@@ -1,8 +1,9 @@
 package httpv1
 
-// openapiFacadePathItems describes the facade elevation endpoint.
+// openapiFacadePathItems describes the facade elevation and window endpoints.
 func openapiFacadePathItems() map[string]any {
 	return map[string]any{
+		"/api/v1/facades/window": openapiFacadeWindowPathItem(),
 		"/api/v1/facades/elevation": map[string]any{
 			"post": map[string]any{
 				"summary":     "Unfold a building into its facades, storeys and windows",
@@ -120,30 +121,25 @@ func openapiFacadeSchemas() map[string]any {
 				},
 			},
 		},
-		"ElevationWindow": openapiElevationWindowSchema(number),
+		"ElevationWindow":     openapiElevationWindowSchema(),
+		"FacadeWindowFrame":   openapiFacadeWindowFrameSchema(number),
+		"PlaceWindowRequest":  openapiPlaceWindowRequestSchema(),
+		"PlaceWindowResponse": openapiPlaceWindowResponseSchema(),
 	}
 }
 
 // openapiElevationWindowSchema describes one window of an elevation, with its
 // frame and the validation findings about it.
-func openapiElevationWindowSchema(number map[string]any) map[string]any {
+func openapiElevationWindowSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"id", "window", "sensitive", "review_status", "findings"},
+		"required":             []string{"id", facadeWindowField, "sensitive", "review_status", "findings"},
 		"properties": map[string]any{
-			"id": map[string]any{"type": "string"},
-			"window": map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"required":             []string{"u_m", "sill_z_m", "width_m", "height_m"},
-				"description":          "The window's rectangle in its facade's frame, in metres.",
-				"properties": map[string]any{
-					"u_m": number, "sill_z_m": number, "width_m": number, "height_m": number,
-				},
-			},
-			"sensitive":     map[string]any{"type": "boolean"},
-			"review_status": map[string]any{"type": "string", "enum": []string{"proposed", "confirmed", "rejected"}},
+			"id":              map[string]any{"type": "string"},
+			facadeWindowField: map[string]any{"$ref": "#/components/schemas/FacadeWindowFrame"},
+			"sensitive":       map[string]any{"type": "boolean"},
+			"review_status":   reviewStatusSchema(),
 			"findings": map[string]any{
 				"type": "array",
 				"items": map[string]any{
@@ -157,6 +153,114 @@ func openapiElevationWindowSchema(number map[string]any) map[string]any {
 						"message":    map[string]any{"type": "string"},
 					},
 				},
+			},
+		},
+	}
+}
+
+// openapiFacadeWindowPathItem describes the window placement endpoint.
+func openapiFacadeWindowPathItem() map[string]any {
+	return map[string]any{
+		"post": map[string]any{
+			"summary":     "Place a window drawn or moved in a facade elevation",
+			"operationId": "placeFacadeWindow",
+			"description": "Turns a window given in its facade's frame — the building, the canonical part, ring and " +
+				"edge `/api/v1/facades/elevation` listed, and the rectangle — into the window feature the model " +
+				"stores: its facade key with `from` / `to` in the request's `crs`, and a Point at its centre. It is " +
+				"the placement `aconiq import --windows` makes, and refuses what that refuses. It reads no project " +
+				"and writes nothing: the client puts the feature in its model and saves it. The browser's " +
+				"WebAssembly kernel answers from the same Go code (`aconiq.placeWindow`).",
+			"requestBody": map[string]any{
+				"required": true,
+				"content": map[string]any{
+					"application/json": map[string]any{
+						"schema": map[string]any{"$ref": "#/components/schemas/PlaceWindowRequest"},
+					},
+				},
+			},
+			"responses": map[string]any{
+				"200": map[string]any{
+					"description": "The window feature",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{"$ref": "#/components/schemas/PlaceWindowResponse"},
+						},
+					},
+				},
+				"400": openapiErrorResponse(
+					"Malformed body, a missing `crs` or `model`, a model that is not a valid FeatureCollection, or a " +
+						"window that cannot be placed: a building not in the model, an edge it does not have, a frame " +
+						"that is not finite and positive, or one its edge has no room for (`" + errorCodeBadRequest + "`).",
+				),
+				"405": methodNotAllowedResponse(),
+				"500": openapiErrorResponse("Failed to encode the window"),
+			},
+		},
+	}
+}
+
+// openapiFacadeWindowFrameSchema is a window's rectangle in its facade's
+// frame.
+func openapiFacadeWindowFrameSchema(number map[string]any) map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"u_m", "sill_z_m", "width_m", "height_m"},
+		"description":          "The window's rectangle in its facade's frame, in metres.",
+		"properties": map[string]any{
+			"u_m": number, "sill_z_m": number, "width_m": number, "height_m": number,
+		},
+	}
+}
+
+func reviewStatusSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{"proposed", "confirmed", "rejected"}}
+}
+
+func openapiPlaceWindowRequestSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"crs", "model", facadeWindowField},
+		"properties": map[string]any{
+			"crs": map[string]any{
+				"type":        "string",
+				"description": "CRS the model's coordinates are in: the one the elevation was asked in.",
+			},
+			"model": map[string]any{
+				"type":        "object",
+				"description": "A GeoJSON FeatureCollection in the v1 model schema, holding the window's building.",
+			},
+			facadeWindowField: map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"id", "building_ref", "part", "ring", "edge", facadeWindowField, "sensitive"},
+				"properties": map[string]any{
+					"id":              map[string]any{"type": "string", "description": "The window's feature id, without '/'."},
+					"building_ref":    map[string]any{"type": "string"},
+					"part":            map[string]any{"type": "integer"},
+					"ring":            map[string]any{"type": "integer"},
+					"edge":            map[string]any{"type": "integer"},
+					facadeWindowField: map[string]any{"$ref": "#/components/schemas/FacadeWindowFrame"},
+					"sensitive":       map[string]any{"type": "boolean"},
+					"review_status":   reviewStatusSchema(),
+					"evidence":        map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+				},
+			},
+		},
+	}
+}
+
+func openapiPlaceWindowResponseSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"feature"},
+		"properties": map[string]any{
+			"feature": map[string]any{
+				"type": "object",
+				"description": "The window feature: `kind: window`, its `facade` key and `window` frame, " +
+					"`sensitive` and `review_status`, and a Point geometry at its centre, in the request's `crs`.",
 			},
 		},
 	}

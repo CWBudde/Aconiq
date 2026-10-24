@@ -31,6 +31,8 @@ import { CancelledErrorName } from "@/wasm/kernel-client";
 import type {
   FacadeElevationRequest,
   FacadeElevationResponse,
+  PlaceWindowRequest,
+  PlaceWindowResponse,
   TransformRequest,
   TransformResponse,
 } from "@/wasm/types";
@@ -429,6 +431,14 @@ export interface Backend {
   facadeElevation(
     req: FacadeElevationRequest,
   ): Promise<FacadeElevationResponse>;
+  /**
+   * The window feature a window drawn or moved in the elevation view
+   * becomes, keyed and centred by `facadeset.PlaceWindow` — the WASM kernel
+   * in browser mode, `POST /api/v1/facades/window` in API mode. Send the
+   * model in the CRS the elevation was asked in; the feature comes back in
+   * it.
+   */
+  placeWindow(req: PlaceWindowRequest): Promise<PlaceWindowResponse>;
   /**
    * Listen to the project's event stream until the returned function is
    * called. The stream reconnects on its own while it is open; the listener

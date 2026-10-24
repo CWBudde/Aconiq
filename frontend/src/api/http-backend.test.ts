@@ -261,6 +261,41 @@ describe("httpBackend.facadeElevation", () => {
   });
 });
 
+describe("httpBackend.placeWindow", () => {
+  it("posts the placement to the window endpoint and returns the feature", async () => {
+    const answer = {
+      feature: {
+        type: "Feature",
+        id: "w1",
+        properties: { kind: "window" },
+        geometry: { type: "Point", coordinates: [1, 2] },
+      },
+    };
+    const mock = stubFetch(jsonResponse(answer));
+    const req = {
+      crs: "EPSG:25832",
+      model: { type: "FeatureCollection", features: [] },
+      window: {
+        id: "w1",
+        building_ref: "house",
+        part: 0,
+        ring: 0,
+        edge: 0,
+        window: { u_m: 1, sill_z_m: 1, width_m: 1, height_m: 1 },
+        sensitive: false,
+      },
+    };
+
+    const result = await httpBackend.placeWindow(req);
+
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/facades/window"));
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify(req));
+    expect(result).toEqual(answer);
+  });
+});
+
 describe("httpBackend.transformCoordinates", () => {
   it("posts the flat batch to the transform endpoint and returns what it answers", async () => {
     const mock = stubFetch(

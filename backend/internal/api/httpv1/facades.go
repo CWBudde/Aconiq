@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/aconiq/backend/internal/facadeset"
+	"github.com/aconiq/backend/internal/geo"
 	"github.com/aconiq/backend/internal/geo/modelgeojson"
 )
 
@@ -24,9 +25,12 @@ type facadeElevationRequest struct {
 	Building string          `json:"building"`
 }
 
-// facadeBuildingField is the request member naming the building, as the
-// refusal's details and the OpenAPI document spell it.
-const facadeBuildingField = "building"
+// facadeBuildingField and facadeWindowField are request members, as the
+// refusals' details and the OpenAPI document spell them.
+const (
+	facadeBuildingField = "building"
+	facadeWindowField   = "window"
+)
 
 type facadeElevationResponse struct {
 	BuildingRef      string                    `json:"building_ref"`
@@ -174,4 +178,114 @@ func elevationWindowsResponse(windows []facadeset.ElevationWindow) []elevationWi
 	}
 
 	return out
+}
+
+// placeWindowRequest is the body of POST /api/v1/facades/window, and
+// placeWindowResponse is what it answers with; declared here for the reason
+// facadeElevationRequest is, and held to facadeset's JSON by
+// TestPlaceWindowDTOsMatchTheFacadesetContract.
+type placeWindowRequest struct {
+	CRS    string               `json:"crs"`
+	Model  json.RawMessage      `json:"model"`
+	Window windowPlacementInput `json:"window"`
+}
+
+type windowPlacementInput struct {
+	ID           string              `json:"id"`
+	BuildingRef  string              `json:"building_ref"`
+	Part         int                 `json:"part"`
+	Ring         int                 `json:"ring"`
+	Edge         int                 `json:"edge"`
+	Window       windowFrameResponse `json:"window"`
+	Sensitive    bool                `json:"sensitive"`
+	ReviewStatus string              `json:"review_status,omitempty"`
+	Evidence     []any               `json:"evidence,omitempty"`
+}
+
+type placeWindowResponse struct {
+	Feature placedFeatureResponse `json:"feature"`
+}
+
+type placedFeatureResponse struct {
+	Type       string                 `json:"type"`
+	ID         any                    `json:"id,omitempty"`
+	Properties map[string]any         `json:"properties"`
+	Geometry   placedGeometryResponse `json:"geometry"`
+}
+
+type placedGeometryResponse struct {
+	Type        string `json:"type"`
+	Coordinates any    `json:"coordinates"`
+}
+
+// handleFacadeWindow places one window drawn or moved in the frontend's
+// elevation view in API mode (P18 C2), through facadeset.PlaceWindow — the
+// code the WebAssembly kernel's `placeWindow` calls, and the placer `aconiq
+// import --windows` uses — so neither mode keys a window of its own. Like the
+// elevation it is a pure function of its body: the client stores the feature
+// it answers with in its model, and a save writes it.
+func (h Handler) handleFacadeWindow(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req placeWindowRequest
+	if !decodeJSONBody(w, r, maxModelSaveBodyBytes, &req) {
+		return
+	}
+
+	if strings.TrimSpace(req.CRS) == "" || isJSONAbsent(req.Model) {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    errorCodeBadRequest,
+			Message: "crs and model are required",
+			Hint:    "Send the model holding the window's building, the CRS its coordinates are in, and the window.",
+		})
+
+		return
+	}
+
+	model, err := modelgeojson.Normalize(req.Model, req.CRS, "placeWindow")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    errorCodeBadRequest,
+			Message: "model is not a valid GeoJSON FeatureCollection: " + err.Error(),
+		})
+
+		return
+	}
+
+	feature, err := facadeset.PlaceWindow(model, req.Window.placement())
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    errorCodeBadRequest,
+			Message: err.Error(),
+			Details: map[string]any{facadeWindowField: req.Window.ID},
+		})
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, placeWindowResponseOf(feature))
+}
+
+func (in windowPlacementInput) placement() facadeset.WindowPlacement {
+	return facadeset.WindowPlacement{
+		ID: in.ID, BuildingRef: in.BuildingRef,
+		Part: in.Part, Ring: in.Ring, Edge: in.Edge,
+		Frame: geo.FacadeWindow{
+			UM: in.Window.UM, SillZM: in.Window.SillZM, WidthM: in.Window.WidthM, HeightM: in.Window.HeightM,
+		},
+		Sensitive:    in.Sensitive,
+		ReviewStatus: in.ReviewStatus,
+		Evidence:     in.Evidence,
+	}
+}
+
+func placeWindowResponseOf(f modelgeojson.GeoJSONFeature) placeWindowResponse {
+	return placeWindowResponse{Feature: placedFeatureResponse{
+		Type:       f.Type,
+		ID:         f.ID,
+		Properties: f.Properties,
+		Geometry:   placedGeometryResponse{Type: f.Geometry.Type, Coordinates: f.Geometry.Coordinates},
+	}}
 }

@@ -15,6 +15,9 @@ export interface ElevationScale {
   scale: number;
   x(u: number): number;
   y(z: number): number;
+  /** The inverse of `x` and `y`: where a point of the drawing is on the facade. */
+  u(x: number): number;
+  z(y: number): number;
 }
 
 export function elevationScale(
@@ -30,5 +33,7 @@ export function elevationScale(
     scale,
     x: (u) => pad + u * scale,
     y: (z) => ELEVATION_VIEW_HEIGHT - pad - z * scale,
+    u: (x) => (x - pad) / scale,
+    z: (y) => (ELEVATION_VIEW_HEIGHT - pad - y) / scale,
   };
 }

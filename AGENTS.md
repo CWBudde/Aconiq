@@ -114,9 +114,9 @@ PLAN.md           Roadmap and the single status source
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
 `window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `rls19RoadGrid`, `estimate`, `transform`,
-`maskFootprints`, `facadeReceivers`, `customReceivers`, `facadeElevation`, `standards`, `contours`,
-`loadTerrain`, `clearTerrain`, `defaultConfig`, `health` and `projectStatus`. Ten of those carry
-contracts worth knowing before writing browser-mode code:
+`maskFootprints`, `facadeReceivers`, `customReceivers`, `facadeElevation`, `placeWindow`,
+`standards`, `contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health` and
+`projectStatus`. Eleven of those carry contracts worth knowing before writing browser-mode code:
 
 - **`rls19RoadGrid`** is the export an automatic-grid run uses. The request names its receivers as
   `grid: {origin_x, origin_y, resolution_m, width, height, height_m}` instead of a `receivers`
@@ -177,6 +177,12 @@ contracts worth knowing before writing browser-mode code:
   compute CRS a facade run would use (`resolveComputeModel`), so the edges are numbered as the
   run's keys are. It must not grow a facade frame of its own: which edge, how long and which way
   `u` runs are the Go code's.
+- **`placeWindow`** turns a window drawn or moved in that view into the feature the model stores,
+  through `facadeset.PlaceWindow` — the placer `aconiq import --windows` uses, and the code
+  `POST /api/v1/facades/window` answers from: the key with `from` / `to`, the Point at the
+  centre, and the same refusals. It takes the building in the CRS the elevation was asked in and
+  answers in it; `@/facade/place-window` moves the feature back into the store's CRS. The
+  frontend keys no window of its own.
 - **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
   GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
   and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the
@@ -281,6 +287,7 @@ GET  /api/v1/model                     the saved model, optionally reprojected (
 POST /api/v1/model                     replace the project model (the `aconiq import` GeoJSON contract; `expected_hash` as above)
 POST /api/v1/transform                 project a coordinate batch between two CRS (`target_crs: "auto"` picks the zone `aconiq run` would)
 POST /api/v1/facades/elevation         one building of the model in the body, unfolded into facades, storeys and windows
+POST /api/v1/facades/window            a window drawn in a facade's frame, keyed and centred as the model stores it
 GET  /api/v1/openapi.json
 ```
 

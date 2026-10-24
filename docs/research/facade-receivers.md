@@ -557,6 +557,16 @@ frontend projects the model into the compute CRS a facade run would use and asks
 `POST /api/v1/facades/elevation` in API mode, so the edges are numbered and measured as the run
 numbers and measures them.
 
+The elevation is also where windows are drawn by hand. Dragging on the wall draws one, dragging a
+window moves it and its corner resizes it; the arrow keys, a form with the four frame values and
+an "add window" button do the same without a pointer. Each change ends in `facadeset.PlaceWindow`
+(the kernel's `placeWindow`, `POST /api/v1/facades/window`), the placer `aconiq import --windows`
+uses, so a drawn window carries the key and centre an imported one would, and an edge with no
+room for it refuses it. A drawn window starts `proposed` and not `sensitive` with no evidence, as
+an imported one does: the form's switch and review select are how a person marks it sensitive
+and confirms it. Moving a window keeps its review fields and evidence; only the frame, the key and
+the point change.
+
 The point is derived at run time, never stored. In facade receiver mode, a facade that carries a
 sensitive window that is not `rejected` gets one point per such window instead of its station
 grid; a facade without one keeps its stations. The point stands at the window centre's `u`, and:

@@ -231,6 +231,49 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     ).rejects.toThrow("not in the model");
   });
 
+  it("places a window drawn in the elevation view through the kernel", async () => {
+    const kernel = await getNodeKernel();
+
+    const { feature } = await kernel.placeWindow({
+      crs: "EPSG:25832",
+      model: facadeModel,
+      window: {
+        id: "drawn",
+        building_ref: "house",
+        part: 0,
+        ring: 0,
+        edge: 0,
+        window: { u_m: 2, sill_z_m: 3.9, width_m: 1.2, height_m: 1.5 },
+        sensitive: false,
+      },
+    });
+
+    expect(feature.id).toBe("drawn");
+    expect(feature.properties.kind).toBe("window");
+    expect(feature.properties.review_status).toBe("proposed");
+    expect(feature.properties.facade).toMatchObject({
+      building_ref: "house",
+      from: [547000, 5795000],
+      to: [547010, 5795000],
+    });
+    expect(feature.geometry.coordinates[0]).toBeCloseTo(547002.6, 9);
+    await expect(
+      kernel.placeWindow({
+        crs: "EPSG:25832",
+        model: facadeModel,
+        window: {
+          id: "drawn",
+          building_ref: "house",
+          part: 0,
+          ring: 0,
+          edge: 0,
+          window: { u_m: 9.5, sill_z_m: 1, width_m: 1.2, height_m: 1.5 },
+          sensitive: false,
+        },
+      }),
+    ).rejects.toThrow("runs past the end");
+  });
+
   it("places a sensitive window's point in place of its facade's stations", async () => {
     const kernel = await getNodeKernel();
 

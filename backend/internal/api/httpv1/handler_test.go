@@ -368,6 +368,7 @@ func TestOpenAPIEndpoint(t *testing.T) {
 	for _, required := range []string{
 		"/api/v1/artifacts/{id}/content",
 		"/api/v1/facades/elevation",
+		"/api/v1/facades/window",
 		"/api/v1/import/osm",
 		"/api/v1/import/terrain",
 		"/api/v1/model",

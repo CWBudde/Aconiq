@@ -948,5 +948,12 @@
   "heading_facade_detached": "Fenster ohne Fassade",
   "msg_facade_detached_help": "Ihr Fassadenschlüssel benennt keine Kante dieses Gebäudes mehr. Mit aconiq reattach-facades neu zuordnen.",
   "msg_facade_elevation_loading": "Fassaden werden vermessen …",
-  "msg_facade_elevation_failed": "Die Fassaden konnten nicht vermessen werden: {error}"
+  "msg_facade_elevation_failed": "Die Fassaden konnten nicht vermessen werden: {error}",
+  "action_add_window": "Fenster hinzufügen",
+  "msg_elevation_edit_help": "Auf der Wand ziehen zeichnet ein Fenster, ein Fenster ziehen verschiebt es, seine Ecke ziehen ändert die Größe. Pfeiltasten verschieben das gewählte Fenster um 10 cm, mit Umschalt um 1 m.",
+  "heading_window_edit": "Fenster {id}",
+  "action_delete_window": "Fenster löschen",
+  "confirm_delete_window_title": "Fenster {id} löschen?",
+  "confirm_delete_window_desc": "Das Fenster wird aus dem Modell entfernt. Rückgängig holt es zurück.",
+  "msg_window_place_failed": "Das Fenster wurde nicht platziert: {error}"
 }

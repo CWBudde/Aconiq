@@ -59,6 +59,8 @@ import type {
   FacadeElevationResponse,
   FacadeReceiversResponse,
   FootprintMaskRequest,
+  PlaceWindowRequest,
+  PlaceWindowResponse,
   PointReceiver,
   ReceiverGrid,
   ReceiverOutput,
@@ -2264,6 +2266,11 @@ export const browserBackend = {
   ): Promise<FacadeElevationResponse> {
     const kernel = await getKernel();
     return kernel.facadeElevation(req);
+  },
+
+  async placeWindow(req: PlaceWindowRequest): Promise<PlaceWindowResponse> {
+    const kernel = await getKernel();
+    return kernel.placeWindow(req);
   },
 
   async getHealth(): Promise<HealthResponse> {

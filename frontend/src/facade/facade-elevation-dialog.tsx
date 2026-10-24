@@ -21,7 +21,7 @@ import {
   reviewLabel,
   slabSourceLabel,
 } from "./elevation-labels";
-import { ElevationSvg } from "./elevation-svg";
+import { ElevationEditor } from "./elevation-editor";
 import { loadFacadeElevation } from "./load-elevation";
 
 export interface FacadeElevationDialogProps {
@@ -155,7 +155,11 @@ function ElevationBody({
           ))}
         </select>
       </div>
-      <ElevationSvg
+      <ElevationEditor
+        // A facade's selection and gesture are its own: switching facades
+        // starts from nothing selected.
+        key={selected}
+        buildingId={elevation.building_ref}
         facade={facade}
         number={selected + 1}
         heightM={elevation.height_m}

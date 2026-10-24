@@ -31,6 +31,8 @@ import type {
   FacadeElevationResponse,
   FacadeReceiversRequest,
   FacadeReceiversResponse,
+  PlaceWindowRequest,
+  PlaceWindowResponse,
   CustomReceiversRequest,
   CustomReceiversResponse,
   FootprintMaskRequest,
@@ -82,6 +84,7 @@ interface GoRuntimeGlobal {
     facadeReceivers: (json: string) => Promise<string>;
     customReceivers: (json: string) => Promise<string>;
     facadeElevation: (json: string) => Promise<string>;
+    placeWindow: (json: string) => Promise<string>;
     contours: (payload: Uint8Array, json: string) => Promise<string>;
     standards: () => string;
     loadTerrain: (data: Uint8Array, crs: string) => string;
@@ -244,6 +247,12 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
         exports.facadeElevation(JSON.stringify(req)),
       );
       return JSON.parse(json) as FacadeElevationResponse;
+    },
+    async placeWindow(req: PlaceWindowRequest): Promise<PlaceWindowResponse> {
+      const json = await withKernelErrors(
+        exports.placeWindow(JSON.stringify(req)),
+      );
+      return JSON.parse(json) as PlaceWindowResponse;
     },
     async contours(
       payload: Uint8Array,
