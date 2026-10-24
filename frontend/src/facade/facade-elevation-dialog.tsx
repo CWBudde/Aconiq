@@ -17,6 +17,7 @@ import { formatNumber, MISSING_VALUE } from "@/ui/format";
 import type { ElevationWindow, FacadeElevationResponse } from "@/wasm/types";
 import {
   facadeOptionLabel,
+  findingText,
   reviewLabel,
   slabSourceLabel,
 } from "./elevation-labels";
@@ -248,7 +249,10 @@ function WindowTable({ windows }: { windows: ElevationWindow[] }) {
                   ? MISSING_VALUE
                   : w.findings.map((f, i) => (
                       <p key={`${f.code}-${String(i)}`}>
-                        <span className="font-mono">{f.code}</span>: {f.message}
+                        {findingText(f)}{" "}
+                        <span className="font-mono text-muted-foreground">
+                          {f.code}
+                        </span>
                       </p>
                     ))}
               </td>

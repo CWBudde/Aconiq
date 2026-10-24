@@ -1,6 +1,9 @@
 import { m } from "@/i18n/messages";
+import type { ValidationIssue } from "@/model/types";
+import { validationIssueText } from "@/model/validation-message";
 import { formatNumber } from "@/ui/format";
 import type {
+  ElevationFinding,
   ElevationWindow,
   FacadeElevation,
   FacadeElevationResponse,
@@ -15,6 +18,42 @@ export function windowLabel(w: ElevationWindow): string {
     sill: formatNumber(w.window.sill_z_m, 2),
     u: formatNumber(w.window.u_m, 2),
   });
+}
+
+/**
+ * A window's finding in the reader's language, through `validationIssueText`
+ * as every other finding on screen is. The kernel's finding carries its code
+ * and English prose but no parameters, so a code whose sentence wants one
+ * (`window.invalid` names the property) and a code the catalogue has no
+ * sentence for read as a plain finding; the code shown beside it names it.
+ * The prose is never shown: it would be English under a German heading.
+ */
+export function findingText(finding: ElevationFinding): string {
+  const issue = plainIssue(finding);
+  return issue === null
+    ? m.msg_facade_finding_unnamed()
+    : validationIssueText(issue);
+}
+
+/** The finding as a `ValidationIssue`, for the codes that take no parameters. */
+function plainIssue(finding: ElevationFinding): ValidationIssue | null {
+  const featureId = finding.feature_id ?? "";
+  switch (finding.code) {
+    case "feature.id.duplicate":
+    case "window.geometry.invalid":
+    case "window.facade.unresolved":
+    case "window.facade.moved":
+    case "window.frame.outside":
+    case "window.frame.above_building":
+      return {
+        level: finding.level,
+        code: finding.code,
+        featureId,
+        params: {},
+      };
+    default:
+      return null;
+  }
 }
 
 /** A facade as the picker names it: its number, the way it faces, its length. */

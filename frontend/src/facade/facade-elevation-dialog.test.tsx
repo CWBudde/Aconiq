@@ -236,6 +236,54 @@ describe("FacadeElevationDialog", () => {
     expect(screen.getByText("window.facade.moved")).toBeInTheDocument();
   });
 
+  it("words a window's findings in the reader's language", async () => {
+    // The kernel's finding carries English prose built by the Go validator;
+    // the dialog shows the code's sentence from the catalogue instead, and a
+    // code it has no sentence for as a plain finding, never the prose.
+    overwriteGetLocale(() => "de");
+    kernel.answer = () =>
+      Promise.resolve({
+        ...house,
+        detached: [
+          win("moved", {
+            findings: [
+              {
+                level: "warning",
+                code: "window.facade.moved",
+                feature_id: "moved",
+                message: "its facade moved",
+              },
+              {
+                level: "error",
+                code: "window.invalid",
+                feature_id: "moved",
+                message:
+                  'window "moved": sensitive "yes" must be true or false',
+              },
+            ],
+          }),
+        ],
+      });
+    renderDialog();
+
+    await screen.findByText(m.heading_facade_detached());
+    const row = screen.getByText("moved").closest("tr") as HTMLElement;
+    expect(
+      within(row).getByText(m.msg_validation_window_facade_moved()),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByText(m.msg_facade_finding_unnamed()),
+    ).toBeInTheDocument();
+    expect(within(row).getByText("window.invalid")).toBeInTheDocument();
+    expect(row.textContent).not.toContain("its facade moved");
+    expect(row.textContent).not.toContain("must be true or false");
+
+    const attic = screen.getByText("attic").closest("tr") as HTMLElement;
+    expect(
+      within(attic).getByText(m.msg_validation_window_frame_above_building()),
+    ).toBeInTheDocument();
+  });
+
   it("says why the facades could not be measured", async () => {
     kernel.answer = () =>
       Promise.reject(new Error('building "house" is not in the model'));

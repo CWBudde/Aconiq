@@ -91,11 +91,22 @@ export interface ValidationIssueParams {
    * and `window.geometry.invalid`. `field` is the property that is missing or
    * malformed (`id`, `facade`, `window`, `sensitive`, `review_status`,
    * `evidence`),
-   * one finding per property as the backend reports them. The warnings that
-   * measure a window against its edge are the kernel's alone.
+   * one finding per property as the backend reports them.
    */
   "window.invalid": { field: string };
   "window.geometry.invalid": NoIssueParams;
+
+  /*
+   * The warnings that measure a window against its building. `validate.ts`
+   * emits none of them — measuring a key against its edge is the kernel's
+   * alone — but the facade elevation shows the kernel's findings, and their
+   * sentences live here with every other one. The kernel's finding carries no
+   * parameters, only English prose, so these interpolate nothing.
+   */
+  "window.facade.unresolved": NoIssueParams;
+  "window.facade.moved": NoIssueParams;
+  "window.frame.outside": NoIssueParams;
+  "window.frame.above_building": NoIssueParams;
 
   /*
    * Self-intersection, mirroring `modelgeojson.checkSelfIntersection` — the
