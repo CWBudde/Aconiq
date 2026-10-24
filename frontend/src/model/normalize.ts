@@ -17,6 +17,7 @@ const VALID_KINDS = new Set<string>([
   "building",
   "barrier",
   "ground-zone",
+  "window",
 ]);
 const VALID_SOURCE_TYPES = new Set<string>(["point", "line", "area"]);
 const VALID_GEOM_TYPES = new Set<string>([

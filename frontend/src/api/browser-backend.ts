@@ -2047,13 +2047,17 @@ async function prepareRLS19Request(
     // party-wall mask would be a second implementation of each. Every
     // building goes, not only the requested ones, because each masks the
     // others' party walls; and in the compute CRS, so the facade keys are
-    // canonical in the CRS they are validated in. A refusal (an unconfirmed
-    // normative run, an address two buildings share) rejects here, before a
-    // run id is minted, in the words the CLI refuses in.
+    // canonical in the CRS they are validated in. The windows go with them:
+    // a sensitive window's point replaces the stations on its facade. A
+    // refusal (an unconfirmed normative run, an address two buildings share,
+    // a window whose facade moved) rejects here, before a run id is minted,
+    // in the words the CLI refuses in.
     const facade = await kernel.facadeReceivers({
       crs: projection.computeCRS,
       model: featuresToGeoJSON(
-        features.filter((feature) => feature.kind === "building"),
+        features.filter(
+          (feature) => feature.kind === "building" || feature.kind === "window",
+        ),
       ),
       standard_id: spec.standardId,
       buildings: spec.facade.buildings,

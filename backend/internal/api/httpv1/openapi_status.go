@@ -260,7 +260,8 @@ func openapiStandardSchemas() map[string]any {
 				"facade_placement_rule": map[string]any{
 					"type": "string",
 					"description": "The rule this standard places generated facade receivers by (`receiver_mode` `facade`). " +
-						"Absent for a standard that has no rule a footprint alone can apply; such a standard refuses the facade mode.",
+						"`talaerm-window` places only at the model's sensitive windows. " +
+						"Absent for a standard that has no facade placement rule; such a standard refuses the facade mode.",
 				},
 				"default_version": map[string]any{"type": "string"},
 				"versions": map[string]any{

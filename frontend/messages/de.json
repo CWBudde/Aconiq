@@ -346,6 +346,7 @@
   "option_barrier": "Schallschirm",
   "option_receiver": "Immissionsort",
   "option_ground_zone": "Bodenzone",
+  "option_window": "Fenster",
   "option_source_type_point": "Punkt",
   "option_source_type_line": "Linie",
   "option_source_type_area": "Fläche",

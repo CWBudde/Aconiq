@@ -217,7 +217,7 @@ func TestFacadeModeRunsOverGeneratedReceiversOnlyWithTheOptIn(t *testing.T) {
 }
 
 // The facade mode belongs to the standards a geometric placement rule exists
-// for, and to a complete request.
+// for, to buildings the rule can place on, and to a complete request.
 func TestFacadeModeRefusals(t *testing.T) {
 	t.Parallel()
 
@@ -229,9 +229,15 @@ func TestFacadeModeRefusals(t *testing.T) {
 		parts []string
 	}{
 		{
-			"standard without a rule", facadeRunArgs(projectDir, "iso9613",
+			"standard without a rule", facadeRunArgs(projectDir, "cnossos-road",
+				"--receiver-mode", receiverModeFacade, "--facade-building", "a", "--facade-spacing-m", "4", "--experimental"),
+			[]string{"cnossos-road", "iso9613", "rls19-road", "schall03"},
+		},
+		{
+			// TA Lärm's rule places at windows only, and house a has none.
+			"window rule without windows", facadeRunArgs(projectDir, "iso9613",
 				"--receiver-mode", receiverModeFacade, "--facade-building", "a", "--facade-spacing-m", "4"),
-			[]string{"iso9613", "rls19-road", "schall03"},
+			[]string{"talaerm-window", "aconiq import --windows"},
 		},
 		{
 			"no spacing", facadeRunArgs(projectDir, "rls19-road",

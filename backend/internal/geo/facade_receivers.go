@@ -22,20 +22,21 @@ const (
 	PlacementSchall03Facade = "schall03-facade"
 )
 
-// geometricPlacementOffsetM holds the rules a facade receiver set can place
-// from a footprint alone, and their distance out from the facade.
+// geometricPlacementOffsetM holds the rules a facade receiver set can place,
+// and their distance out from the facade. TA Lärm's is measured from the
+// window plane, which the model puts in the facade (facade_window.go).
 var geometricPlacementOffsetM = map[string]float64{
 	PlacementRLS19Facade:    0.05,
 	PlacementSchall03Facade: 0,
+	PlacementTALaermWindow:  0.5,
 }
 
 // nonGeometricPlacementRules are the remaining Section 4 rules. They need a
-// window, a balcony line or an area, which a footprint does not carry.
+// balcony line or an area, which neither a footprint nor a window carries.
 var nonGeometricPlacementRules = []string{
 	"rls19-balcony",
 	"rls19-outdoor-area",
 	"schall03-outdoor-area",
-	"talaerm-window",
 	"talaerm-buildable-edge",
 }
 
@@ -48,8 +49,8 @@ func IsPlacementRule(rule string) bool {
 }
 
 // ErrPlacementRuleNotGeometric refuses a known placement rule that cannot be
-// applied to a footprint alone.
-var ErrPlacementRuleNotGeometric = errors.New("placement rule needs a window or an area, not a footprint")
+// applied to a footprint and its windows.
+var ErrPlacementRuleNotGeometric = errors.New("placement rule needs a balcony line or an area, not a footprint")
 
 // Slab height sources (facade-receivers.md Section 5, Decision). The same
 // three values describe where a building's height_m came from, as a
@@ -88,7 +89,9 @@ const MaxFacadeReceivers = 100_000
 const facadeProbeOffsetM = 0.1
 
 // FacadeReceiverSet places facade Immissionsorte on the selected buildings'
-// footprint edges, one per station and storey, under one placement rule.
+// footprint edges under one placement rule: one per window on an edge that
+// has windows, and one per station and storey on an edge without, unless the
+// rule places only at windows.
 type FacadeReceiverSet struct {
 	ID               string   `json:"id"`
 	BuildingIDs      []string `json:"building_ids"`
@@ -103,6 +106,7 @@ type FacadeReceiverSet struct {
 // the exterior, rings[1:] courtyard holes. HeightSource says where HeightM
 // came from (a SlabHeight* value), Levels is the storey count or 0 when it is
 // unknown, and GroundFloorM is the ground floor's level above terrain (h_EG).
+// Windows are the windows a point is placed at.
 type FacadeBuilding struct {
 	ID           string
 	Polygons     [][][]Point2D
@@ -110,6 +114,7 @@ type FacadeBuilding struct {
 	Levels       int
 	HeightSource string
 	GroundFloorM float64
+	Windows      []FacadeBuildingWindow
 }
 
 // FacadeKey names the footprint edge a receiver belongs to, by its indices in
@@ -176,22 +181,31 @@ func (k *FacadeKey) UnmarshalJSON(data []byte) error {
 }
 
 // FacadeReceiver is one generated facade Immissionsort. HeightM is the slab
-// height of its storey above ground.
+// height of its storey above ground, or for a point at a window the height its
+// rule derives from the window, which HeightBasis names.
+//
+// A point at a window carries the window's id and frame, inherits its review
+// status, and has no SlabHeightSource: the window fixes its height. Its
+// Station counts the windows along the edge, and StationUM is the window
+// centre's u.
 type FacadeReceiver struct {
 	PointReceiver
 
-	PlacementRule    string    `json:"placement_rule"`
-	Facade           FacadeKey `json:"facade"`
-	Station          int       `json:"station"`
-	StationUM        float64   `json:"station_u_m"`
-	Storey           int       `json:"storey"`
-	SlabHeightSource string    `json:"slab_height_source"`
-	ReviewStatus     string    `json:"review_status"`
+	PlacementRule    string        `json:"placement_rule"`
+	Facade           FacadeKey     `json:"facade"`
+	Station          int           `json:"station"`
+	StationUM        float64       `json:"station_u_m"`
+	Storey           int           `json:"storey"`
+	SlabHeightSource string        `json:"slab_height_source,omitempty"`
+	HeightBasis      string        `json:"height_basis,omitempty"`
+	WindowID         string        `json:"window_id,omitempty"`
+	Window           *FacadeWindow `json:"window,omitempty"`
+	ReviewStatus     string        `json:"review_status"`
 }
 
 // Validate checks the set's own fields, without the buildings. Neither the set
 // id nor a building id may contain '/', the separator of the receiver ids
-// <set>/<building>/p…r…e…/s…/f… they are spelled into.
+// <set>/<building>/p…r…e…/s…/f… (or …/w/<window>) they are spelled into.
 func (f FacadeReceiverSet) Validate() error {
 	if strings.TrimSpace(f.ID) == "" {
 		return errors.New("facade receiver set id is required")
@@ -334,7 +348,10 @@ func (f FacadeReceiverSet) place(
 		return nil, nil, err
 	}
 
-	offsetM := geometricPlacementOffsetM[f.PlacementRule]
+	windows, err := buildingWindows(building, parts)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	for part, rings := range parts {
 		for ring, vertices := range rings {
@@ -346,31 +363,19 @@ func (f FacadeReceiverSet) place(
 				a, b := vertices[edge], vertices[(edge+1)%len(vertices)]
 				key := FacadeKey{BuildingRef: building.ID, Part: part, Ring: ring, Edge: edge, From: a, To: b}
 
-				stations, ok := facadeStations(a, b, f.SpacingM, (MaxFacadeReceivers-len(receivers))/len(storeys.z))
-				if !ok {
-					return nil, nil, fmt.Errorf("facade receiver set %q needs more than %d receivers; raise spacing_m", f.ID, MaxFacadeReceivers)
-				}
+				atWindows := windows[edgeIndex{part, ring, edge}]
 
-				for station, u := range stations {
-					point := FacadePoint(a, b, u, offsetM)
-					probe := FacadePoint(a, b, u, facadeProbeOffsetM)
+				switch {
+				case len(atWindows) > 0:
+					if len(receivers)+len(atWindows) > MaxFacadeReceivers {
+						return nil, nil, fmt.Errorf("facade receiver set %q needs more than %d receivers", f.ID, MaxFacadeReceivers)
+					}
 
-					for storey, z := range storeys.z {
-						receivers = append(receivers, FacadeReceiver{
-							PointReceiver: PointReceiver{
-								ID:      fmt.Sprintf("%s/%s/p%dr%de%d/s%d/f%d", f.ID, building.ID, part, ring, edge, station, storey),
-								Point:   point,
-								HeightM: z,
-							},
-							PlacementRule:    f.PlacementRule,
-							Facade:           key,
-							Station:          station,
-							StationUM:        u,
-							Storey:           storey,
-							SlabHeightSource: storeys.source,
-							ReviewStatus:     ReviewStatusProposed,
-						})
-						probes = append(probes, probe)
+					receivers, probes = f.placeAtWindows(atWindows, key, storeys, receivers, probes)
+				case !IsWindowOnlyPlacementRule(f.PlacementRule):
+					receivers, probes, err = f.placeAtStations(key, storeys, receivers, probes)
+					if err != nil {
+						return nil, nil, err
 					}
 				}
 			}
@@ -378,6 +383,79 @@ func (f FacadeReceiverSet) place(
 	}
 
 	return receivers, probes, nil
+}
+
+// placeAtStations appends one receiver per station and storey of an edge,
+// with the point each station is probed at.
+func (f FacadeReceiverSet) placeAtStations(
+	key FacadeKey, storeys storeys, receivers []FacadeReceiver, probes []Point2D,
+) ([]FacadeReceiver, []Point2D, error) {
+	a, b := key.From, key.To
+	offsetM := geometricPlacementOffsetM[f.PlacementRule]
+
+	stations, ok := facadeStations(a, b, f.SpacingM, (MaxFacadeReceivers-len(receivers))/len(storeys.z))
+	if !ok {
+		return nil, nil, fmt.Errorf("facade receiver set %q needs more than %d receivers; raise spacing_m", f.ID, MaxFacadeReceivers)
+	}
+
+	for station, u := range stations {
+		point := FacadePoint(a, b, u, offsetM)
+		probe := FacadePoint(a, b, u, facadeProbeOffsetM)
+
+		for storey, z := range storeys.z {
+			receivers = append(receivers, FacadeReceiver{
+				PointReceiver: PointReceiver{
+					ID:      fmt.Sprintf("%s/%s/p%dr%de%d/s%d/f%d", f.ID, key.BuildingRef, key.Part, key.Ring, key.Edge, station, storey),
+					Point:   point,
+					HeightM: z,
+				},
+				PlacementRule:    f.PlacementRule,
+				Facade:           key,
+				Station:          station,
+				StationUM:        u,
+				Storey:           storey,
+				SlabHeightSource: storeys.source,
+				ReviewStatus:     ReviewStatusProposed,
+			})
+			probes = append(probes, probe)
+		}
+	}
+
+	return receivers, probes, nil
+}
+
+// placeAtWindows appends one receiver per window of an edge, in the order
+// along it, with the point each is probed at. Its id names the window in place
+// of the station and storey: <set>/<building>/p…r…e…/w/<window>.
+func (f FacadeReceiverSet) placeAtWindows(
+	windows []FacadeBuildingWindow, key FacadeKey, storeys storeys, receivers []FacadeReceiver, probes []Point2D,
+) ([]FacadeReceiver, []Point2D) {
+	for station, w := range windows {
+		frame := w.Frame
+		u := frame.CentreUM()
+		offsetM, z, basis := windowPlacement(f.PlacementRule, frame)
+
+		receivers = append(receivers, FacadeReceiver{
+			PointReceiver: PointReceiver{
+				ID: fmt.Sprintf("%s/%s/p%dr%de%d/w/%s",
+					f.ID, key.BuildingRef, key.Part, key.Ring, key.Edge, w.ID),
+				Point:   FacadePoint(key.From, key.To, u, offsetM),
+				HeightM: z,
+			},
+			PlacementRule: f.PlacementRule,
+			Facade:        key,
+			Station:       station,
+			StationUM:     u,
+			Storey:        storeys.storeyAt(frame.CentreZM()),
+			HeightBasis:   basis,
+			WindowID:      w.ID,
+			Window:        &frame,
+			ReviewStatus:  w.ReviewStatus,
+		})
+		probes = append(probes, FacadePoint(key.From, key.To, u, facadeProbeOffsetM))
+	}
+
+	return receivers, probes
 }
 
 // compareFacadeReceivers orders receivers by the key their IDs spell.

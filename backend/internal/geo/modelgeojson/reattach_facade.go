@@ -26,8 +26,9 @@ const (
 	ReattachUnchecked = "unchecked"
 )
 
-// FacadeReattachment is what re-attaching found for one receiver whose facade
-// link validation reports as unresolved or moved.
+// FacadeReattachment is what re-attaching found for one receiver, or one
+// window, whose facade link validation reports as unresolved or moved. A
+// window is re-keyed exactly as a receiver is; ReceiverID then names it.
 //
 // Proposed, ShiftM and ReceiverDistanceM are set for a proposal only. Keys
 // are in the project CRS, as the model stores them; the distances are metres
@@ -50,9 +51,9 @@ type FacadeReattachment struct {
 	Reason     string          `json:"reason,omitempty"`
 }
 
-// ProposeFacadeReattachments proposes, for every receiver whose facade link
-// validation reports as unresolved or moved, the building edge it now
-// belongs to (facade-receivers.md, Decision: what keys a building).
+// ProposeFacadeReattachments proposes, for every receiver and every window
+// whose facade link validation reports as unresolved or moved, the building
+// edge it now belongs to (facade-receivers.md, Decision: what keys a building).
 //
 // A receiver keeps its from / to and nothing of its building's old footprint,
 // so the endpoints decide. An edge matches when its start lies within
@@ -80,7 +81,8 @@ func ProposeFacadeReattachments(model Model, maxShiftM float64) ([]FacadeReattac
 	findings := make(map[string]string)
 
 	for _, issue := range report.Warnings {
-		if issue.Code == CodeReceiverFacadeUnresolved || issue.Code == CodeReceiverFacadeMoved {
+		switch issue.Code {
+		case CodeReceiverFacadeUnresolved, CodeReceiverFacadeMoved, CodeWindowFacadeUnresolved, CodeWindowFacadeMoved:
 			findings[issue.FeatureID] = issue.Code
 		}
 	}
@@ -97,7 +99,7 @@ func ProposeFacadeReattachments(model Model, maxShiftM float64) ([]FacadeReattac
 		id := strings.TrimSpace(feature.ID)
 
 		code, flagged := findings[id]
-		if !flagged || featureKind(feature) != FeatureKindReceiver {
+		if !flagged || !carriesFacadeLink(feature) {
 			continue
 		}
 
@@ -115,8 +117,12 @@ func ProposeFacadeReattachments(model Model, maxShiftM float64) ([]FacadeReattac
 // ApplyFacadeReattachments re-keys every proposed receiver and marks it
 // proposed, so a person confirms it before a normative run assesses it. Its
 // id, position, height, storey and placement rule stay as they are: a run
-// never recomputes a position from the key. The model passed in is not
-// modified. It returns the new model and the number of receivers re-keyed.
+// never recomputes a position from the key. A window's Point is not a
+// position but its centre on the facade (geojson-schema-v1.md), so it moves
+// with the key: to the frame's centre u on the new edge, measured in the frame
+// validation measures in. A window whose centre cannot be placed there is not
+// re-keyed either. The model passed in is not modified. It returns the new
+// model and the number of receivers and windows re-keyed.
 func ApplyFacadeReattachments(model Model, reattachments []FacadeReattachment) (Model, int) {
 	proposed := make(map[string]geo.FacadeKey)
 
@@ -129,11 +135,22 @@ func ApplyFacadeReattachments(model Model, reattachments []FacadeReattachment) (
 	out := model
 	out.Features = slices.Clone(model.Features)
 	applied := 0
+	// Only the frame: re-keying needs no building canonicalised.
+	frame := reattachIndex{frame: newMetricFrame(model)}
 
 	for i, feature := range out.Features {
 		key, ok := proposed[strings.TrimSpace(feature.ID)]
-		if !ok || featureKind(feature) != FeatureKindReceiver {
+		if !ok || !carriesFacadeLink(feature) {
 			continue
+		}
+
+		if featureKind(feature) == FeatureKindWindow {
+			centre, err := frame.windowCentreOn(key, feature.Properties[PropertyWindow])
+			if err != nil {
+				continue
+			}
+
+			feature.Coordinates = []any{centre.X, centre.Y}
 		}
 
 		props := maps.Clone(feature.Properties)
@@ -145,6 +162,14 @@ func ApplyFacadeReattachments(model Model, reattachments []FacadeReattachment) (
 	}
 
 	return out, applied
+}
+
+// carriesFacadeLink reports whether a feature is of a kind whose facade key
+// re-attaching may rewrite: a receiver or a window.
+func carriesFacadeLink(feature Feature) bool {
+	kind := featureKind(feature)
+
+	return kind == FeatureKindReceiver || kind == FeatureKindWindow
 }
 
 // facadeKeyProperty spells a key the way a model read from disk holds it, the
@@ -360,6 +385,39 @@ func (x reattachIndex) keyOf(m edgeMatch) (geo.FacadeKey, error) {
 		Part:        m.edge.Part, Ring: m.edge.Ring, Edge: m.edge.Edge,
 		From: from, To: to,
 	}, nil
+}
+
+// windowCentre is a window's Point on the edge from / to, both in the
+// metric frame: its frame's centre u on the facade plane, in the project CRS.
+func (x reattachIndex) windowCentre(from, to geo.Point2D, frame geo.FacadeWindow) (geo.Point2D, error) {
+	centre, err := x.toProject(geo.FacadePoint(from, to, frame.CentreUM(), 0))
+	if err != nil {
+		return geo.Point2D{}, fmt.Errorf("the window centre cannot be projected back (%w)", err)
+	}
+
+	return centre, nil
+}
+
+// windowCentreOn is windowCentre on the edge a key names, from the key's
+// from / to in the project CRS and the window property as the model holds it.
+func (x reattachIndex) windowCentreOn(key geo.FacadeKey, window any) (geo.Point2D, error) {
+	if x.frame.failure != "" {
+		return geo.Point2D{}, errors.New(x.frame.failure)
+	}
+
+	frame, problem := parseWindowFrame(window)
+	if problem != "" {
+		return geo.Point2D{}, errors.New("window " + problem)
+	}
+
+	from, fromErr := x.toMetric(key.From)
+	to, toErr := x.toMetric(key.To)
+
+	if err := errors.Join(fromErr, toErr); err != nil {
+		return geo.Point2D{}, err
+	}
+
+	return x.windowCentre(from, to, frame)
 }
 
 func (x reattachIndex) toMetric(p geo.Point2D) (geo.Point2D, error) {

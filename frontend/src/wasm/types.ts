@@ -303,7 +303,7 @@ export interface FootprintMaskResponse {
  * `wasmkernel.FacadeReceiversRequest`: the facade receiver set of a run, as
  * `--facade-building`, `--facade-spacing-m`, `--facade-courtyard` and
  * `--allow-unconfirmed` ask for it. `model` is a GeoJSON FeatureCollection of
- * every building, already in `crs`, the run's compute CRS.
+ * every building and window, already in `crs`, the run's compute CRS.
  */
 export interface FacadeReceiversRequest {
   crs: string;
@@ -329,13 +329,32 @@ export interface KernelReceiverFacade {
   to: [number, number];
 }
 
-/** One generated facade receiver and the attributes its table row carries. */
+/**
+ * A window as a rectangle in its facade's frame, in metres: the u of its left
+ * edge, the height of its sill, its width and its height
+ * (`geo.FacadeWindow`).
+ */
+export interface FacadeWindowFrame {
+  u_m: number;
+  sill_z_m: number;
+  width_m: number;
+  height_m: number;
+}
+
+/**
+ * One generated facade receiver and the attributes its table row carries. A
+ * point placed at a window names the window and what its height was derived
+ * from, and its `slab_height_source` is empty: the window fixes the height.
+ */
 export interface FacadeReceiver extends PointReceiver {
   placement_rule: string;
   facade: KernelReceiverFacade;
   storey: number;
   slab_height_source: string;
   review_status: string;
+  height_basis?: string;
+  window_id?: string;
+  window?: FacadeWindowFrame;
 }
 
 /**

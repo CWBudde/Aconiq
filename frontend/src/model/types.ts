@@ -1,5 +1,10 @@
 /** Feature kind — matches Go backend's normalized model */
-export type FeatureKind = "source" | "building" | "barrier" | "ground-zone";
+export type FeatureKind =
+  | "source"
+  | "building"
+  | "barrier"
+  | "ground-zone"
+  | "window";
 
 /** Source geometry subtype */
 export type SourceType = "point" | "line" | "area";

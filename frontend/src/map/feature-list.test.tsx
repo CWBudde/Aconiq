@@ -83,6 +83,29 @@ describe("FeatureList", () => {
     ]);
   });
 
+  // A window is edited in its facade's frame, not on the map: the list would
+  // open the map's editor on a point whose position the window's frame fixes.
+  it("leaves windows out", () => {
+    useModelStore.getState().loadModel({
+      features: [
+        building,
+        {
+          id: "win-1",
+          kind: "window",
+          properties: { sensitive: true },
+          geometry: { type: "Point", coordinates: [0.5, 0] },
+        },
+      ],
+      receivers: [],
+      calcArea: null,
+    });
+    renderList();
+
+    expect(
+      screen.getAllByRole("button").map((entry) => entry.textContent),
+    ).toEqual([`${m.option_building()}bld-1`]);
+  });
+
   it("reports the id the page selects by", async () => {
     load();
     const onSelect = renderList();

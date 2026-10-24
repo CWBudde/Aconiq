@@ -208,6 +208,56 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     }
   });
 
+  it("places a sensitive window's point in place of its facade's stations", async () => {
+    const kernel = await getNodeKernel();
+
+    const placed = await kernel.facadeReceivers({
+      crs: "EPSG:25832",
+      model: {
+        ...facadeModel,
+        features: [
+          ...facadeModel.features,
+          {
+            type: "Feature",
+            id: "bedroom",
+            properties: {
+              kind: "window",
+              facade: {
+                building_ref: "house",
+                part: 0,
+                ring: 0,
+                edge: 0,
+                from: [547000, 5795000],
+                to: [547010, 5795000],
+              },
+              window: { u_m: 2, sill_z_m: 3.9, width_m: 1.2, height_m: 1.5 },
+              sensitive: true,
+              review_status: "confirmed",
+            },
+            geometry: { type: "Point", coordinates: [547002.6, 5795000] },
+          },
+        ],
+      },
+      standard_id: "rls19-road",
+      buildings: ["house"],
+      spacing_m: 4,
+      allow_unconfirmed: true,
+    });
+
+    const south = placed.receivers.filter(
+      (receiver) => receiver.facade.edge === 0,
+    );
+    expect(south).toHaveLength(1);
+    expect(south[0]).toMatchObject({
+      id: "facade/house/p0r0e0/w/bedroom",
+      window_id: "bedroom",
+      height_basis: "schall03-window-head",
+      review_status: "confirmed",
+    });
+    expect(south[0]?.height_m).toBeCloseTo(5.6, 9);
+    expect(placed.metadata["facade_window_count"]).toBe("1");
+  });
+
   it("refuses an unconfirmed normative facade run in the run's words", async () => {
     const kernel = await getNodeKernel();
 

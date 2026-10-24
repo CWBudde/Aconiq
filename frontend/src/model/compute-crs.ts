@@ -380,6 +380,8 @@ function walkWorkspace(
   visit: CoordinateVisit,
 ): Omit<ComputeModel, "projection"> {
   return {
+    // A window carries a facade key as a receiver does; any feature's moves,
+    // as reproject.go moves it on every kind.
     features: workspace.features.map((feature) => ({
       ...feature,
       geometry: {
@@ -389,6 +391,9 @@ function walkWorkspace(
           visit,
         ) as ModelFeature["geometry"]["coordinates"],
       },
+      ...(feature.properties === undefined
+        ? undefined
+        : { properties: mapFacadeEndpoints(feature.properties, visit) }),
     })),
     receivers: workspace.receivers.map((receiver) => ({
       ...receiver,
@@ -420,7 +425,8 @@ function walkWorkspace(
 }
 
 /**
- * The members of a receiver's `facade` property that hold a coordinate: the
+ * The members of a `facade` property, a receiver's or a window's, that hold a
+ * coordinate: the
  * endpoints of the building edge it was placed on, in the project CRS like
  * the rest of the model. `geo/modelgeojson/reproject.go` moves the same two
  * (its `propertyGeometries` facade entry); left behind, the kernel's

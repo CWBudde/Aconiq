@@ -42,12 +42,13 @@ const (
 const SetID = "facade"
 
 // placementRuleByStandard is the geometric placement rule each standard takes
-// its facade Immissionsorte from (facade-receivers.md, Section 4). A standard
-// missing here has no rule a footprint alone can apply: TA Lärm's is the
-// window, and the others assess no facade.
+// its facade Immissionsorte from (facade-receivers.md, Section 4). TA Lärm's
+// is computed by the ISO 9613-2 module and places only at windows; a standard
+// missing here assesses no facade.
 var placementRuleByStandard = map[string]string{
 	rls19RoadID: geo.PlacementRLS19Facade,
 	schall03ID:  geo.PlacementSchall03Facade,
+	iso9613ID:   geo.PlacementTALaermWindow,
 }
 
 // placementRuleStandardPrefixes say which standard a placement rule belongs
@@ -90,6 +91,11 @@ type Attributes struct {
 	Storey           *int
 	SlabHeightSource string
 	ReviewStatus     string
+	// HeightBasis, WindowID and Window are set on a point placed at a
+	// window (geo.FacadeReceiver).
+	HeightBasis string
+	WindowID    string
+	Window      *geo.FacadeWindow
 }
 
 // Proposed reports whether nobody has confirmed the point yet. A
@@ -197,9 +203,30 @@ func (l Listed) CountUnconfirmed() (proposed, assumed int) {
 func Generate(request Request, standardID string, model modelgeojson.Model) (Listed, map[string]string, error) {
 	rule, ok := placementRuleByStandard[standardID]
 	if !ok {
+		standards := slices.Sorted(maps.Keys(placementRuleByStandard))
+
 		return Listed{}, nil, domainerrors.New(domainerrors.KindUserInput, op, fmt.Sprintf(
-			"standard %q has no facade placement rule a footprint alone can apply, so receiver mode facade is not available for it; "+
-				"it is available for %s", standardID, strings.Join(slices.Sorted(maps.Keys(placementRuleByStandard)), " and "),
+			"standard %q has no facade placement rule, so receiver mode facade is not available for it; "+
+				"it is available for %s and %s",
+			standardID, strings.Join(standards[:len(standards)-1], ", "), standards[len(standards)-1],
+		), nil)
+	}
+
+	buildingIDs, err := ResolveBuildings(request.Buildings, model)
+	if err != nil {
+		return Listed{}, nil, err
+	}
+
+	windows, err := sensitiveWindows(model, buildingIDs)
+	if err != nil {
+		return Listed{}, nil, err
+	}
+
+	if geo.IsWindowOnlyPlacementRule(rule) && len(windows) == 0 {
+		return Listed{}, nil, domainerrors.New(domainerrors.KindUserInput, op, fmt.Sprintf(
+			"standard %q places its facade Immissionsorte by %s, in front of the window of a schutzbedürftiger Raum "+
+				"(TA Lärm A.1.3 a)), and the requested buildings have no sensitive window that is not rejected; "+
+				"import their windows with aconiq import --windows, marking the sensitive ones", standardID, rule,
 		), nil)
 	}
 
@@ -215,12 +242,8 @@ func Generate(request Request, standardID string, model modelgeojson.Model) (Lis
 			return Listed{}, nil, domainerrors.New(domainerrors.KindValidation, op, fmt.Sprintf("building %q", feature.ID), err)
 		}
 
+		building.Windows = windows[building.ID]
 		buildings = append(buildings, building)
-	}
-
-	buildingIDs, err := ResolveBuildings(request.Buildings, model)
-	if err != nil {
-		return Listed{}, nil, err
 	}
 
 	generated, err := geo.FacadeReceiverSet{
@@ -234,29 +257,17 @@ func Generate(request Request, standardID string, model modelgeojson.Model) (Lis
 		return Listed{}, nil, domainerrors.New(domainerrors.KindUserInput, op, "receiver mode facade: "+err.Error(), err)
 	}
 
+	err = checkWindowsPlaced(windows, generated, request.IncludeCourtyard)
+	if err != nil {
+		return Listed{}, nil, err
+	}
+
 	if len(generated) == 0 {
 		return Listed{}, nil, domainerrors.New(domainerrors.KindUserInput, op,
 			"receiver mode facade placed no receiver: every facade of the requested buildings is a party wall", nil)
 	}
 
-	listed := Listed{
-		Receivers: make([]geo.PointReceiver, 0, len(generated)),
-		Facade:    make(map[string]Attributes, len(generated)),
-	}
-
-	for _, receiver := range generated {
-		key := receiver.Facade
-		storey := receiver.Storey
-
-		listed.Receivers = append(listed.Receivers, receiver.PointReceiver)
-		listed.Facade[receiver.ID] = Attributes{
-			PlacementRule:    receiver.PlacementRule,
-			Facade:           &key,
-			Storey:           &storey,
-			SlabHeightSource: receiver.SlabHeightSource,
-			ReviewStatus:     receiver.ReviewStatus,
-		}
-	}
+	listed, atWindows, basis := listGenerated(generated)
 
 	// The request defines the set as much as the model does, so provenance
 	// records it. The building ids are a JSON list, not a joined string: an id
@@ -274,7 +285,149 @@ func Generate(request Request, standardID string, model modelgeojson.Model) (Lis
 		"facade_include_courtyard": strconv.FormatBool(request.IncludeCourtyard),
 	}
 
+	// Only a set placed at windows records how many, and what their height
+	// came from, so a set placed from footprints alone keeps the provenance
+	// it always had. One rule places every point, so one basis covers them:
+	// under RLS-19 it says the height is Schall 03's relation, borrowed.
+	if atWindows > 0 {
+		metadata["facade_window_count"] = strconv.Itoa(atWindows)
+		metadata["facade_window_height_basis"] = basis
+	}
+
 	return listed, metadata, nil
+}
+
+// checkWindowsPlaced refuses a set that left out a sensitive window it was
+// given: the generator drops a point whose facade another building stands in
+// front of, and a window there is a window list that does not fit the model,
+// which must not pass as fewer Immissionsorte. A courtyard window is left out
+// by request when courtyards are, and is not counted.
+func checkWindowsPlaced(windows map[string][]geo.FacadeBuildingWindow, generated []geo.FacadeReceiver, includeCourtyard bool) error {
+	placed := make(map[string]bool, len(generated))
+	for _, receiver := range generated {
+		if receiver.WindowID != "" {
+			placed[receiver.WindowID] = true
+		}
+	}
+
+	var missing []string
+
+	for _, ref := range slices.Sorted(maps.Keys(windows)) {
+		for _, w := range windows[ref] {
+			if (w.Ring == 0 || includeCourtyard) && !placed[w.ID] {
+				missing = append(missing, fmt.Sprintf("%q", w.ID))
+			}
+		}
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return domainerrors.New(domainerrors.KindUserInput, op, fmt.Sprintf(
+		"receiver mode facade cannot place at %d sensitive window(s) on a facade another building stands against, a party wall: %s; "+
+			"correct their facade in the window list, or reject them",
+		len(missing), summarize(missing, 5),
+	), nil)
+}
+
+// listGenerated lists the generated receivers with their attributes, counts
+// those placed at a window, and names the height basis they share.
+func listGenerated(generated []geo.FacadeReceiver) (Listed, int, string) {
+	listed := Listed{
+		Receivers: make([]geo.PointReceiver, 0, len(generated)),
+		Facade:    make(map[string]Attributes, len(generated)),
+	}
+
+	atWindows, basis := 0, ""
+
+	for _, receiver := range generated {
+		key := receiver.Facade
+		storey := receiver.Storey
+
+		listed.Receivers = append(listed.Receivers, receiver.PointReceiver)
+		listed.Facade[receiver.ID] = Attributes{
+			PlacementRule:    receiver.PlacementRule,
+			Facade:           &key,
+			Storey:           &storey,
+			SlabHeightSource: receiver.SlabHeightSource,
+			ReviewStatus:     receiver.ReviewStatus,
+			HeightBasis:      receiver.HeightBasis,
+			WindowID:         receiver.WindowID,
+			Window:           receiver.Window,
+		}
+
+		if receiver.WindowID != "" {
+			atWindows++
+			basis = receiver.HeightBasis
+		}
+	}
+
+	return listed, atWindows, basis
+}
+
+// sensitiveWindows collects, by building, the windows of the requested
+// buildings a point is placed at: the sensitive ones that are not rejected.
+// A window whose facade link validation reports broken refuses the run for
+// every standard, opt-in or not: its frame is measured along an edge that is
+// no longer the one it names, so no point can be placed from it honestly.
+func sensitiveWindows(model modelgeojson.Model, buildingIDs []string) (map[string][]geo.FacadeBuildingWindow, error) {
+	requested := make(map[string]bool, len(buildingIDs))
+	for _, id := range buildingIDs {
+		requested[id] = true
+	}
+
+	windows := make(map[string][]geo.FacadeBuildingWindow)
+	placed := make(map[string]bool)
+
+	for _, feature := range model.Features {
+		if feature.Kind != modelgeojson.FeatureKindWindow {
+			continue
+		}
+
+		window, err := modelgeojson.WindowOf(feature)
+		if err != nil {
+			return nil, domainerrors.New(domainerrors.KindValidation, op, "receiver mode facade", err)
+		}
+
+		ref := window.Facade.BuildingRef
+		if !requested[ref] || !window.Sensitive || window.ReviewStatus == geo.ReviewStatusRejected {
+			continue
+		}
+
+		windows[ref] = append(windows[ref], geo.FacadeBuildingWindow{
+			ID:   window.ID,
+			Part: window.Facade.Part, Ring: window.Facade.Ring, Edge: window.Facade.Edge,
+			Frame:        window.Frame,
+			ReviewStatus: window.ReviewStatus,
+		})
+		placed[window.ID] = true
+	}
+
+	if len(placed) == 0 {
+		return windows, nil
+	}
+
+	var broken []string
+
+	for _, issue := range modelgeojson.Validate(model).Warnings {
+		switch issue.Code {
+		case modelgeojson.CodeWindowFacadeUnresolved, modelgeojson.CodeWindowFacadeMoved, modelgeojson.CodeWindowOutsideFacade:
+			if placed[issue.FeatureID] {
+				broken = append(broken, issue.Code+": "+issue.Message)
+			}
+		}
+	}
+
+	if len(broken) > 0 {
+		return nil, domainerrors.New(domainerrors.KindUserInput, op, fmt.Sprintf(
+			"receiver mode facade cannot place at %d window(s) whose facade link broke: %s; "+
+				"re-attach them with aconiq reattach-facades, or correct them in the model",
+			len(broken), summarize(broken, 5),
+		), nil)
+	}
+
+	return windows, nil
 }
 
 // BuildingFromFeature maps a model building onto the generator's input.

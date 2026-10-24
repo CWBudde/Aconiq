@@ -37,6 +37,7 @@ func newImportCommand() *cobra.Command {
 		osmBBox       string
 		osmEndpoint   string
 		lglnBBox      string
+		windowsPath   string
 	)
 
 	cmd := &cobra.Command{
@@ -45,6 +46,7 @@ func newImportCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sources := importSources{
 				inputPath: inputPath, soundPlanPath: soundPlanPath, osmBBox: osmBBox, lglnBBox: lglnBBox,
+				windowsPath: windowsPath,
 			}
 
 			return runImport(cmd, sources, layerName, inputCRS, trafficPath, terrainPath, osmEndpoint)
@@ -59,17 +61,20 @@ func newImportCommand() *cobra.Command {
 	cmd.Flags().StringVar(&terrainPath, "terrain", "", "Path to GeoTIFF DTM file for terrain elevation data")
 	cmd.Flags().StringVar(&osmBBox, "from-osm", "", "Bounding box for OSM import: \"south,west,north,east\" in WGS84 degrees")
 	cmd.Flags().StringVar(&osmEndpoint, "overpass-endpoint", "", "Overpass API endpoint (optional, defaults to overpass-api.de)")
+	cmd.Flags().StringVar(&windowsPath, "windows", "", "Path to a window list (.csv or .json) in the facade frame; its windows are merged into the existing model, replacing windows of the same id")
 	cmd.Flags().StringVar(&lglnBBox, "from-lgln", "", "Bounding box for LGLN LoD2 buildings (Lower Saxony): \"south,west,north,east\" in WGS84 degrees; merged into the existing model, replacing the OSM buildings in the box")
 
 	return cmd
 }
 
-// importSources are the mutually exclusive primary sources of an import.
+// importSources are the mutually exclusive primary sources of an import,
+// and the window list merged after whichever of them ran.
 type importSources struct {
 	inputPath     string
 	soundPlanPath string
 	osmBBox       string
 	lglnBBox      string
+	windowsPath   string
 }
 
 func runImport(cmd *cobra.Command, sources importSources, layerName, inputCRS, trafficPath, terrainPath, osmEndpoint string) error {
@@ -128,8 +133,9 @@ func runImport(cmd *cobra.Command, sources importSources, layerName, inputCRS, t
 		)
 	}
 
-	if err == nil && trafficPath != "" {
-		err = mergeTrafficCSV(cmd, state, trafficPath, normalizedPath, dumpPath, store.Root())
+	var windowResult map[string]any
+	if err == nil {
+		windowResult, err = mergeIntoModel(cmd, state, store, trafficPath, sources.windowsPath)
 	}
 
 	if err == nil && terrainPath != "" {
@@ -140,15 +146,40 @@ func runImport(cmd *cobra.Command, sources importSources, layerName, inputCRS, t
 		cmd.SetOut(origOut)
 
 		result := buildImportJSONResult(store.Root(), inputPath, soundPlanPath, osmBBox, trafficPath, terrainPath, normalizedPath, dumpPath, reportPath, soundPlanReportPath)
-		if lglnSummary != nil {
-			result["lgln_bbox"] = sources.lglnBBox
-			result["lgln"] = *lglnSummary
-		}
+		addLGLNResult(result, sources.lglnBBox, lglnSummary)
+		maps.Copy(result, windowResult)
 
 		return writeCommandOutput(cmd.OutOrStdout(), true, result)
 	}
 
 	return err
+}
+
+// mergeIntoModel merges the traffic table and then the window list into the
+// model, each when given, and returns what the JSON result reports about the
+// window list.
+func mergeIntoModel(cmd *cobra.Command, state commandState, store projectfs.Store, trafficPath, windowsPath string) (map[string]any, error) {
+	if trafficPath != "" {
+		paths := store.ModelArtifactPaths()
+
+		err := mergeTrafficCSV(cmd, state, trafficPath, paths.Normalized, paths.Dump, store.Root())
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return mergeWindowListIfGiven(cmd, state, store, windowsPath)
+}
+
+// addLGLNResult adds what an LGLN import reports to the JSON result; it adds
+// nothing when no LGLN import ran.
+func addLGLNResult(result map[string]any, bbox string, summary *lglnImportSummary) {
+	if summary == nil {
+		return
+	}
+
+	result["lgln_bbox"] = bbox
+	result["lgln"] = *summary
 }
 
 // runPrimaryImport dispatches to the importer selected by the mutually exclusive
@@ -246,8 +277,9 @@ func validateImportFlags(sources importSources, trafficPath, terrainPath string)
 		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "cannot use "+strings.Join(given, " together with "), nil)
 	}
 
-	if len(given) == 0 && trafficPath == "" && terrainPath == "" {
-		return domainerrors.New(domainerrors.KindUserInput, "cli.import", "--input, --from-soundplan, --from-osm, --from-lgln, --terrain, or --traffic is required", nil)
+	if len(given) == 0 && trafficPath == "" && terrainPath == "" && sources.windowsPath == "" {
+		return domainerrors.New(domainerrors.KindUserInput, "cli.import",
+			"--input, --from-soundplan, --from-osm, --from-lgln, --terrain, --traffic, or --windows is required", nil)
 	}
 
 	return nil

@@ -224,21 +224,21 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 
 `backend/internal/app/cli/root.go` registers exactly thirteen commands:
 
-| Command                   | Purpose                                                                                                            |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `aconiq init`             | Create a project (`.noise/`)                                                                                       |
-| `aconiq import`           | Import GeoJSON, GeoPackage, FlatGeobuf, CityGML, SoundPLAN, OSM/Overpass, LGLN LoD2, CSV, GeoTIFF terrain          |
-| `aconiq compare`          | Compare a run against imported SoundPLAN receiver results with a dB tolerance                                      |
-| `aconiq validate`         | Validate the normalized model and emit a validation report                                                         |
-| `aconiq run`              | Run one scenario against one standard/version/profile; `--cpuprofile`/`--memprofile` write pprof profiles          |
-| `aconiq delete-run`       | Remove a run, its artifact refs and `.noise/runs/<id>/`; export bundles are kept                                   |
-| `aconiq reattach-facades` | Re-key facade receivers whose building changed under them; a dry run unless `--apply`, which marks them `proposed` |
-| `aconiq status`           | Report project, scenario and run state                                                                             |
-| `aconiq export`           | Export a run bundle, generate reports, and emit GIS formats (`--format`)                                           |
-| `aconiq serve`            | Start the local HTTP API (default `127.0.0.1:8080`)                                                                |
-| `aconiq mcp`              | Serve the project to an AI agent over MCP (stdio); writes only with `--allow-writes`, audited                      |
-| `aconiq openapi`          | Export the OpenAPI contract (default `.noise/api/openapi.v1.json`)                                                 |
-| `aconiq bench`            | Run synthetic benchmark scenarios (runtime, memory, cache IO, numeric drift)                                       |
+| Command                   | Purpose                                                                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `aconiq init`             | Create a project (`.noise/`)                                                                                            |
+| `aconiq import`           | Import GeoJSON, GeoPackage, FlatGeobuf, CityGML, SoundPLAN, OSM/Overpass, LGLN LoD2, CSV, window lists, GeoTIFF terrain |
+| `aconiq compare`          | Compare a run against imported SoundPLAN receiver results with a dB tolerance                                           |
+| `aconiq validate`         | Validate the normalized model and emit a validation report                                                              |
+| `aconiq run`              | Run one scenario against one standard/version/profile; `--cpuprofile`/`--memprofile` write pprof profiles               |
+| `aconiq delete-run`       | Remove a run, its artifact refs and `.noise/runs/<id>/`; export bundles are kept                                        |
+| `aconiq reattach-facades` | Re-key facade receivers whose building changed under them; a dry run unless `--apply`, which marks them `proposed`      |
+| `aconiq status`           | Report project, scenario and run state                                                                                  |
+| `aconiq export`           | Export a run bundle, generate reports, and emit GIS formats (`--format`)                                                |
+| `aconiq serve`            | Start the local HTTP API (default `127.0.0.1:8080`)                                                                     |
+| `aconiq mcp`              | Serve the project to an AI agent over MCP (stdio); writes only with `--allow-writes`, audited                           |
+| `aconiq openapi`          | Export the OpenAPI contract (default `.noise/api/openapi.v1.json`)                                                      |
+| `aconiq bench`            | Run synthetic benchmark scenarios (runtime, memory, cache IO, numeric drift)                                            |
 
 **Streams:** stdout is a command's result and nothing else; log records (`internal/app/logging`)
 go to stderr, text by default and JSON under `--json`. Under `--json` stdout is exactly one JSON
@@ -293,7 +293,7 @@ See `docs/project-format-v1.md` and `docs/project-migrations.md`.
 
 ### GeoJSON Input Schema (v1)
 
-`aconiq import` accepts a `FeatureCollection` whose features carry `kind` = `source`, `building`, `barrier`, `receiver`, or `calc-area`.
+`aconiq import` accepts a `FeatureCollection` whose features carry `kind` = `source`, `building`, `barrier`, `receiver`, `calc-area`, `ground-zone`, or `window`.
 
 - `source` requires `source_type` (`point`|`line`|`area`), and the geometry must match it: `Point`/`MultiPoint`, `LineString`/`MultiLineString`, `Polygon`/`MultiPolygon`.
 - `building` requires `height_m > 0` and `Polygon`/`MultiPolygon`.
@@ -301,6 +301,10 @@ See `docs/project-format-v1.md` and `docs/project-migrations.md`.
 - `receiver` requires `height_m > 0` and `Point`.
 - `calc-area` requires `Polygon`, carries no `height_m`, and may appear at most once. It replaces
   the source extent for the auto receiver grid; `grid_padding_m` still applies to it.
+- `ground-zone` requires `Polygon` and a `ground_factor` in [0,1]; only `iso9613` reads it.
+- `window` requires `Point` (the window centre on its facade), a `facade` key and a `window`
+  rectangle in the facade frame. No standard computes over it; `--receiver-mode facade` places
+  a point at each `sensitive` one that is not rejected, and `aconiq import --windows` writes them.
 
 See `docs/geojson-schema-v1.md`.
 

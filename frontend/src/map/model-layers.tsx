@@ -181,12 +181,17 @@ export function ModelLayers({
   return <CRSNotice model={display} />;
 }
 
-/** Which GeoJSON source a feature of this kind is drawn from. */
-const SOURCE_ID_FOR_KIND: Record<ModelFeature["kind"], string> = {
+/**
+ * Which GeoJSON source a feature of this kind is drawn from. A window is drawn
+ * from none: it is a rectangle in its facade's frame, which the facade
+ * elevation view shows (P18 C2), not a shape on the map.
+ */
+const SOURCE_ID_FOR_KIND: Record<ModelFeature["kind"], string | null> = {
   source: SOURCE_IDS.sources,
   building: SOURCE_IDS.buildings,
   barrier: SOURCE_IDS.barriers,
   "ground-zone": SOURCE_IDS.groundZones,
+  window: null,
 };
 
 interface SelectionTarget {
@@ -214,7 +219,8 @@ function selectionTarget(
 
   const feature = features.find((f) => f.id === selectedFeatureId);
   if (feature) {
-    return { source: SOURCE_ID_FOR_KIND[feature.kind], id: feature.id };
+    const source = SOURCE_ID_FOR_KIND[feature.kind];
+    return source === null ? null : { source, id: feature.id };
   }
 
   const receiver = receivers.find((r) => r.id === selectedFeatureId);

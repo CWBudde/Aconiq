@@ -522,6 +522,42 @@ inclusive point-in-polygon variants disagree (PLAN B2).
 A **window** is a rectangle in that frame: `u` of its left edge, `z` of its sill, `width`, and
 `height`. Its centre (`talaerm-window`) and its head (`schall03-facade`) follow from it.
 
+### Windows (C1)
+
+A window is a model feature of its own, `kind: window` (`docs/geojson-schema-v1.md`): the facade
+key of its edge, the rectangle as `window: {u_m, sill_z_m, width_m, height_m}`, `sensitive` for a
+window of a _schutzbedürftiger Raum_, `review_status` and `evidence`, with a `Point` at the window
+centre for the map. A separate feature, rather than a list on the building, because a re-import
+of the buildings (LGLN replacing OSM) must not take the windows with it, and because C2 and D2
+edit one window at a time. `aconiq import --windows` reads a window list (CSV, or JSON with
+`evidence`) naming each window's building, by id or address, its canonical part, ring and edge,
+and its rectangle; it places the key in the compute CRS and writes `from` / `to` in the project
+CRS, as `aconiq reattach-facades` does.
+
+The point is derived at run time, never stored. In facade receiver mode, a facade that carries a
+sensitive window that is not `rejected` gets one point per such window instead of its station
+grid; a facade without one keeps its stations. The point stands at the window centre's `u`, and:
+
+- `rls19-facade`: 0.05 m out, at the window head + 0.2 m. That is Schall 03's relation, the most
+  defensible slab estimate when the window is known (Section 5, Decision), and the point records
+  it as borrowed: `height_basis: schall03-window-head`.
+- `schall03-facade`: on the facade, at the window head + 0.2 m (`height_basis: window-head`).
+- `talaerm-window`: 0.5 m out, at the window centre (`height_basis: window-centre`). This rule
+  places only at windows, so ISO 9613-2, which computes TA Lärm, now has a facade mode that
+  refuses a building without a sensitive window. `--facade-spacing-m` is still required there,
+  and unused. Its own-facade exclusion waits on Section 7, question 6.
+
+The window fixes the height, so the point has no `slab_height_source`; its `storey` is a label
+only, the storey whose ceiling slab is the first at or above the window centre. It inherits the
+window's `review_status`, so a proposed window refuses a normative run as a proposed point does.
+Its id names the window in place of station and storey: `facade/<building>/p…r…e…/w/<window>`.
+A sensitive window whose key is unresolved or moved, that its edge has no room for, or that stands
+on a party wall, refuses the run for every standard, opt-in or not, until it is re-attached or
+corrected: dropping it would report fewer Immissionsorte than the window list holds. The courtyard
+switch applies to windows as to stations. Provenance (in browser mode, the run summary) records
+`facade_window_count` and `facade_window_height_basis`, so the borrowed RLS-19 height travels with
+the result; the receiver id names the window.
+
 ### The facade key
 
 `facade` is an object, not an index, because a building can be a `MultiPolygon` and can have
