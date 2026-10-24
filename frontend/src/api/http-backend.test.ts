@@ -215,6 +215,52 @@ describe("httpBackend.importFromLGLN", () => {
   });
 });
 
+describe("httpBackend.facadeElevation", () => {
+  it("posts the model to the elevation endpoint and returns what it answers", async () => {
+    const answer = {
+      building_ref: "house",
+      height_m: 9,
+      slab_heights_m: [3, 6, 9],
+      slab_height_source: "assumed",
+      facades: [],
+      detached: [],
+    };
+    const mock = stubFetch(jsonResponse(answer));
+    const req = {
+      crs: "EPSG:25832",
+      model: { type: "FeatureCollection", features: [] },
+      building: "house",
+    };
+
+    const result = await httpBackend.facadeElevation(req);
+
+    const [url, init] = requestOf(mock);
+    expect(url).toBe(apiURL("/api/v1/facades/elevation"));
+    expect(init.method).toBe("POST");
+    expect(headersOf(init)[CLIENT_HEADER_NAME]).toBeDefined();
+    expect(init.body).toBe(JSON.stringify(req));
+    expect(result).toEqual(answer);
+  });
+
+  it("surfaces a refusal in the server's words", async () => {
+    stubFetch(
+      jsonResponse(
+        envelope("bad_request", 'building "shed" is not in the model'),
+        400,
+      ),
+    );
+
+    const error = await httpBackend
+      .facadeElevation({ crs: "EPSG:25832", model: {}, building: "shed" })
+      .then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+
+    expect(asAPIRequestError(error)?.message).toContain("not in the model");
+  });
+});
+
 describe("httpBackend.transformCoordinates", () => {
   it("posts the flat batch to the transform endpoint and returns what it answers", async () => {
     const mock = stubFetch(

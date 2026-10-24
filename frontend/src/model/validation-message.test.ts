@@ -118,6 +118,30 @@ const ISSUES: {
     featureId: "w1",
     params: {},
   },
+  "window.facade.unresolved": {
+    level: "warning",
+    code: "window.facade.unresolved",
+    featureId: "w1",
+    params: {},
+  },
+  "window.facade.moved": {
+    level: "warning",
+    code: "window.facade.moved",
+    featureId: "w1",
+    params: {},
+  },
+  "window.frame.outside": {
+    level: "warning",
+    code: "window.frame.outside",
+    featureId: "w1",
+    params: {},
+  },
+  "window.frame.above_building": {
+    level: "warning",
+    code: "window.frame.above_building",
+    featureId: "w1",
+    params: {},
+  },
   "receiver.coordinates.invalid": {
     level: "error",
     code: "receiver.coordinates.invalid",

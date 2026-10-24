@@ -56,6 +56,29 @@ vi.mock("@/api/hooks", () => ({
   },
 }));
 
+// The elevation dialog measures through the backend; here it only has to
+// open, for the building the editor holds, and close again.
+vi.mock("@/facade/facade-elevation-dialog", () => ({
+  default: ({
+    buildingId,
+    onOpenChange,
+  }: {
+    buildingId: string;
+    onOpenChange: (open: boolean) => void;
+  }) => (
+    <div role="dialog" aria-label={`elevation ${buildingId}`}>
+      <button
+        type="button"
+        onClick={() => {
+          onOpenChange(false);
+        }}
+      >
+        close elevation
+      </button>
+    </div>
+  ),
+}));
+
 const originalGetLocale = getLocale;
 
 function useLocale(locale: Locale) {
@@ -487,6 +510,30 @@ describe("FeatureEditor height field", () => {
     type(screen.getByLabelText(m.label_height_m()), "");
 
     expect(useModelStore.getState().getFeatureById("bld-1")?.heightM).toBe(12);
+  });
+
+  it("opens a building's facade elevation, and only a building's", async () => {
+    edit(building);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_facade_elevation() }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "elevation bld-1",
+    });
+
+    fireEvent.click(within(dialog).getByText("close elevation"));
+    expect(
+      screen.queryByRole("dialog", { name: "elevation bld-1" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers no facade elevation for a barrier", () => {
+    edit(barrier);
+
+    expect(
+      screen.queryByRole("button", { name: m.action_facade_elevation() }),
+    ).not.toBeInTheDocument();
   });
 
   it("edits a barrier's height through the same field", () => {

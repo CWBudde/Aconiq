@@ -488,6 +488,20 @@ func FacadePoint(a, b Point2D, u, d float64) Point2D {
 	}
 }
 
+// FacadeFacingDeg is the bearing the facade from a to b faces: its
+// right-hand normal, the direction FacadePoint steps out in, in degrees
+// clockwise from the frame's +y axis, in [0, 360). In a projected CRS that is
+// grid north, which a view names a facade by ("the south facade"); it is not
+// a geodetic azimuth.
+func FacadeFacingDeg(a, b Point2D) float64 {
+	deg := math.Atan2(b.Y-a.Y, -(b.X-a.X)) * 180 / math.Pi
+	if deg < 0 {
+		deg += 360
+	}
+
+	return deg
+}
+
 // facadeStations splits an edge into n = max(1, ceil(L / spacing)) equal parts
 // and returns the u of each part's centre, so every edge gets at least one
 // station, even when L / spacing underflows to 0, and none stands on a
@@ -566,6 +580,20 @@ func storeyHeights(b FacadeBuilding) (storeys, error) {
 	}
 
 	return storeys{z: z, source: source}, nil
+}
+
+// StoreySlabs is the ceiling slab height of each of b's storeys above its
+// ground, the ground floor first, and where their storey height came from:
+// the heights facade mode places a storey's points at, for a view that draws
+// the floors those points stand on (P18 C2). They include b.GroundFloorM, as
+// the points do, so a raised ground floor moves every line up with them.
+func StoreySlabs(b FacadeBuilding) ([]float64, string, error) {
+	s, err := storeyHeights(b)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return s.z, s.source, nil
 }
 
 // FacadeEdge returns the endpoints of edge `edge` of ring `ring` of part

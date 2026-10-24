@@ -208,6 +208,29 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     }
   });
 
+  it("unfolds a building into its facades and storeys through the kernel", async () => {
+    const kernel = await getNodeKernel();
+
+    const elevation = await kernel.facadeElevation({
+      crs: "EPSG:25832",
+      model: facadeModel,
+      building: "house",
+    });
+
+    expect(elevation.building_ref).toBe("house");
+    expect(elevation.slab_heights_m).toEqual([3, 6, 9]);
+    expect(elevation.facades.map((f) => f.length_m)).toEqual([10, 8, 10, 8]);
+    expect(elevation.facades[0]?.facing_deg).toBe(180);
+    expect(elevation.detached).toEqual([]);
+    await expect(
+      kernel.facadeElevation({
+        crs: "EPSG:25832",
+        model: facadeModel,
+        building: "shed",
+      }),
+    ).rejects.toThrow("not in the model");
+  });
+
   it("places a sensitive window's point in place of its facade's stations", async () => {
     const kernel = await getNodeKernel();
 

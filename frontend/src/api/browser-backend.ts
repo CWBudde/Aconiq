@@ -55,6 +55,8 @@ import type {
   Barrier,
   Building,
   CustomReceiversResponse,
+  FacadeElevationRequest,
+  FacadeElevationResponse,
   FacadeReceiversResponse,
   FootprintMaskRequest,
   PointReceiver,
@@ -2255,6 +2257,13 @@ export const browserBackend = {
   ): Promise<TransformResponse> {
     const kernel = await getKernel();
     return kernel.transform(req);
+  },
+
+  async facadeElevation(
+    req: FacadeElevationRequest,
+  ): Promise<FacadeElevationResponse> {
+    const kernel = await getKernel();
+    return kernel.facadeElevation(req);
   },
 
   async getHealth(): Promise<HealthResponse> {

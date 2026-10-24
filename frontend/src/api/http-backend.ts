@@ -28,7 +28,7 @@ import type {
 import { openEventStream } from "./event-stream";
 import { apiURL } from "./mode";
 import type { GeoJSONFeatureCollection } from "@/model/types";
-import type { TransformResponse } from "@/wasm/types";
+import type { FacadeElevationResponse, TransformResponse } from "@/wasm/types";
 import type { RunEstimate } from "@/model/run-estimate";
 
 interface RequestOptions {
@@ -345,6 +345,12 @@ export const httpBackend: Backend = {
     // rather than in process. The frontend grows no second transverse-Mercator
     // implementation and cannot resolve a zone the CLI would not.
     return postJSON<TransformResponse>("/api/v1/transform", req);
+  },
+
+  facadeElevation(req) {
+    // A pure function of its body, like the transform: the server unfolds the
+    // model the map holds, saved or not, through the code the kernel calls.
+    return postJSON<FacadeElevationResponse>("/api/v1/facades/elevation", req);
   },
 
   subscribeProjectEvents(listener) {

@@ -69,6 +69,14 @@ export function validationIssueText(issue: ValidationIssue): string {
       return m.msg_validation_window_invalid(issue.params);
     case "window.geometry.invalid":
       return m.msg_validation_window_geometry_invalid();
+    case "window.facade.unresolved":
+      return m.msg_validation_window_facade_unresolved();
+    case "window.facade.moved":
+      return m.msg_validation_window_facade_moved();
+    case "window.frame.outside":
+      return m.msg_validation_window_frame_outside();
+    case "window.frame.above_building":
+      return m.msg_validation_window_frame_above_building();
 
     case "source.rls19.surface_type.invalid":
       return m.msg_validation_source_rls19_surface_type_invalid(issue.params);

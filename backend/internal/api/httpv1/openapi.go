@@ -90,6 +90,7 @@ func openapiPathItems() map[string]any {
 		openapiLGLNPathItems(),
 		openapiModelPathItems(),
 		openapiTransformPathItems(),
+		openapiFacadePathItems(),
 	} {
 		maps.Copy(items, group)
 	}
@@ -136,6 +137,7 @@ func openapiSchemas() map[string]any {
 		openapiModelSchemas(),
 		openapiTransformSchemas(),
 		openapiContourSchemas(),
+		openapiFacadeSchemas(),
 	} {
 		maps.Copy(schemas, group)
 	}

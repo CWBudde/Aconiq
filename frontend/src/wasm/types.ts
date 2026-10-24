@@ -342,6 +342,71 @@ export interface FacadeWindowFrame {
 }
 
 /**
+ * `wasmkernel.FacadeElevationRequest`, and the body of
+ * `POST /api/v1/facades/elevation`: one building of `model` to unfold, by its
+ * feature id. `model` is a GeoJSON FeatureCollection already in `crs`, the
+ * compute CRS a facade run would use, so the facades are the edges its keys
+ * are numbered on.
+ */
+export interface FacadeElevationRequest {
+  crs: string;
+  model: unknown;
+  building: string;
+}
+
+/** A validation finding about a window, with its level. */
+export interface ElevationFinding {
+  level: "error" | "warning";
+  code: string;
+  feature_id?: string;
+  message: string;
+}
+
+/** A window feature as the elevation draws it (`facadeset.ElevationWindow`). */
+export interface ElevationWindow {
+  id: string;
+  window: FacadeWindowFrame;
+  sensitive: boolean;
+  review_status: "proposed" | "confirmed" | "rejected";
+  findings: ElevationFinding[];
+}
+
+/**
+ * One facade: a canonical edge, with `from` / `to` in the request's CRS, its
+ * length in metres, the bearing it faces from grid north, and the windows
+ * keyed to it (`facadeset.FacadeElevation`).
+ */
+export interface FacadeElevation {
+  part: number;
+  ring: number;
+  edge: number;
+  from: [number, number];
+  to: [number, number];
+  length_m: number;
+  facing_deg: number;
+  courtyard: boolean;
+  windows: ElevationWindow[];
+}
+
+/**
+ * A building unfolded into its facades (`facadeset.BuildingElevation`):
+ * `slab_heights_m` are its storeys' ceiling slabs above the ground, ground
+ * floor first, where facade mode places its points; `detached` are the
+ * windows keyed to it whose key names no edge of it as it is now
+ * (`window.facade.moved`). A window whose key names no building of the model
+ * is in no building's elevation.
+ */
+export interface FacadeElevationResponse {
+  building_ref: string;
+  height_m: number;
+  levels?: number;
+  slab_heights_m: number[];
+  slab_height_source: "measured" | "levels" | "assumed";
+  facades: FacadeElevation[];
+  detached: ElevationWindow[];
+}
+
+/**
  * One generated facade receiver and the attributes its table row carries. A
  * point placed at a window names the window and what its height was derived
  * from, and its `slab_height_source` is empty: the window fixes the height.

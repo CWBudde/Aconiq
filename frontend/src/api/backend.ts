@@ -28,7 +28,12 @@ import { IS_WASM_MODE } from "./mode";
 import type { RunEstimate } from "@/model/run-estimate";
 import type { GeoJSONFeatureCollection } from "@/model/types";
 import { CancelledErrorName } from "@/wasm/kernel-client";
-import type { TransformRequest, TransformResponse } from "@/wasm/types";
+import type {
+  FacadeElevationRequest,
+  FacadeElevationResponse,
+  TransformRequest,
+  TransformResponse,
+} from "@/wasm/types";
 
 export interface BackendCapabilities {
   /** Which implementation is behind the interface. Read it for labels, not for branching. */
@@ -412,6 +417,18 @@ export interface Backend {
    * `aconiq run` would not compute it.
    */
   transformCoordinates(req: TransformRequest): Promise<TransformResponse>;
+  /**
+   * One building of `req.model` unfolded into its facades, storeys and
+   * windows, for the elevation view (P18 C2). Both modes answer from
+   * `facadeset.Elevation` — the WASM kernel in browser mode,
+   * `POST /api/v1/facades/elevation` in API mode — so neither measures a
+   * facade of its own. Send the model in the compute CRS a facade run would
+   * use (`resolveComputeModel`), so the facades are the edges its keys are
+   * numbered on.
+   */
+  facadeElevation(
+    req: FacadeElevationRequest,
+  ): Promise<FacadeElevationResponse>;
   /**
    * Listen to the project's event stream until the returned function is
    * called. The stream reconnects on its own while it is open; the listener
