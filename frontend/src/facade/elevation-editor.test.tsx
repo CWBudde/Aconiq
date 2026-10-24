@@ -33,9 +33,16 @@ const kernel = vi.hoisted(() => {
     placed: PlaceWindowRequest[];
     rectified: PhotoTransform[];
     refuse: string | null;
+    holdRectify: boolean;
     /** When set, every answer waits for it: a placement held in flight. */
     gate: Promise<void> | null;
-  } = { placed: [], rectified: [], refuse: null, gate: null };
+  } = {
+    placed: [],
+    rectified: [],
+    refuse: null,
+    holdRectify: false,
+    gate: null,
+  };
   return value;
 });
 
@@ -81,6 +88,8 @@ vi.mock("@/api/backend", () => ({
     // editor's business, only what it sends and draws.
     rectifyFacade: (req: PhotoTransform) => {
       kernel.rectified.push(req);
+      // A rectification still on its way, for as long as the test needs.
+      if (kernel.holdRectify) return new Promise<never>(() => undefined);
       return Promise.resolve({
         matrix: [0.01, 0, 0, 0, -0.01, 9, 0, 0, 1],
         inverse: [100, 0, 0, 0, -100, 900, 0, 0, 1],
@@ -153,6 +162,7 @@ beforeEach(() => {
   kernel.placed = [];
   kernel.rectified = [];
   kernel.refuse = null;
+  kernel.holdRectify = false;
   kernel.gate = null;
   // jsdom has no object URLs; the editor only needs one to hand to an <img>.
   URL.createObjectURL = vi.fn(() => "blob:facade-photo");
@@ -659,7 +669,7 @@ describe("ElevationEditor", () => {
       });
     }
 
-    async function clickCorners() {
+    async function clickCorners({ drawn = true } = {}) {
       await screen.findByRole("region", { name: m.heading_photo_corners() });
       const labels = [
         m.label_corner_bottom_left(),
@@ -684,6 +694,7 @@ describe("ElevationEditor", () => {
       fireEvent.click(
         screen.getByRole("button", { name: m.action_rectify_photo() }),
       );
+      if (!drawn) return;
       await waitFor(() => {
         expect(document.querySelector("img[data-facade-photo]")).not.toBeNull();
       });
@@ -757,6 +768,19 @@ describe("ElevationEditor", () => {
         kind: "site-photo",
         transform: kernel.rectified[0],
       });
+    });
+
+    it("rectifies the next photo after one abandoned while its rectification was on its way", async () => {
+      renderEditor();
+      choosePhoto();
+      kernel.holdRectify = true;
+      await clickCorners({ drawn: false });
+      fireEvent.click(screen.getByRole("button", { name: m.action_cancel() }));
+
+      kernel.holdRectify = false;
+      choosePhoto();
+      await clickCorners();
+      expect(kernel.rectified).toHaveLength(2);
     });
 
     it("draws the same photo again from the corners a window recorded, without asking for them", async () => {

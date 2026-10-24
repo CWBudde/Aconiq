@@ -221,7 +221,11 @@ export function ElevationEditor({
     rectified !== null && photoShown ? photoEvidence(rectified) : null;
 
   function removePhoto() {
+    // A rectification still on its way answers for a photo no longer here,
+    // so it is dropped, and its busy state with it: its own `finally` no
+    // longer clears it once the token has moved on.
     photoToken.current += 1;
+    setRectifying(false);
     setPhotoUrl(null);
     setPhotoHash(null);
     setPicking(false);
