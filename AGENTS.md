@@ -115,8 +115,8 @@ PLAN.md           Roadmap and the single status source
 
 `window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `rls19RoadGrid`, `estimate`, `transform`,
 `maskFootprints`, `facadeReceivers`, `customReceivers`, `facadeElevation`, `placeWindow`,
-`standards`, `contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health` and
-`projectStatus`. Eleven of those carry contracts worth knowing before writing browser-mode code:
+`rectifyFacade`, `standards`, `contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health`
+and `projectStatus`. Twelve of those carry contracts worth knowing before writing browser-mode code:
 
 - **`rls19RoadGrid`** is the export an automatic-grid run uses. The request names its receivers as
   `grid: {origin_x, origin_y, resolution_m, width, height, height_m}` instead of a `receivers`
@@ -185,6 +185,14 @@ PLAN.md           Roadmap and the single status source
   centre, and the same refusals. It takes the building in the CRS the elevation was asked in and
   answers in it; `@/facade/place-window` moves the feature back into the store's CRS. The
   frontend keys no window of its own.
+- **`rectifyFacade`** solves the homography that draws a facade photo onto that view, from the
+  four corners clicked in it and where they are in the facade's frame, through
+  `facadeset.Rectify` — the code `POST /api/v1/facades/rectify` answers from, and the solve
+  validation checks a window's photo evidence `transform` with (`geo.FacadeHomography`). Only the
+  point pairs cross: a site photo is personal data, and it stays an object URL in the open view
+  (`@/facade/photo`), never in the model, the store or a request. The frontend must not solve a
+  homography of its own; it only composes the answer with the drawing's scale into a CSS
+  `matrix3d`.
 - **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
   GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
   and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the
@@ -290,6 +298,7 @@ POST /api/v1/model                     replace the project model (the `aconiq im
 POST /api/v1/transform                 project a coordinate batch between two CRS (`target_crs: "auto"` picks the zone `aconiq run` would)
 POST /api/v1/facades/elevation         one building of the model in the body, unfolded into facades, storeys and windows
 POST /api/v1/facades/window            a window drawn in a facade's frame, keyed and centred as the model stores it
+POST /api/v1/facades/rectify           a facade photo's four corners, solved into the homography that draws it onto the facade
 GET  /api/v1/openapi.json
 ```
 

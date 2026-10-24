@@ -570,6 +570,23 @@ an imported one does: the form's switch and review select are how a person marks
 and confirms it. Moving a window keeps its review fields and evidence; only the frame, the key and
 the point change.
 
+A photo of the facade can be laid under the drawing (D1). A person clicks the facade's four
+corners in it — bottom-left, bottom-right, top-right, top-left, seen from outside — and
+`facadeset.Rectify` (the kernel's `rectifyFacade`, `POST /api/v1/facades/rectify`) solves the
+homography from those pixels to the frame corners `(0, 0)`, `(L, 0)`, `(L, H)` and `(0, H)`, with
+`L` the edge's length and `H` the building's `height_m`. The solve is `geo.FacadeHomography`, a
+normalised direct linear transform, and it refuses corners that are not a convex quadrilateral in
+that order, and a mirrored photo. While the photo is shown, a window drawn, moved or confirmed gets
+a `site-photo` evidence entry: the opaque `source_id`, the photo's `content_sha256`, `licence:
+own`, the photographer and the capture date where given, and the `transform`, the four pairs.
+Validation solves every `transform` it meets through the same function and reports one that does
+not solve as `window.invalid`, so the same evidence always draws the photo the same way under the
+window; opening the same photo again finds its corners on a window of that facade and draws it
+without asking for them. The pixels exist only in the browser tab that opened the photo: it is
+hashed there and drawn there through a CSS `matrix3d`, and neither the kernel nor the API ever
+receives it. Where `height_m` is a ridge height rather than an eave height, the top corners are
+points above the eave that the person has to judge; other reference points are not offered yet.
+
 The point is derived at run time, never stored. In facade receiver mode, a facade that carries a
 sensitive window that is not `rejected` gets one point per such window instead of its station
 grid; a facade without one keeps its stations. The point stands at the window centre's `u`, and:
