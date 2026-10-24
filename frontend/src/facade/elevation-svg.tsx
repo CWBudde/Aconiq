@@ -1,7 +1,8 @@
-import type {
-  KeyboardEvent as ReactKeyboardEvent,
-  PointerEvent as ReactPointerEvent,
-  Ref,
+import {
+  useId,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type Ref,
 } from "react";
 import { m } from "@/i18n/messages";
 import { cn } from "@/ui/lib/utils";
@@ -37,6 +38,8 @@ export interface ElevationSvgProps {
   selectedId: string | null;
   /** A window being drawn, not yet in the model. */
   draft: FacadeWindowFrame | null;
+  /** The id of the text that says what the hatched party walls are. */
+  describedBy?: string | undefined;
   svgRef?: Ref<SVGSVGElement>;
   onPointerDown?: (event: ReactPointerEvent<SVGSVGElement>) => void;
   onPointerMove?: (event: ReactPointerEvent<SVGSVGElement>) => void;
@@ -52,8 +55,10 @@ export interface ElevationSvgProps {
 /**
  * One facade unfolded: the wall as a rectangle of its length by the
  * building's height, a line at each storey's ceiling slab — where facade mode
- * places that storey's points — and each window as the rectangle its frame
- * gives it, looking at the facade from outside.
+ * places that storey's points — each party wall hatched, where another
+ * building stands against the facade and facade mode places nothing, and each
+ * window as the rectangle its frame gives it, looking at the facade from
+ * outside.
  *
  * It draws and reports gestures; it decides nothing. A window is a focusable
  * button, so the drawing is usable from the keyboard as well as by pointer.
@@ -66,6 +71,7 @@ export function ElevationSvg({
   windows,
   selectedId,
   draft,
+  describedBy,
   svgRef,
   onPointerDown,
   onPointerMove,
@@ -80,6 +86,8 @@ export function ElevationSvg({
   const ground = s.y(0);
   const top = s.y(heightM);
   const storeyFloors = [0, ...slabHeightsM];
+  // A url(#…) reference needs an id without the colons useId may produce.
+  const hatch = `party-wall-${useId().replace(/[^\w-]/g, "")}`;
 
   return (
     <svg
@@ -97,7 +105,26 @@ export function ElevationSvg({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      aria-describedby={describedBy}
     >
+      <defs>
+        <pattern
+          id={hatch}
+          width={6}
+          height={6}
+          patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)"
+        >
+          <line
+            x1={0}
+            y1={0}
+            x2={0}
+            y2={6}
+            className="stroke-muted-foreground/60"
+            strokeWidth={2}
+          />
+        </pattern>
+      </defs>
       <rect
         data-wall=""
         x={left}
@@ -107,6 +134,18 @@ export function ElevationSvg({
         className="fill-muted stroke-border"
         strokeWidth={1}
       />
+      {facade.party_walls.map((span) => (
+        <rect
+          key={span.from_um}
+          data-party-wall=""
+          x={s.x(span.from_um)}
+          y={top}
+          width={(span.to_um - span.from_um) * s.scale}
+          height={ground - top}
+          fill={`url(#${hatch})`}
+          className="pointer-events-none"
+        />
+      ))}
       {slabHeightsM.map((z) =>
         z < heightM ? (
           <line

@@ -43,15 +43,21 @@ type facadeElevationResponse struct {
 }
 
 type facadeResponse struct {
-	Part      int                       `json:"part"`
-	Ring      int                       `json:"ring"`
-	Edge      int                       `json:"edge"`
-	From      [2]float64                `json:"from"`
-	To        [2]float64                `json:"to"`
-	LengthM   float64                   `json:"length_m"`
-	FacingDeg float64                   `json:"facing_deg"`
-	Courtyard bool                      `json:"courtyard"`
-	Windows   []elevationWindowResponse `json:"windows"`
+	Part       int                       `json:"part"`
+	Ring       int                       `json:"ring"`
+	Edge       int                       `json:"edge"`
+	From       [2]float64                `json:"from"`
+	To         [2]float64                `json:"to"`
+	LengthM    float64                   `json:"length_m"`
+	FacingDeg  float64                   `json:"facing_deg"`
+	Courtyard  bool                      `json:"courtyard"`
+	PartyWalls []facadeSpanResponse      `json:"party_walls"`
+	Windows    []elevationWindowResponse `json:"windows"`
+}
+
+type facadeSpanResponse struct {
+	FromUM float64 `json:"from_um"`
+	ToUM   float64 `json:"to_um"`
 }
 
 type elevationWindowResponse struct {
@@ -59,6 +65,7 @@ type elevationWindowResponse struct {
 	Window       windowFrameResponse        `json:"window"`
 	Sensitive    bool                       `json:"sensitive"`
 	ReviewStatus string                     `json:"review_status"`
+	OnPartyWall  bool                       `json:"on_party_wall"`
 	Findings     []elevationFindingResponse `json:"findings"`
 }
 
@@ -144,13 +151,19 @@ func facadeElevationResponseOf(e facadeset.BuildingElevation) facadeElevationRes
 	}
 
 	for i, f := range e.Facades {
+		walls := make([]facadeSpanResponse, len(f.PartyWalls))
+		for j, s := range f.PartyWalls {
+			walls[j] = facadeSpanResponse{FromUM: s.FromUM, ToUM: s.ToUM}
+		}
+
 		resp.Facades[i] = facadeResponse{
 			Part: f.Part, Ring: f.Ring, Edge: f.Edge,
 			From: f.From, To: f.To,
-			LengthM:   f.LengthM,
-			FacingDeg: f.FacingDeg,
-			Courtyard: f.Courtyard,
-			Windows:   elevationWindowsResponse(f.Windows),
+			LengthM:    f.LengthM,
+			FacingDeg:  f.FacingDeg,
+			Courtyard:  f.Courtyard,
+			PartyWalls: walls,
+			Windows:    elevationWindowsResponse(f.Windows),
 		}
 	}
 
@@ -173,6 +186,7 @@ func elevationWindowsResponse(windows []facadeset.ElevationWindow) []elevationWi
 			},
 			Sensitive:    w.Sensitive,
 			ReviewStatus: w.ReviewStatus,
+			OnPartyWall:  w.OnPartyWall,
 			Findings:     findings,
 		}
 	}

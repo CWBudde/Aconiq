@@ -955,5 +955,7 @@
   "action_delete_window": "Delete window",
   "confirm_delete_window_title": "Delete window {id}?",
   "confirm_delete_window_desc": "The window is removed from the model. Undo brings it back.",
-  "msg_window_place_failed": "The window was not placed: {error}"
+  "msg_window_place_failed": "The window was not placed: {error}",
+  "msg_facade_party_walls": "Hatched: a party wall, where another building stands against this facade ({stretches} m along it). Facade mode places no point there.",
+  "msg_window_on_party_wall": "On a party wall: facade mode places no point here, so a facade run over this facade refuses the window while it is sensitive and not rejected."
 }

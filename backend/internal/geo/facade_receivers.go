@@ -502,6 +502,76 @@ func FacadeFacingDeg(a, b Point2D) float64 {
 	return deg
 }
 
+// FacadeSpan is a stretch of a facade, FromUM to ToUM metres along its edge
+// from its start, the u a window frame is measured in.
+type FacadeSpan struct {
+	FromUM float64 `json:"from_um"`
+	ToUM   float64 `json:"to_um"`
+}
+
+// PartyWallSpans returns the stretches of the facade from a to b that a
+// footprint stands against, in order along it: those whose point
+// facadeProbeOffsetM out lies strictly inside one of footprints, the test
+// Generate drops a station or a window by. footprints are every building of
+// the model in PointInPolygon's ring format, the facade's own included, as
+// Generate masks with all of them.
+//
+// The probe line is cut wherever it crosses a ring edge and each piece is
+// classified at its midpoint by MaskPointsInFootprints, so a span's interior
+// is exactly what Generate masks. Only a point on a span's very end, or on
+// the seam between two abutting footprints inside one, may fall either way,
+// as strict interiority decides there. A free facade has none.
+func PartyWallSpans(a, b Point2D, footprints [][][]Point2D) []FacadeSpan {
+	length := Distance(a, b)
+	if !(length > 0) {
+		return nil
+	}
+
+	p := FacadePoint(a, b, 0, facadeProbeOffsetM)
+	q := FacadePoint(a, b, length, facadeProbeOffsetM)
+
+	// Only a footprint whose box the probe line touches can mask any of it.
+	line, _ := BBoxFromPoints([]Point2D{p, q})
+	polys, boxes := footprintBoxes(footprints)
+	near := polys[:0:0]
+
+	for i, box := range boxes {
+		if box.Intersects(line) {
+			near = append(near, polys[i])
+		}
+	}
+
+	if len(near) == 0 {
+		return nil
+	}
+
+	cuts := segmentCutParameters(p, q, near)
+	midpoints := make([]Point2D, len(cuts)-1)
+
+	for i := range midpoints {
+		midpoints[i] = FacadePoint(a, b, 0.5*(cuts[i]+cuts[i+1])*length, facadeProbeOffsetM)
+	}
+
+	var spans []FacadeSpan
+
+	for i, masked := range MaskPointsInFootprints(midpoints, near) {
+		if !masked {
+			continue
+		}
+
+		from, to := cuts[i]*length, cuts[i+1]*length
+		if n := len(spans); n > 0 && spans[n-1].ToUM == from {
+			spans[n-1].ToUM = to
+
+			continue
+		}
+
+		spans = append(spans, FacadeSpan{FromUM: from, ToUM: to})
+	}
+
+	return spans
+}
+
 // facadeStations splits an edge into n = max(1, ceil(L / spacing)) equal parts
 // and returns the u of each part's centre, so every edge gets at least one
 // station, even when L / spacing underflows to 0, and none stands on a

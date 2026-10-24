@@ -249,8 +249,11 @@ function WindowTable({ windows }: { windows: ElevationWindow[] }) {
                 </Badge>
               </td>
               <td className="py-1">
+                {w.on_party_wall && <p>{m.msg_window_on_party_wall()}</p>}
                 {w.findings.length === 0
-                  ? MISSING_VALUE
+                  ? w.on_party_wall
+                    ? null
+                    : MISSING_VALUE
                   : w.findings.map((f, i) => (
                       <p key={`${f.code}-${String(i)}`}>
                         {findingText(f)}{" "}

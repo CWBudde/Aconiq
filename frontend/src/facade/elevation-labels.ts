@@ -69,6 +69,18 @@ export function facadeOptionLabel(f: FacadeElevation, n: number): string {
 }
 
 /**
+ * What the hatching on a facade means, and where it is: each party wall's
+ * stretch in metres along the facade, as the Go code measured it.
+ */
+export function partyWallsLabel(f: FacadeElevation): string {
+  return m.msg_facade_party_walls({
+    stretches: f.party_walls
+      .map((s) => `${formatNumber(s.from_um, 2)}–${formatNumber(s.to_um, 2)}`)
+      .join(", "),
+  });
+}
+
+/**
  * The eighth of the compass a bearing (degrees from grid north) falls in. It
  * only names the bearing the Go code measured; it measures nothing.
  */

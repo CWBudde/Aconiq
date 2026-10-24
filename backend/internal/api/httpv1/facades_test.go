@@ -88,13 +88,14 @@ func TestFacadeElevationDTOsMatchTheFacadesetContract(t *testing.T) {
 	finding := modelgeojson.ValidationIssue{Level: "warning", Code: modelgeojson.CodeWindowAboveBuilding, FeatureID: "w1", Message: "m"}
 	window := facadeset.ElevationWindow{
 		ID: "w1", Frame: geo.FacadeWindow{UM: 1, SillZM: 2, WidthM: 3, HeightM: 4},
-		Sensitive: true, ReviewStatus: "confirmed", Findings: []modelgeojson.ValidationIssue{finding},
+		Sensitive: true, ReviewStatus: "confirmed", OnPartyWall: true, Findings: []modelgeojson.ValidationIssue{finding},
 	}
 	elevation := facadeset.BuildingElevation{
 		BuildingRef: "b", HeightM: 9, Levels: 3, SlabHeightsM: []float64{3, 6, 9}, SlabHeightSource: "measured",
 		Facades: []facadeset.FacadeElevation{{
 			Part: 0, Ring: 1, Edge: 2, From: [2]float64{1, 2}, To: [2]float64{3, 4}, LengthM: 2.8, FacingDeg: 135, Courtyard: true,
-			Windows: []facadeset.ElevationWindow{window},
+			PartyWalls: []geo.FacadeSpan{{FromUM: 0.5, ToUM: 2}},
+			Windows:    []facadeset.ElevationWindow{window},
 		}},
 		Detached: []facadeset.ElevationWindow{window},
 	}

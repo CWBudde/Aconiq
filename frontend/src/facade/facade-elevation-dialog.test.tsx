@@ -51,6 +51,7 @@ function win(id: string, over: Partial<ElevationWindow> = {}): ElevationWindow {
     window: { u_m: 2, sill_z_m: 3.9, width_m: 1.2, height_m: 1.5 },
     sensitive: false,
     review_status: "proposed",
+    on_party_wall: false,
     findings: [],
     ...over,
   };
@@ -72,10 +73,12 @@ const house: FacadeElevationResponse = {
       length_m: 10,
       facing_deg: 180,
       courtyard: false,
+      party_walls: [{ from_um: 4, to_um: 10 }],
       windows: [
         win("a-bed", { sensitive: true, review_status: "confirmed" }),
         win("attic", {
           window: { u_m: 5, sill_z_m: 8.5, width_m: 1.2, height_m: 1.5 },
+          on_party_wall: true,
           findings: [
             {
               level: "warning",
@@ -96,6 +99,7 @@ const house: FacadeElevationResponse = {
       length_m: 8,
       facing_deg: 90,
       courtyard: false,
+      party_walls: [],
       windows: [],
     },
   ],
@@ -226,6 +230,44 @@ describe("FacadeElevationDialog", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByText(m.msg_facade_no_windows())).toBeInTheDocument();
+  });
+
+  it("hatches the party walls and names the windows on them", async () => {
+    renderDialog();
+
+    const legend = await screen.findByText(
+      m.msg_facade_party_walls({ stretches: "4.00–10.00" }),
+    );
+    const drawing = screen.getByRole("group", { name: /^Facade 1/ });
+    expect(drawing).toHaveAccessibleDescription(legend.textContent);
+
+    const hatched = drawing.querySelectorAll("[data-party-wall]");
+    expect(hatched).toHaveLength(1);
+    // 6 m of a 10 m facade, at 32 view units per metre.
+    expect(hatched[0]?.getAttribute("width")).toBe("192");
+    expect(hatched[0]?.getAttribute("fill")).toMatch(/^url\(#party-wall-/);
+
+    const attic = screen.getByText("attic").closest("tr") as HTMLElement;
+    expect(
+      within(attic).getByText(m.msg_window_on_party_wall()),
+    ).toBeInTheDocument();
+    const bed = screen.getByText("a-bed").closest("tr") as HTMLElement;
+    expect(
+      within(bed).queryByText(m.msg_window_on_party_wall()),
+    ).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(m.label_facade_select()),
+      "1",
+    );
+    expect(
+      screen
+        .getByRole("group", { name: /^Facade 2/ })
+        .querySelector("[data-party-wall]"),
+    ).toBeNull();
+    expect(
+      screen.queryByText(m.msg_facade_party_walls({ stretches: "4.00–10.00" })),
+    ).not.toBeInTheDocument();
   });
 
   it("lists windows on no facade apart", async () => {

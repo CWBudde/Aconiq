@@ -331,6 +331,31 @@ func TestWindowPlacerEdges(t *testing.T) {
 		t.Errorf("Edges(b2) err = %v, want the building refused", err)
 	}
 
+	// A neighbour against the lower 5 m of the east wall, edge 1, makes that
+	// stretch a party wall, though it has no id a facade could be keyed on.
+	neighbour := buildingFeature("", [][][]geo.Point2D{{facadeRect(facadeX0+20, facadeY0, facadeX0+30, facadeY0+5)}})
+
+	placer, err = NewWindowPlacer(facadeModel(buildingFeature("b1", simpleFacadeFootprint()), neighbour))
+	if err != nil {
+		t.Fatalf("NewWindowPlacer: %v", err)
+	}
+
+	edges, err = placer.Edges("b1")
+	if err != nil {
+		t.Fatalf("Edges: %v", err)
+	}
+
+	for i, e := range edges {
+		switch {
+		case i == 1:
+			if len(e.PartyWalls) != 1 || math.Abs(e.PartyWalls[0].FromUM) > 1e-9 || math.Abs(e.PartyWalls[0].ToUM-5) > 1e-9 {
+				t.Errorf("east wall party walls = %v, want [{0 5}]", e.PartyWalls)
+			}
+		case len(e.PartyWalls) > 0:
+			t.Errorf("edge %d party walls = %v, want none", i, e.PartyWalls)
+		}
+	}
+
 	geographic, err := Reproject(facadeModel(buildingFeature("b1", geoFacadeFootprint())), "EPSG:4326")
 	if err != nil {
 		t.Fatalf("Reproject: %v", err)
@@ -349,6 +374,32 @@ func TestWindowPlacerEdges(t *testing.T) {
 	// Edge 0 runs from (x0 - 1, y0 + 12) to (x0, y0), about 12.04 m.
 	if first := edges[0]; math.Abs(first.LengthM-math.Hypot(1, 12)) > 0.01 || first.Key.From.X > 180 {
 		t.Errorf("edge 0 = %+v, want about 12.04 m with endpoints in degrees", first)
+	}
+
+	// In a geographic project the neighbour is measured in the same metric
+	// frame: one west of edge 0 covers all of it, in metres.
+	x0, y0 := geoFacadeX0, geoFacadeY0
+	west := buildingFeature("west", [][][]geo.Point2D{{{
+		{X: x0, Y: y0}, {X: x0 - 1, Y: y0 + 12}, {X: x0 - 11, Y: y0 + 12}, {X: x0 - 10, Y: y0}, {X: x0, Y: y0},
+	}}})
+
+	geographic, err = Reproject(facadeModel(buildingFeature("b1", geoFacadeFootprint()), west), "EPSG:4326")
+	if err != nil {
+		t.Fatalf("Reproject: %v", err)
+	}
+
+	placer, err = NewWindowPlacer(geographic)
+	if err != nil {
+		t.Fatalf("NewWindowPlacer: %v", err)
+	}
+
+	edges, err = placer.Edges("b1")
+	if err != nil {
+		t.Fatalf("Edges: %v", err)
+	}
+
+	if walls := edges[0].PartyWalls; len(walls) != 1 || walls[0].FromUM > 0.01 || math.Abs(walls[0].ToUM-edges[0].LengthM) > 0.01 {
+		t.Errorf("edge 0 party walls = %v, want all of its %g m", walls, edges[0].LengthM)
 	}
 }
 

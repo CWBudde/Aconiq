@@ -111,12 +111,14 @@ const south: FacadeElevation = {
   length_m: 10,
   facing_deg: 180,
   courtyard: false,
+  party_walls: [],
   windows: [
     {
       id: "w1",
       window: bedroomFrame,
       sensitive: true,
       review_status: "confirmed",
+      on_party_wall: false,
       findings: [],
     },
   ],
@@ -557,6 +559,25 @@ describe("ElevationEditor", () => {
       target: { value: "rejected" },
     });
     expect(stored("w1")?.properties?.review_status).toBe("rejected");
+  });
+
+  it("says in the form when the window stands on a party wall", () => {
+    const window = south.windows[0];
+    if (window === undefined) throw new Error("fixture has no window");
+    renderEditor({
+      ...south,
+      party_walls: [{ from_um: 0, to_um: 4 }],
+      windows: [{ ...window, on_party_wall: true }],
+    });
+
+    fireEvent.focus(screen.getByRole("button", { name: /^Window w1/ }));
+    const form = screen.getByRole("region", {
+      name: m.heading_window_edit({ id: "w1" }),
+    });
+    expect(within(form).getByText(m.msg_window_on_party_wall())).toHaveClass(
+      "text-destructive",
+    );
+    expect(drawing().querySelectorAll("[data-party-wall]")).toHaveLength(1);
   });
 
   it("puts a refused frame value back in its field", async () => {
