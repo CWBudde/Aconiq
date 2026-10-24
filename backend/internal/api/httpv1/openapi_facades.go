@@ -10,9 +10,11 @@ func openapiFacadePathItems() map[string]any {
 				"description": "Answers what the elevation view draws for one building of the model in the body: each " +
 					"canonical edge in canonical order, with its key's endpoints in the request's `crs` and its length " +
 					"in metres; the storeys' slab heights facade receiver mode places at; and the window features " +
-					"keyed to each edge, with what validation finds about them. A window whose key no longer names an " +
-					"edge of the building as it is (`window.facade.unresolved` or `.moved`) is listed under `detached` " +
-					"instead. Like `/api/v1/transform` it reads no project and writes nothing, so it answers for the " +
+					"keyed to each edge, with what validation finds about them. A window keyed to the building whose key " +
+					"no longer names one of its edges as it is (`window.facade.moved`) is listed under `detached` " +
+					"instead. A window whose `building_ref` names no building of the model " +
+					"(`window.facade.unresolved`) is in no building's elevation: nothing says which building it meant, " +
+					"and the validation report lists it. Like `/api/v1/transform` it reads no project and writes nothing, so it answers for the " +
 					"model a client holds, saved or not. The browser's WebAssembly kernel answers the same question " +
 					"from the same Go code (`aconiq.facadeElevation`).",
 				"requestBody": map[string]any{
@@ -92,7 +94,7 @@ func openapiFacadeSchemas() map[string]any {
 				"detached": map[string]any{
 					"type":        "array",
 					"items":       map[string]any{"$ref": "#/components/schemas/ElevationWindow"},
-					"description": "The building's windows whose key names no edge of it as it is now.",
+					"description": "The windows keyed to this building whose key names no edge of it as it is now (`window.facade.moved`).",
 				},
 			},
 		},

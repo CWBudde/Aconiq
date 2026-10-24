@@ -549,7 +549,9 @@ It lists the building's facades, one canonical edge each, by the bearing their o
 faces and their length, and draws the chosen one as its length by the building's `height_m`, with
 a line at each storey's ceiling slab — the heights facade mode places a storey's points at — and
 each window as its rectangle, the windows a finding flags outlined and the windows whose key no
-longer names an edge of the building listed apart. None of it is measured in the browser: the
+longer names an edge of the building listed apart. A window whose key names no building of the
+model (`window.facade.unresolved`) belongs to no building's elevation, since nothing says which
+building it meant; the validation report lists it. None of it is measured in the browser: the
 frontend projects the model into the compute CRS a facade run would use and asks
 `facadeset.Elevation`, through the WASM kernel's `facadeElevation` in browser mode and
 `POST /api/v1/facades/elevation` in API mode, so the edges are numbered and measured as the run

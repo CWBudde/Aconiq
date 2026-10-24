@@ -29,6 +29,11 @@ export interface LoadedElevation {
  * canonical edges a run's keys are numbered on, and a geographic workspace is
  * measured in metres. Only the building and its windows cross the boundary:
  * nothing else bears on its elevation.
+ *
+ * "Its windows" are those whose key names `buildingId`. A window whose key
+ * names a building the model does not have (`window.facade.unresolved`) is
+ * in no building's elevation, so it is not sent: nothing says which building
+ * it meant, and the validation report lists it.
  */
 export async function loadFacadeElevation(
   backend: Pick<Backend, "facadeElevation" | "transformCoordinates">,

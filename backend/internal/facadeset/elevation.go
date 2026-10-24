@@ -2,6 +2,7 @@ package facadeset
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/aconiq/backend/internal/geo"
@@ -16,9 +17,12 @@ import (
 // SlabHeightsM are the storeys' ceiling slabs above the ground, ground floor
 // first, at the heights facade mode places its points (geo.StoreySlabs), and
 // SlabHeightSource says where their storey height came from. Detached holds
-// the building's windows whose key no longer names one of its edges as it
-// is — unresolved or moved — so a view can list them rather than draw them
-// on the wrong facade.
+// the windows keyed to this building whose key no longer names one of its
+// edges as it is (window.facade.moved), so a view can list them rather than
+// draw them on the wrong facade. A window whose building_ref names no
+// building of the model (window.facade.unresolved) is in no building's
+// elevation: nothing says which building it meant, and the validation report
+// lists it.
 type BuildingElevation struct {
 	BuildingRef      string            `json:"building_ref"`
 	HeightM          float64           `json:"height_m"`
@@ -176,12 +180,10 @@ func windowFindings(model modelgeojson.Model) map[string][]modelgeojson.Validati
 }
 
 // detached is a window whose key names no edge of its building as it is now.
+// Only moved can reach here: a key naming this building names one the model
+// has, so it is never unresolved.
 func detached(findings []modelgeojson.ValidationIssue) bool {
-	for _, issue := range findings {
-		if issue.Code == modelgeojson.CodeWindowFacadeUnresolved || issue.Code == modelgeojson.CodeWindowFacadeMoved {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(findings, func(issue modelgeojson.ValidationIssue) bool {
+		return issue.Code == modelgeojson.CodeWindowFacadeMoved
+	})
 }

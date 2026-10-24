@@ -86,6 +86,62 @@ func TestElevation(t *testing.T) {
 	}
 }
 
+// A window keyed to an edge its building does not have is detached, as a
+// moved one is. A window keyed to a building the model does not have belongs
+// to no building's elevation: validation lists it, and Elevation does not
+// guess which building it meant.
+func TestElevationDetachesOnlyItsBuildingsWindows(t *testing.T) {
+	t.Parallel()
+
+	model := windowModel(t, windowSpec("no-edge", 2, true, ""), windowSpec("orphan", 5, true, ""))
+
+	for i, f := range model.Features {
+		facade, ok := f.Properties[modelgeojson.PropertyFacade].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		facade = maps.Clone(facade)
+
+		switch f.ID {
+		case "no-edge":
+			facade["edge"] = 9.0
+		case "orphan":
+			facade["building_ref"] = "barn"
+		}
+
+		model.Features[i].Properties = maps.Clone(f.Properties)
+		model.Features[i].Properties[modelgeojson.PropertyFacade] = facade
+	}
+
+	elevation, err := Elevation(model, "house")
+	if err != nil {
+		t.Fatalf("Elevation: %v", err)
+	}
+
+	if len(elevation.Detached) != 1 || elevation.Detached[0].ID != "no-edge" ||
+		elevation.Detached[0].Findings[0].Code != modelgeojson.CodeWindowFacadeMoved {
+		t.Errorf("detached = %+v, want only the window keyed to a missing edge", elevation.Detached)
+	}
+
+	for _, f := range elevation.Facades {
+		if len(f.Windows) != 0 {
+			t.Errorf("facade %d carries %+v, want no window", f.Edge, f.Windows)
+		}
+	}
+
+	if _, err := Elevation(model, "barn"); err == nil {
+		t.Error("Elevation(barn) succeeded, want the unknown building refused")
+	}
+
+	report := modelgeojson.Validate(model)
+	if !slices.ContainsFunc(report.Warnings, func(issue modelgeojson.ValidationIssue) bool {
+		return issue.FeatureID == "orphan" && issue.Code == modelgeojson.CodeWindowFacadeUnresolved
+	}) {
+		t.Errorf("warnings = %+v, want the orphan reported unresolved", report.Warnings)
+	}
+}
+
 func TestElevationRefuses(t *testing.T) {
 	t.Parallel()
 

@@ -172,9 +172,11 @@ contracts worth knowing before writing browser-mode code:
   `facadeset.Elevation`, which `POST /api/v1/facades/elevation` answers from too: each canonical
   edge with its length and the bearing it faces, the storeys' slab heights facade mode places at,
   and the windows keyed to each edge with their validation findings, the ones whose key names no
-  edge listed apart. The frontend sends the model in the compute CRS a facade run would use
-  (`resolveComputeModel`), so the edges are numbered as the run's keys are. It must not grow a
-  facade frame of its own: which edge, how long and which way `u` runs are the Go code's.
+  edge of it listed apart. A window whose `building_ref` names no building of the model is in no
+  building's elevation; the validation report lists it. The frontend sends the model in the
+  compute CRS a facade run would use (`resolveComputeModel`), so the edges are numbered as the
+  run's keys are. It must not grow a facade frame of its own: which edge, how long and which way
+  `u` runs are the Go code's.
 - **`loadTerrain(data, crs)`** takes the DTM's own CRS as a second argument, and requires it. The
   GeoTIFF loader in `internal/geo/terrain` reads the tie point (33922) and the pixel scale (33550)
   and no GeoKeyDirectory, so the raster does not say what it is in; and the browser projects the

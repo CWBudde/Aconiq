@@ -391,8 +391,10 @@ export interface FacadeElevation {
 /**
  * A building unfolded into its facades (`facadeset.BuildingElevation`):
  * `slab_heights_m` are its storeys' ceiling slabs above the ground, ground
- * floor first, where facade mode places its points; `detached` are its
- * windows whose key names no edge of it as it is now.
+ * floor first, where facade mode places its points; `detached` are the
+ * windows keyed to it whose key names no edge of it as it is now
+ * (`window.facade.moved`). A window whose key names no building of the model
+ * is in no building's elevation.
  */
 export interface FacadeElevationResponse {
   building_ref: string;
