@@ -46,6 +46,7 @@ const elevation: FacadeElevationResponse = {
   slab_height_source: "assumed",
   facades: [],
   detached: [],
+  findings: [],
 };
 
 function fakeBackend() {

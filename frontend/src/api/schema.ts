@@ -500,8 +500,15 @@ export interface components {
             run_id: string;
         };
         ElevationWindow: {
+            /** @description What validation reports about the window. */
             findings: {
                 code: string;
+                /** @description The facade of the building `feature_id` names, for a finding about one facade. */
+                facade?: {
+                    edge: number;
+                    part: number;
+                    ring: number;
+                };
                 feature_id?: string;
                 /** @enum {string} */
                 level: "error" | "warning";
@@ -533,6 +540,20 @@ export interface components {
             edge: number;
             /** @description The bearing the facade faces, its outward normal, in degrees clockwise from grid north in `crs`, in [0, 360). */
             facing_deg: number;
+            /** @description What validation reports about this facade, such as `facade.windows.no_candidate`: windows on a facade another building stands against from end to end, where facade mode places no point. A review flag; it refuses neither a save nor a facade run. */
+            findings: {
+                code: string;
+                /** @description The facade of the building `feature_id` names, for a finding about one facade. */
+                facade?: {
+                    edge: number;
+                    part: number;
+                    ring: number;
+                };
+                feature_id?: string;
+                /** @enum {string} */
+                level: "error" | "warning";
+                message: string;
+            }[];
             from: number[];
             length_m: number;
             part: number;
@@ -558,6 +579,20 @@ export interface components {
             /** @description The windows keyed to this building whose key names no edge of it as it is now (`window.facade.moved`). */
             detached: components["schemas"]["ElevationWindow"][];
             facades: components["schemas"]["FacadeElevation"][];
+            /** @description What validation reports about the building as a whole, such as `building.levels.disagrees`: a storey count its windows or its height disagree with. A review flag; it refuses neither a save nor a facade run. */
+            findings: {
+                code: string;
+                /** @description The facade of the building `feature_id` names, for a finding about one facade. */
+                facade?: {
+                    edge: number;
+                    part: number;
+                    ring: number;
+                };
+                feature_id?: string;
+                /** @enum {string} */
+                level: "error" | "warning";
+                message: string;
+            }[];
             height_m: number;
             /** @description `building:levels`, absent when the building states no positive integer count. */
             levels?: number;

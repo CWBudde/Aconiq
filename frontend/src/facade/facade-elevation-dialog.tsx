@@ -14,7 +14,11 @@ import {
 } from "@/ui/components/dialog";
 import { Label } from "@/ui/components/label";
 import { formatNumber, MISSING_VALUE } from "@/ui/format";
-import type { ElevationWindow, FacadeElevationResponse } from "@/wasm/types";
+import type {
+  ElevationFinding,
+  ElevationWindow,
+  FacadeElevationResponse,
+} from "@/wasm/types";
 import {
   facadeOptionLabel,
   findingText,
@@ -155,6 +159,7 @@ function ElevationBody({
           ))}
         </select>
       </div>
+      <ReviewFlags findings={[...elevation.findings, ...facade.findings]} />
       <ElevationEditor
         // A facade's selection, gesture and photo are its own: switching
         // facades, or to another building's facade at the same index, starts
@@ -187,6 +192,35 @@ function ElevationBody({
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * The review flags validation raised about the building as a whole and about
+ * the facade on screen (P18 D3): where its windows and its geometry disagree.
+ * They say what to check, and correct nothing.
+ */
+function ReviewFlags({ findings }: { findings: ElevationFinding[] }) {
+  if (findings.length === 0) return null;
+
+  return (
+    <section
+      className="grid gap-2"
+      aria-label={m.heading_facade_review_flags()}
+    >
+      <h3 className="text-sm font-medium">{m.heading_facade_review_flags()}</h3>
+      <p className="text-xs text-muted-foreground">
+        {m.msg_facade_review_flags_help()}
+      </p>
+      <ul className="grid gap-1 text-xs">
+        {findings.map((f, i) => (
+          <li key={`${f.code}-${String(i)}`}>
+            {findingText(f)}{" "}
+            <span className="font-mono text-muted-foreground">{f.code}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

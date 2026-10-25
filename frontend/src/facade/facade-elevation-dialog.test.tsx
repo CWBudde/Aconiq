@@ -102,6 +102,7 @@ const house: FacadeElevationResponse = {
           ],
         }),
       ],
+      findings: [],
     },
     {
       part: 0,
@@ -114,6 +115,23 @@ const house: FacadeElevationResponse = {
       courtyard: false,
       party_walls: [],
       windows: [],
+      findings: [
+        {
+          level: "warning",
+          code: "facade.windows.no_candidate",
+          feature_id: "house",
+          facade: { part: 0, ring: 0, edge: 1 },
+          message: "a neighbour stands against all of it",
+        },
+      ],
+    },
+  ],
+  findings: [
+    {
+      level: "warning",
+      code: "building.levels.disagrees",
+      feature_id: "house",
+      message: "more rows than storeys",
     },
   ],
   detached: [
@@ -340,6 +358,35 @@ describe("FacadeElevationDialog", () => {
     expect(
       screen.queryByText(m.msg_facade_party_walls({ stretches: "4.00–10.00" })),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows the building's review flags, and each facade's with that facade", async () => {
+    renderDialog();
+
+    const flags = await screen.findByRole("region", {
+      name: m.heading_facade_review_flags(),
+    });
+    expect(
+      within(flags).getByText(m.msg_validation_building_levels_disagrees()),
+    ).toBeInTheDocument();
+    expect(
+      within(flags).queryByText("facade.windows.no_candidate"),
+    ).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(m.label_facade_select()),
+      "1",
+    );
+
+    const second = screen.getByRole("region", {
+      name: m.heading_facade_review_flags(),
+    });
+    expect(
+      within(second).getByText(m.msg_validation_facade_windows_no_candidate()),
+    ).toBeInTheDocument();
+    expect(
+      within(second).getByText("building.levels.disagrees"),
+    ).toBeInTheDocument();
   });
 
   it("lists windows on no facade apart", async () => {

@@ -133,7 +133,10 @@ type ValidationIssue struct {
 	Level     string `json:"level"`
 	Code      string `json:"code"`
 	FeatureID string `json:"feature_id,omitempty"`
-	Message   string `json:"message"`
+	// Facade names the facade of the building FeatureID names, for a finding
+	// about one facade rather than the whole building (P18 D3).
+	Facade  *IssueFacade `json:"facade,omitempty"`
+	Message string       `json:"message"`
 }
 
 // ValidationReport captures all validation findings.

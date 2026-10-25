@@ -224,6 +224,7 @@ describe("httpBackend.facadeElevation", () => {
       slab_height_source: "assumed",
       facades: [],
       detached: [],
+      findings: [],
     };
     const mock = stubFetch(jsonResponse(answer));
     const req = {

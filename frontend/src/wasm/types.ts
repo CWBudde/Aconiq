@@ -354,11 +354,16 @@ export interface FacadeElevationRequest {
   building: string;
 }
 
-/** A validation finding about a window, with its level. */
+/**
+ * A validation finding about a window, a facade or a building, with its level.
+ * `facade` names the facade of the building `feature_id` names, for a finding
+ * about one facade (`facade.windows.no_candidate`).
+ */
 export interface ElevationFinding {
   level: "error" | "warning";
   code: string;
   feature_id?: string;
+  facade?: { part: number; ring: number; edge: number };
   message: string;
 }
 
@@ -399,6 +404,8 @@ export interface FacadeElevation {
   courtyard: boolean;
   party_walls: FacadeSpan[];
   windows: ElevationWindow[];
+  /** Validation's review flags about this facade (P18 D3). */
+  findings: ElevationFinding[];
 }
 
 /**
@@ -417,6 +424,8 @@ export interface FacadeElevationResponse {
   slab_height_source: "measured" | "levels" | "assumed";
   facades: FacadeElevation[];
   detached: ElevationWindow[];
+  /** Validation's review flags about the building as a whole (P18 D3). */
+  findings: ElevationFinding[];
 }
 
 /**

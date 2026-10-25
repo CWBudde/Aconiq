@@ -76,7 +76,7 @@ func openapiFacadeSchemas() map[string]any {
 		"FacadeElevationResponse": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
-			"required":             []string{"building_ref", "height_m", "slab_heights_m", "slab_height_source", "facades", "detached"},
+			"required":             []string{"building_ref", "height_m", "slab_heights_m", "slab_height_source", "facades", "detached", "findings"},
 			"properties": map[string]any{
 				"building_ref": map[string]any{"type": "string"},
 				"height_m":     number,
@@ -99,6 +99,8 @@ func openapiFacadeSchemas() map[string]any {
 					"items":       map[string]any{"$ref": "#/components/schemas/ElevationWindow"},
 					"description": "The windows keyed to this building whose key names no edge of it as it is now (`window.facade.moved`).",
 				},
+				"findings": elevationFindingsSchema("What validation reports about the building as a whole, such as `building.levels.disagrees`: " +
+					"a storey count its windows or its height disagree with. A review flag; it refuses neither a save nor a facade run."),
 			},
 		},
 		"FacadeElevation":     openapiFacadeElevationSchema(number, pair),
@@ -117,7 +119,7 @@ func openapiFacadeElevationSchema(number, pair map[string]any) map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"part", "ring", "edge", "from", "to", "length_m", "facing_deg", "courtyard", "party_walls", "windows"},
+		"required":             []string{"part", "ring", "edge", "from", "to", "length_m", "facing_deg", "courtyard", "party_walls", "windows", "findings"},
 		"properties": map[string]any{
 			"part":     map[string]any{"type": "integer"},
 			"ring":     map[string]any{"type": "integer"},
@@ -145,6 +147,9 @@ func openapiFacadeElevationSchema(number, pair map[string]any) map[string]any {
 				"type":  "array",
 				"items": map[string]any{"$ref": "#/components/schemas/ElevationWindow"},
 			},
+			"findings": elevationFindingsSchema("What validation reports about this facade, such as `facade.windows.no_candidate`: " +
+				"windows on a facade another building stands against from end to end, where facade mode places no point. " +
+				"A review flag; it refuses neither a save nor a facade run."),
 		},
 	}
 }
@@ -166,19 +171,35 @@ func openapiElevationWindowSchema() map[string]any {
 				"description": "The window's centre stands on a party wall of its facade, where facade mode places no point: " +
 					"a facade run over that facade refuses it while it is sensitive and not rejected.",
 			},
-			"findings": map[string]any{
-				"type": "array",
-				"items": map[string]any{
+			"findings": elevationFindingsSchema("What validation reports about the window."),
+		},
+	}
+}
+
+// elevationFindingsSchema describes a list of validation findings as an
+// elevation carries them, with their level.
+func elevationFindingsSchema(description string) map[string]any {
+	index := map[string]any{"type": "integer"}
+
+	return map[string]any{
+		"type":        "array",
+		"description": description,
+		"items": map[string]any{
+			"type":                 "object",
+			"additionalProperties": false,
+			"required":             []string{"level", "code", "message"},
+			"properties": map[string]any{
+				"level":      map[string]any{"type": "string", "enum": []string{"error", "warning"}},
+				"code":       map[string]any{"type": "string"},
+				"feature_id": map[string]any{"type": "string"},
+				"facade": map[string]any{
 					"type":                 "object",
 					"additionalProperties": false,
-					"required":             []string{"level", "code", "message"},
-					"properties": map[string]any{
-						"level":      map[string]any{"type": "string", "enum": []string{"error", "warning"}},
-						"code":       map[string]any{"type": "string"},
-						"feature_id": map[string]any{"type": "string"},
-						"message":    map[string]any{"type": "string"},
-					},
+					"required":             []string{"part", "ring", "edge"},
+					"properties":           map[string]any{"part": index, "ring": index, "edge": index},
+					"description":          "The facade of the building `feature_id` names, for a finding about one facade.",
 				},
+				"message": map[string]any{"type": "string"},
 			},
 		},
 	}

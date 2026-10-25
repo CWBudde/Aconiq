@@ -33,26 +33,28 @@ const (
 )
 
 type facadeElevationResponse struct {
-	BuildingRef      string                    `json:"building_ref"`
-	HeightM          float64                   `json:"height_m"`
-	Levels           int                       `json:"levels,omitempty"`
-	SlabHeightsM     []float64                 `json:"slab_heights_m"`
-	SlabHeightSource string                    `json:"slab_height_source"`
-	Facades          []facadeResponse          `json:"facades"`
-	Detached         []elevationWindowResponse `json:"detached"`
+	BuildingRef      string                     `json:"building_ref"`
+	HeightM          float64                    `json:"height_m"`
+	Levels           int                        `json:"levels,omitempty"`
+	SlabHeightsM     []float64                  `json:"slab_heights_m"`
+	SlabHeightSource string                     `json:"slab_height_source"`
+	Facades          []facadeResponse           `json:"facades"`
+	Detached         []elevationWindowResponse  `json:"detached"`
+	Findings         []elevationFindingResponse `json:"findings"`
 }
 
 type facadeResponse struct {
-	Part       int                       `json:"part"`
-	Ring       int                       `json:"ring"`
-	Edge       int                       `json:"edge"`
-	From       [2]float64                `json:"from"`
-	To         [2]float64                `json:"to"`
-	LengthM    float64                   `json:"length_m"`
-	FacingDeg  float64                   `json:"facing_deg"`
-	Courtyard  bool                      `json:"courtyard"`
-	PartyWalls []facadeSpanResponse      `json:"party_walls"`
-	Windows    []elevationWindowResponse `json:"windows"`
+	Part       int                        `json:"part"`
+	Ring       int                        `json:"ring"`
+	Edge       int                        `json:"edge"`
+	From       [2]float64                 `json:"from"`
+	To         [2]float64                 `json:"to"`
+	LengthM    float64                    `json:"length_m"`
+	FacingDeg  float64                    `json:"facing_deg"`
+	Courtyard  bool                       `json:"courtyard"`
+	PartyWalls []facadeSpanResponse       `json:"party_walls"`
+	Windows    []elevationWindowResponse  `json:"windows"`
+	Findings   []elevationFindingResponse `json:"findings"`
 }
 
 type facadeSpanResponse struct {
@@ -78,12 +80,20 @@ type windowFrameResponse struct {
 
 // elevationFindingResponse keeps the level validationIssueResponse leaves
 // out: a window's findings are one list, so it is the level that says whether
-// the window refuses a save or only a facade run.
+// the window refuses a save or only a facade run. Facade names the facade of
+// the building a finding is about, when it is about one (P18 D3).
 type elevationFindingResponse struct {
-	Level     string `json:"level"`
-	Code      string `json:"code"`
-	FeatureID string `json:"feature_id,omitempty"`
-	Message   string `json:"message"`
+	Level     string               `json:"level"`
+	Code      string               `json:"code"`
+	FeatureID string               `json:"feature_id,omitempty"`
+	Facade    *issueFacadeResponse `json:"facade,omitempty"`
+	Message   string               `json:"message"`
+}
+
+type issueFacadeResponse struct {
+	Part int `json:"part"`
+	Ring int `json:"ring"`
+	Edge int `json:"edge"`
 }
 
 // handleFacadeElevation unfolds one building of the model in the body into its
@@ -148,6 +158,7 @@ func facadeElevationResponseOf(e facadeset.BuildingElevation) facadeElevationRes
 		SlabHeightSource: e.SlabHeightSource,
 		Facades:          make([]facadeResponse, len(e.Facades)),
 		Detached:         elevationWindowsResponse(e.Detached),
+		Findings:         elevationFindingsResponse(e.Findings),
 	}
 
 	for i, f := range e.Facades {
@@ -164,6 +175,7 @@ func facadeElevationResponseOf(e facadeset.BuildingElevation) facadeElevationRes
 			Courtyard:  f.Courtyard,
 			PartyWalls: walls,
 			Windows:    elevationWindowsResponse(f.Windows),
+			Findings:   elevationFindingsResponse(f.Findings),
 		}
 	}
 
@@ -174,11 +186,6 @@ func elevationWindowsResponse(windows []facadeset.ElevationWindow) []elevationWi
 	out := make([]elevationWindowResponse, len(windows))
 
 	for i, w := range windows {
-		findings := make([]elevationFindingResponse, len(w.Findings))
-		for j, f := range w.Findings {
-			findings[j] = elevationFindingResponse{Level: f.Level, Code: f.Code, FeatureID: f.FeatureID, Message: f.Message}
-		}
-
 		out[i] = elevationWindowResponse{
 			ID: w.ID,
 			Window: windowFrameResponse{
@@ -187,7 +194,26 @@ func elevationWindowsResponse(windows []facadeset.ElevationWindow) []elevationWi
 			Sensitive:    w.Sensitive,
 			ReviewStatus: w.ReviewStatus,
 			OnPartyWall:  w.OnPartyWall,
-			Findings:     findings,
+			Findings:     elevationFindingsResponse(w.Findings),
+		}
+	}
+
+	return out
+}
+
+// elevationFindingsResponse spells findings as the API does. A nil list is
+// passed through as nil, as facadeset leaves it.
+func elevationFindingsResponse(findings []modelgeojson.ValidationIssue) []elevationFindingResponse {
+	if findings == nil {
+		return nil
+	}
+
+	out := make([]elevationFindingResponse, len(findings))
+
+	for i, f := range findings {
+		out[i] = elevationFindingResponse{Level: f.Level, Code: f.Code, FeatureID: f.FeatureID, Message: f.Message}
+		if f.Facade != nil {
+			out[i].Facade = &issueFacadeResponse{Part: f.Facade.Part, Ring: f.Facade.Ring, Edge: f.Facade.Edge}
 		}
 	}
 

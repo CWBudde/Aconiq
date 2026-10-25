@@ -68,6 +68,9 @@ var (
 type facadeTracker struct {
 	buildings map[string]Feature
 	pending   []pendingFacade
+	// onFacade holds the sills of the windows resolve found on their edge
+	// and that are not rejected, by facade, for crossCheck.
+	onFacade map[facadeRef][]float64
 }
 
 // pendingFacade is a well-formed key awaiting resolution: a receiver's, or a
@@ -77,6 +80,7 @@ type pendingFacade struct {
 	kind      string
 	key       geo.FacadeKey
 	frame     *geo.FacadeWindow
+	rejected  bool
 }
 
 // facadeCodes are the warning codes of a receiver's and of a window's
@@ -109,7 +113,11 @@ func (t *facadeTracker) observe(feature Feature, featureID string, report *Valid
 	case FeatureKindWindow:
 		key, frame, ok := validateWindowProperties(feature, featureID, report)
 		if ok {
-			t.pending = append(t.pending, pendingFacade{featureID: featureID, kind: FeatureKindWindow, key: key, frame: &frame})
+			status, _ := feature.Properties[PropertyReviewStatus].(string)
+			t.pending = append(t.pending, pendingFacade{
+				featureID: featureID, kind: FeatureKindWindow, key: key, frame: &frame,
+				rejected: status == geo.ReviewStatusRejected,
+			})
 		}
 	}
 }
@@ -150,8 +158,24 @@ func (t *facadeTracker) resolve(model Model, report *ValidationReport) {
 		if p.frame != nil {
 			frame.checkWindowFits(p, report)
 			checkWindowBelowRoof(p, building, report)
+			t.countOnFacade(p)
 		}
 	}
+}
+
+// countOnFacade keeps the sill of a window that is on its edge, unless it is
+// rejected, for crossCheck.
+func (t *facadeTracker) countOnFacade(p pendingFacade) {
+	if p.rejected {
+		return
+	}
+
+	if t.onFacade == nil {
+		t.onFacade = make(map[facadeRef][]float64)
+	}
+
+	ref := facadeRef{building: p.key.BuildingRef, part: p.key.Part, ring: p.key.Ring, edge: p.key.Edge}
+	t.onFacade[ref] = append(t.onFacade[ref], p.frame.SillZM)
 }
 
 // checkWindowBelowRoof reports a window whose head rises above its

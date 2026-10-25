@@ -454,14 +454,14 @@ func BuildingFromFeature(feature modelgeojson.Feature) (geo.FacadeBuilding, erro
 	building := geo.FacadeBuilding{
 		ID:       feature.ID,
 		Polygons: polygons,
-		Levels:   buildingLevels(feature.Properties["building:levels"]),
+		Levels:   modelgeojson.BuildingLevels(feature.Properties[modelgeojson.PropertyBuildingLevels]),
 	}
 
 	if feature.HeightM != nil {
 		building.HeightM = *feature.HeightM
 	}
 
-	if source, ok := feature.Properties["height_source"].(string); ok {
+	if source, ok := feature.Properties[modelgeojson.PropertyHeightSource].(string); ok {
 		building.HeightSource = source
 	}
 
@@ -473,28 +473,4 @@ func BuildingFromFeature(feature modelgeojson.Feature) (geo.FacadeBuilding, erro
 	}
 
 	return building, nil
-}
-
-func buildingLevels(raw any) int {
-	var levels float64
-
-	switch value := raw.(type) {
-	case string:
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil {
-			return 0
-		}
-
-		levels = float64(parsed)
-	case float64:
-		levels = value
-	default:
-		return 0
-	}
-
-	if levels <= 0 || levels != math.Trunc(levels) || levels > math.MaxInt32 {
-		return 0
-	}
-
-	return int(levels)
 }
