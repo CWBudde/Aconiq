@@ -2849,7 +2849,19 @@ window drawn, moved or confirmed over it records a `site-photo` evidence entry w
 SHA-256 and the four pairs as `transform`, which validation re-solves; reopening the same photo
 reuses those corners. The photo stays an object URL in the open view and reaches neither the
 kernel, the API nor the model. A ridge `height_m` makes the top corners a judgement, and no other
-reference points are offered (D1, #143).
+reference points are offered (D1, #143). An agent on `aconiq mcp` can add windows it read off an
+image through `propose_windows` (`POST /api/v1/facades/windows`, `facadeset.ProposeWindows`), offered
+only when the server was started with `--allow-writes` and `--photo-transmission <reference>`, the
+engagement's recorded decision that the photo may be sent to the model reading it. A proposal is
+proposed and not sensitive and cannot claim otherwise, needs evidence naming the image (a known
+`kind`, an opaque `source_id`, `content_sha256`), is stamped with the reference as
+`transmission_basis`, only adds new ids, and is a compare-and-write on the model hash; each audit
+line names the reference (D2, #144). Validation cross-checks windows against the geometry as review
+flags that refuse neither a save nor a run, shown in the elevation with the building or facade they
+concern: `building.levels.disagrees` (a facade's window sills in more rows than `building:levels`, or
+a height not derived from the count giving a storey outside 2.2–4.5 m) and
+`facade.windows.no_candidate` (windows on a facade another footprint covers end to end); a window
+outside its facade was already reported (D3, #144).
 LGLN LoD2 carries building `gml:id`s but no
 openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
@@ -2911,18 +2923,11 @@ exists is summarised above.
       it. Balconies and loggias still wait on `facade-receivers.md` Section 7, questions 2 and 3,
       and TA Lärm's own-facade practice on question 6.
 
-### Phase D — Mapping windows from images
+### Phase D — Mapping windows from images — closed
 
-- [ ] **D2 Proposals from a vision model, through MCP.** Aconiq ships no detection model. An agent
-      on `aconiq mcp` (SL-1) reads the image on the client side, proposes window rectangles in
-      the facade frame, and writes them as `review_status: proposed` through a write tool under
-      `--allow-writes`, recorded in `.noise/logs/mcp-audit.jsonl` (ADR-002). Confirmation stays a
-      human act in C2. The tool schema rejects a proposal without `evidence`. Sending a site
-      photo to a hosted vision model is a transmission of personal data, decided per engagement
-      (`docs/policies/data-handling.md`, site and imagery evidence).
-- [ ] **D3 Cross-check against the geometry**: flag a window outside its facade's extent, a floor
-      count that disagrees with `building:levels`, or a facade with windows in the photo but no
-      generated candidate. These are review flags, not automatic corrections.
+Every item has landed (#143, #144); what exists is summarised above. Live constraint: the
+transmission decision is the person's who starts `aconiq mcp`, never the agent's, and a proposal
+never confirms, marks sensitive or replaces a window.
 
 ### Phase E — Matching sources against imagery
 
