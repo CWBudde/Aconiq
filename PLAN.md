@@ -2856,12 +2856,12 @@ engagement's recorded decision that the photo may be sent to the model reading i
 proposed and not sensitive and cannot claim otherwise, needs evidence naming the image (a known
 `kind`, an opaque `source_id`, `content_sha256`), is stamped with the reference as
 `transmission_basis`, only adds new ids, and is a compare-and-write on the model hash; each audit
-line names the reference (D2, #144). Validation cross-checks windows against the geometry as review
+line names the reference (D2, #145). Validation cross-checks windows against the geometry as review
 flags that refuse neither a save nor a run, shown in the elevation with the building or facade they
 concern: `building.levels.disagrees` (a facade's window sills in more rows than `building:levels`, or
 a height not derived from the count giving a storey outside 2.2–4.5 m) and
 `facade.windows.no_candidate` (windows on a facade another footprint covers end to end); a window
-outside its facade was already reported (D3, #144).
+outside its facade was already reported (D3, #145).
 LGLN LoD2 carries building `gml:id`s but no
 openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
@@ -2925,7 +2925,7 @@ exists is summarised above.
 
 ### Phase D — Mapping windows from images — closed
 
-Every item has landed (#143, #144); what exists is summarised above. Live constraint: the
+Every item has landed (#143, #145); what exists is summarised above. Live constraint: the
 transmission decision is the person's who starts `aconiq mcp`, never the agent's, and a proposal
 never confirms, marks sensitive or replaces a window.
 
