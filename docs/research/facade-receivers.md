@@ -587,6 +587,29 @@ hashed there and drawn there through a CSS `matrix3d`, and neither the kernel no
 receives it. Where `height_m` is a ridge height rather than an eave height, the top corners are
 points above the eave that the person has to judge; other reference points are not offered yet.
 
+An agent can propose windows from an image too (D2). Aconiq ships no detection model: an agent on
+`aconiq mcp` reads the image on its own side and writes rectangles in a facade's frame through
+`propose_windows` (`POST /api/v1/facades/windows`, `facadeset.ProposeWindows`), which places each
+with the placer above and adds it to the saved model. A proposal is `proposed` and not `sensitive`
+and cannot claim otherwise; it must carry evidence naming the image (`kind`, `source_id`,
+`content_sha256`); and it only adds, so a window a person reviewed is never replaced. The tool
+exists only when the server was started with `--photo-transmission`, the engagement's decision that
+the image may be sent to the model reading it, which is stamped into each evidence entry as
+`transmission_basis`. Confirming a proposal is the elevation's review select, as for any window.
+
+Validation then cross-checks the windows against the geometry (D3). These are review flags,
+warnings that refuse neither a save nor a run and correct nothing; the elevation lists them with
+the building and with the facade they are about. A window past either end of its facade or below
+the ground was already reported (`window.frame.outside`, `window.invalid`).
+`building.levels.disagrees` is a building whose `building:levels` disagrees with its windows — one
+facade's sills, sorted, form more rows than it has storeys, a new row starting at a gap above 1 m —
+or with a `height_m` that was not derived from the count (`height_source` neither `levels` nor
+`assumed`) and gives a storey height outside 2.2–4.5 m; a ridge height over the storeys under it is
+the common case. `facade.windows.no_candidate` is a facade carrying a window that is not rejected
+while another footprint stands against all of it, so facade mode places no point there at any
+spacing: the image shows windows where the model has a party wall. A rejected window counts for
+neither check.
+
 The point is derived at run time, never stored. In facade receiver mode, a facade that carries a
 sensitive window that is not `rejected` gets one point per such window instead of its station
 grid; a facade without one keeps its stations. The point stands at the window centre's `u`, and:
@@ -704,8 +727,8 @@ exclusion that reads `facade` (B1).
 Each `evidence` entry carries the fields `docs/research/facade-evidence-sources.md` derives per
 source kind: `kind` (`orthophoto`, `oblique`, `street-level`, `site-photo`, `plan` or
 `citygml-lod3`; there is no `google` kind), `source_id`, `content_sha256`, `captured_at`, `retrieved_at`, `licence` (an SPDX id,
-or `own` / `client-engagement`), `terms_url`, `attribution`, and for D1 the `transform`: the four
-image-to-facade point pairs. A site photo's `source_id` is an opaque reference into the
+or `own` / `client-engagement`), `terms_url`, `attribution`, for D1 the `transform`: the four
+image-to-facade point pairs, and for D2 the `transmission_basis` a proposal was made under. A site photo's `source_id` is an opaque reference into the
 engagement's store, never a path that names the client.
 
 ### Decision: what keys a building

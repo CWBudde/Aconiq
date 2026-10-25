@@ -345,7 +345,9 @@ photos are handled like the customer rows of that table.
 - **Transmission is disclosure.** Sending a photo to a hosted vision model (the D2 path) is a
   transfer of personal data to a processor. Whether that is permitted under the engagement, and on
   which legal basis, is decided per engagement before the first image leaves the machine. It is not
-  something an agent infers from `--allow-writes`.
+  something an agent infers from `--allow-writes`. The person starting `aconiq mcp` records it with
+  `--photo-transmission <reference>`, without which `propose_windows` is not offered; the reference
+  is stamped into each proposal's evidence as `transmission_basis` and into each audit line (D2).
 - **Nothing in a public output.** Reports and exports carry the derived features and the evidence
   record, not the image or its EXIF.
 - **The CI fixture is synthetic** (F2). It must contain nothing from a real photo, including a hash.
@@ -449,9 +451,6 @@ Three things follow for A3:
    whether a sanctioned access path exists (an image id to cite, a file to hash), and whether the
    6 cm 2024 collection can be licensed. Nothing published by the city answers this (re-checked
    2026-10-22).
-4. **Site photos and hosted vision models.** The legal basis for sending a residential facade photo
-   to a hosted model (D2) is decided per engagement. A3 or D2 should define where that decision is
-   recorded.
 
 ## Sources fetched
 

@@ -98,7 +98,12 @@ an input to a run:** what is derived from an image is frozen into the model as o
 with their evidence record, and nothing in the compute path reads an image. And **sending a site
 photo to a hosted vision model is a transmission** under the next section's terms: it is decided
 per engagement, against the engagement's legal basis for processing the photo, not by whoever
-holds the file.
+holds the file. The decision is recorded where the write happens: `aconiq mcp` offers
+`propose_windows`, the tool an agent writes windows read off a photo with, only when the person
+starting it passes `--photo-transmission <reference>`, an opaque reference to the engagement's
+decision record (never a path that names the client). The reference is stamped into every
+proposal's evidence as `transmission_basis` and into every `propose_windows` line of the MCP audit
+log. It records that the decision was taken; it does not take it, and an agent cannot set it.
 
 ## Who may hold it, and on what terms
 
