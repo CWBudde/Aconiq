@@ -39,13 +39,17 @@ type auditEntry struct {
 	// RunID is the run a run tool started or asked to stop, as the call named
 	// it.
 	RunID string `json:"run_id,omitempty"`
+	// PhotoTransmission is the per-engagement decision a propose_windows
+	// call was made under (Options.PhotoTransmission).
+	PhotoTransmission string `json:"photo_transmission,omitempty"`
 }
 
 // affected is what a state-changing call touched, for its audit entry: the
 // model a save left in place, or the run a run tool acted on.
 type affected struct {
-	modelHash string
-	runID     string
+	modelHash         string
+	runID             string
+	photoTransmission string
 }
 
 // auditLog appends entries to one file. Each entry is one write of one line
@@ -92,6 +96,8 @@ func (p *pendingEntry) finish(tool string, arguments json.RawMessage, outcome st
 		Outcome:    outcome,
 		ModelHash:  touched.modelHash,
 		RunID:      touched.runID,
+
+		PhotoTransmission: touched.photoTransmission,
 	})
 	if err != nil {
 		_ = p.file.Close()

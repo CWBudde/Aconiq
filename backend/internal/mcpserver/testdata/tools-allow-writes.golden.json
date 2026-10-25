@@ -254,6 +254,157 @@
     }
   },
   {
+    "name": "propose_windows",
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm": {
+          "description": "The hash of the saved model the windows were placed against, as get_model or project_status returned it.",
+          "type": "string"
+        },
+        "windows": {
+          "description": "The windows read off the image, each on one canonical facade of a building.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "building_ref": {
+                "description": "The building's feature id.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "edge": {
+                "description": "The canonical edge index within the ring.",
+                "type": "integer"
+              },
+              "evidence": {
+                "description": "What the window was read from: at least one source, the image first.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "attribution": {
+                      "description": "Whom the source must be credited to.",
+                      "type": "string"
+                    },
+                    "captured_at": {
+                      "description": "When the image was taken.",
+                      "type": "string"
+                    },
+                    "content_sha256": {
+                      "description": "The SHA-256 of the image file as 64 lowercase hex digits.",
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "description": "The kind of source. There is no Google kind: nothing seen in Google imagery is recorded.",
+                      "enum": [
+                        "orthophoto",
+                        "oblique",
+                        "street-level",
+                        "site-photo",
+                        "plan",
+                        "citygml-lod3"
+                      ],
+                      "type": "string"
+                    },
+                    "licence": {
+                      "description": "The source's licence, such as own.",
+                      "type": "string"
+                    },
+                    "source_id": {
+                      "description": "The image's opaque reference in the engagement's store, never a path: no slash or backslash.",
+                      "minLength": 1,
+                      "pattern": "^[^/\\\\]+$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "source_id",
+                    "content_sha256"
+                  ],
+                  "type": "object"
+                },
+                "minItems": 1,
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "id": {
+                "description": "A new window feature id, without '/'. An id the model already holds is refused.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "part": {
+                "description": "The canonical part index of the facade's edge.",
+                "type": "integer"
+              },
+              "ring": {
+                "description": "The canonical ring index: 0 the exterior, above 0 a courtyard.",
+                "type": "integer"
+              },
+              "window": {
+                "additionalProperties": false,
+                "description": "The window's rectangle in the facade's frame, in metres.",
+                "properties": {
+                  "height_m": {
+                    "description": "The window's height.",
+                    "type": "number"
+                  },
+                  "sill_z_m": {
+                    "description": "Height of the sill above the ground.",
+                    "type": "number"
+                  },
+                  "u_m": {
+                    "description": "Distance along the facade from its start to the window's left edge, seen from outside.",
+                    "type": "number"
+                  },
+                  "width_m": {
+                    "description": "The window's width.",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "u_m",
+                  "sill_z_m",
+                  "width_m",
+                  "height_m"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "building_ref",
+              "part",
+              "ring",
+              "edge",
+              "window",
+              "evidence"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "windows",
+        "confirm"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "name": "save_model",
     "annotations": {
       "destructiveHint": true,

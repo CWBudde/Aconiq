@@ -4,6 +4,7 @@ package httpv1
 func openapiFacadePathItems() map[string]any {
 	return map[string]any{
 		"/api/v1/facades/window":  openapiFacadeWindowPathItem(),
+		"/api/v1/facades/windows": openapiFacadeWindowsProposePathItem(),
 		"/api/v1/facades/rectify": openapiFacadeRectifyPathItem(),
 		"/api/v1/facades/elevation": map[string]any{
 			"post": map[string]any{
@@ -103,13 +104,16 @@ func openapiFacadeSchemas() map[string]any {
 					"a storey count its windows or its height disagree with. A review flag; it refuses neither a save nor a facade run."),
 			},
 		},
-		"FacadeElevation":     openapiFacadeElevationSchema(number, pair),
-		"ElevationWindow":     openapiElevationWindowSchema(),
-		"FacadeWindowFrame":   openapiFacadeWindowFrameSchema(number),
-		"PlaceWindowRequest":  openapiPlaceWindowRequestSchema(),
-		"PlaceWindowResponse": openapiPlaceWindowResponseSchema(),
-		"PhotoTransform":      openapiPhotoTransformSchema(pair),
-		"Rectification":       openapiRectificationSchema(number),
+		"FacadeElevation":        openapiFacadeElevationSchema(number, pair),
+		"ElevationWindow":        openapiElevationWindowSchema(),
+		"FacadeWindowFrame":      openapiFacadeWindowFrameSchema(number),
+		"PlaceWindowRequest":     openapiPlaceWindowRequestSchema(),
+		"PlaceWindowResponse":    openapiPlaceWindowResponseSchema(),
+		"WindowPlacement":        openapiWindowPlacementSchema(),
+		"ProposeWindowsRequest":  openapiProposeWindowsRequestSchema(),
+		"ProposeWindowsResponse": openapiProposeWindowsResponseSchema(),
+		"PhotoTransform":         openapiPhotoTransformSchema(pair),
+		"Rectification":          openapiRectificationSchema(number),
 	}
 }
 
@@ -278,21 +282,116 @@ func openapiPlaceWindowRequestSchema() map[string]any {
 				"type":        "object",
 				"description": "A GeoJSON FeatureCollection in the v1 model schema, holding the window's building.",
 			},
-			facadeWindowField: map[string]any{
-				"type":                 "object",
-				"additionalProperties": false,
-				"required":             []string{"id", "building_ref", "part", "ring", "edge", facadeWindowField, "sensitive"},
-				"properties": map[string]any{
-					"id":              map[string]any{"type": "string", "description": "The window's feature id, without '/'."},
-					"building_ref":    map[string]any{"type": "string"},
-					"part":            map[string]any{"type": "integer"},
-					"ring":            map[string]any{"type": "integer"},
-					"edge":            map[string]any{"type": "integer"},
-					facadeWindowField: map[string]any{"$ref": "#/components/schemas/FacadeWindowFrame"},
-					"sensitive":       map[string]any{"type": "boolean"},
-					"review_status":   reviewStatusSchema(),
-					"evidence":        map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+			facadeWindowField: map[string]any{"$ref": "#/components/schemas/WindowPlacement"},
+		},
+	}
+}
+
+// openapiWindowPlacementSchema is one window in its facade's frame, as the
+// elevation view places it and an agent proposes it.
+func openapiWindowPlacementSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"id", "building_ref", "part", "ring", "edge", facadeWindowField, "sensitive"},
+		"properties": map[string]any{
+			"id":              map[string]any{"type": "string", "description": "The window's feature id, without '/'."},
+			"building_ref":    map[string]any{"type": "string"},
+			"part":            map[string]any{"type": "integer"},
+			"ring":            map[string]any{"type": "integer"},
+			"edge":            map[string]any{"type": "integer"},
+			facadeWindowField: map[string]any{"$ref": "#/components/schemas/FacadeWindowFrame"},
+			"sensitive":       map[string]any{"type": "boolean"},
+			"review_status":   reviewStatusSchema(),
+			"evidence":        map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+		},
+	}
+}
+
+// openapiFacadeWindowsProposePathItem describes the endpoint that adds
+// windows proposed from an image to the saved model.
+func openapiFacadeWindowsProposePathItem() map[string]any {
+	return map[string]any{
+		"post": map[string]any{
+			"summary":     "Add windows proposed from an image to the saved model",
+			"operationId": "proposeFacadeWindows",
+			"description": "Places each window as `/api/v1/facades/window` does and adds it to the project's saved " +
+				"model, as a compare-and-write against `expected_hash` (P18 D2). It is the write `aconiq mcp`'s " +
+				"`propose_windows` serves for an agent that read the windows off an image. A proposal is " +
+				"`proposed` and not `sensitive` — confirming a window or marking its room schutzbedürftig is a " +
+				"person's act — and carries at least one `evidence` entry naming the image: `kind` (orthophoto, " +
+				"oblique, street-level, site-photo, plan or citygml-lod3), `source_id` and `content_sha256`. Each " +
+				"entry is stamped with `transmission_basis`. Only new ids are added: a window the model already " +
+				"holds, reviewed or not, is never replaced. Nothing is corrected; the first proposal that breaks a " +
+				"rule refuses them all, and nothing is written.",
+			"requestBody": map[string]any{
+				"required": true,
+				"content": map[string]any{
+					"application/json": map[string]any{
+						"schema": map[string]any{"$ref": "#/components/schemas/ProposeWindowsRequest"},
+					},
 				},
+			},
+			"responses": map[string]any{
+				"201": map[string]any{
+					"description": "The windows were added; the receipt of the model now saved",
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{"$ref": "#/components/schemas/ProposeWindowsResponse"},
+						},
+					},
+				},
+				"400": openapiErrorResponse(
+					"Malformed body, a missing `expected_hash` or `transmission_basis`, or a proposal that breaks a " +
+						"rule: not proposed, sensitive, without evidence naming the image, an id the model already " +
+						"holds, or a window that cannot be placed (`" + errorCodeBadRequest + "`).",
+				),
+				"404": openapiErrorResponse("The project has no model yet (`" + errorCodeModelNotFound + "`)."),
+				"405": methodNotAllowedResponse(),
+				"409": openapiErrorResponse(
+					"The saved model is not the one `expected_hash` names (`" + errorCodeHashMismatch + "`); nothing was written.",
+				),
+				"500": openapiErrorResponse("Failed to read or save the model"),
+			},
+		},
+	}
+}
+
+func openapiProposeWindowsRequestSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{expectedHashField, transmissionBasisField, "windows"},
+		"properties": map[string]any{
+			expectedHashField: map[string]any{
+				"type":        "string",
+				"description": "The hash of the saved model the windows were proposed on, as the server issued it.",
+			},
+			transmissionBasisField: map[string]any{
+				"type": "string",
+				"description": "The per-engagement decision under which the image could be sent to the model that " +
+					"read it. Stamped into every evidence entry.",
+			},
+			"windows": map[string]any{
+				"type":     "array",
+				"minItems": 1,
+				"items":    map[string]any{"$ref": "#/components/schemas/WindowPlacement"},
+			},
+		},
+	}
+}
+
+func openapiProposeWindowsResponseSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"hash", "window_ids", "warnings"},
+		"properties": map[string]any{
+			"hash":       map[string]any{"type": "string", "description": "The receipt of the model now saved."},
+			"window_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"warnings": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"$ref": "#/components/schemas/ValidationIssue"},
 			},
 		},
 	}

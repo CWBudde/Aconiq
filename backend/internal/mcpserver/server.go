@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -37,6 +38,9 @@ const (
 	toolEstimateRun   = "estimate_run"
 	toolStartRun      = "start_run"
 	toolCancelRun     = "cancel_run"
+	// toolProposeWindows is offered only to a server started with a photo
+	// transmission decision (Options.PhotoTransmission).
+	toolProposeWindows = "propose_windows"
 )
 
 // The MCP layer's own refusals, beside the API's codes.
@@ -63,6 +67,13 @@ type Options struct {
 	// AuditPath is the JSONL file every state-changing call is appended to.
 	// Required when AllowWrites is set.
 	AuditPath string
+	// PhotoTransmission is the reference to the per-engagement decision under
+	// which a site photo may be sent to the model that reads windows off it
+	// (P18 D2; docs/policies/data-handling.md). It is the person starting the
+	// server who records it, never the agent: with it, and only with it and
+	// AllowWrites, propose_windows is offered, every proposal's evidence is
+	// stamped with it, and every propose_windows audit line names it.
+	PhotoTransmission string
 	// Clock stamps audit entries. Nil falls back to time.Now.
 	Clock func() time.Time
 	// Logger receives what no tool result can carry on its own, a failed
@@ -74,9 +85,12 @@ type Options struct {
 // `aconiq serve` mounts (httpv1.NewServeHandler): it carries the standards
 // registry and the run supervisor the tools rely on.
 func New(handler http.Handler, opts Options) (*mcp.Server, error) {
-	if opts.AllowWrites && opts.AuditPath == "" {
-		return nil, errors.New("mcpserver: writes need an audit log path")
+	err := checkOptions(opts)
+	if err != nil {
+		return nil, err
 	}
+
+	proposals := opts.AllowWrites && opts.PhotoTransmission != ""
 
 	clock := opts.Clock
 	if clock == nil {
@@ -90,13 +104,14 @@ func New(handler http.Handler, opts Options) (*mcp.Server, error) {
 
 	server := mcp.NewServer(
 		&mcp.Implementation{Name: "aconiq", Version: opts.Version},
-		&mcp.ServerOptions{Instructions: instructions(opts.AllowWrites)},
+		&mcp.ServerOptions{Instructions: instructions(opts.AllowWrites, proposals)},
 	)
 
 	t := tools{
-		api:    apiClient{handler: handler},
-		audit:  &auditLog{path: opts.AuditPath, clock: clock},
-		logger: logger,
+		api:               apiClient{handler: handler},
+		audit:             &auditLog{path: opts.AuditPath, clock: clock},
+		logger:            logger,
+		photoTransmission: strings.TrimSpace(opts.PhotoTransmission),
 	}
 
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPtr(false)}
@@ -128,7 +143,7 @@ func New(handler http.Handler, opts Options) (*mcp.Server, error) {
 		Annotations: readOnly,
 	}, t.transform)
 
-	err := t.addRunReadTools(server, readOnly)
+	err = t.addRunReadTools(server, readOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -139,9 +154,45 @@ func New(handler http.Handler, opts Options) (*mcp.Server, error) {
 		return server, nil
 	}
 
-	schema, resolved, err := inputSchema[saveModelInput](rawModelAsObject())
+	err = t.addWriteTools(server, proposals)
 	if err != nil {
 		return nil, err
+	}
+
+	return server, nil
+}
+
+// checkOptions refuses options New cannot honour: writes without an audit
+// log, and a photo transmission decision without writes or not spelled as a
+// reference.
+func checkOptions(opts Options) error {
+	if opts.AllowWrites && opts.AuditPath == "" {
+		return errors.New("mcpserver: writes need an audit log path")
+	}
+
+	if opts.PhotoTransmission == "" {
+		return nil
+	}
+
+	if !opts.AllowWrites {
+		return errors.New("mcpserver: a photo transmission decision only applies with writes allowed")
+	}
+
+	err := ValidatePhotoTransmission(opts.PhotoTransmission)
+	if err != nil {
+		return fmt.Errorf("mcpserver: %w", err)
+	}
+
+	return nil
+}
+
+// addWriteTools registers the tools --allow-writes offers, and
+// propose_windows when the server was started with a photo transmission
+// decision.
+func (t tools) addWriteTools(server *mcp.Server, proposals bool) error {
+	schema, resolved, err := inputSchema[saveModelInput](rawModelAsObject())
+	if err != nil {
+		return err
 	}
 
 	// The low-level AddTool, not the generic one: mcp.AddTool validates the
@@ -162,13 +213,17 @@ func New(handler http.Handler, opts Options) (*mcp.Server, error) {
 
 	err = t.addRunWriteTools(server)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return server, nil
+	if !proposals {
+		return nil
+	}
+
+	return t.addProposeWindows(server)
 }
 
-func instructions(allowWrites bool) string {
+func instructions(allowWrites, proposals bool) string {
 	const common = "Aconiq environmental noise modelling, for the one project this server was started on. " +
 		"Tool results are the local API's JSON answers, verbatim; a refused call returns the API's error envelope (code, message, details, hint). " +
 		"Coordinates are in the CRS named beside them. " +
@@ -181,14 +236,23 @@ func instructions(allowWrites bool) string {
 		return common + " This server was started read-only (without --allow-writes): no tool changes the project, and none is listed."
 	}
 
-	return common + " Writes are enabled (--allow-writes): start_run and cancel_run, and save_model. Every state-changing call is recorded in the project's MCP audit log. " +
+	writes := common + " Writes are enabled (--allow-writes): start_run and cancel_run, and save_model. Every state-changing call is recorded in the project's MCP audit log. " +
 		"Destructive tools require confirm, a value you must have read first. Runs this server started are stopped when it exits."
+
+	if !proposals {
+		return writes
+	}
+
+	return writes + " propose_windows adds windows you read off a facade image as proposals for a person to review; " +
+		"this server was started under a recorded decision that such images may be sent to the model reading them, and it stamps that decision on every proposal."
 }
 
 type tools struct {
 	api    apiClient
 	audit  *auditLog
 	logger *slog.Logger
+	// photoTransmission is Options.PhotoTransmission, trimmed.
+	photoTransmission string
 }
 
 type projectStatusInput struct{}
@@ -363,26 +427,30 @@ func (t tools) serveSaveModel(ctx context.Context, schema *jsonschema.Resolved, 
 		return invalidArguments(toolSaveModel, err, "Pass model (a GeoJSON FeatureCollection object) and confirm, and optionally crs; nothing else.")
 	}
 
-	// An empty confirm is the one value that would turn the API's
-	// compare-and-write back into an unconditional replace. Anything else is
-	// the API's to judge: a malformed hash is refused there, not corrected
-	// here.
-	if in.Confirm == "" {
-		refusal := toolError{
-			Code:    errorCodeConfirmRequired,
-			Message: "save_model replaces the whole model and needs confirm",
-			Hint:    "Pass the hash get_model or project_status returned for the current model, or \"none\" if the project has no model yet.",
-		}
+	return t.postConfirmed(ctx, "/api/v1/model", in.Confirm, toolError{
+		Code:    errorCodeConfirmRequired,
+		Message: "save_model replaces the whole model and needs confirm",
+		Hint:    "Pass the hash get_model or project_status returned for the current model, or \"none\" if the project has no model yet.",
+	}, modelSaveBody{CRS: in.CRS, Model: in.Model, ExpectedHash: in.Confirm})
+}
 
+// postConfirmed serves a write bound by confirm to the model the agent read:
+// it posts body to the API and records the model the write left. An empty
+// confirm is the one value that would turn the API's compare-and-write back
+// into an unconditional write, so it is refused here with refusal; anything
+// else is the API's to judge: a malformed hash is refused there, not
+// corrected here.
+func (t tools) postConfirmed(ctx context.Context, path, confirm string, refusal toolError, body any) served {
+	if confirm == "" {
 		return served{result: refusal.result(), outcome: errorCodeConfirmRequired}
 	}
 
-	body, err := json.Marshal(modelSaveBody{CRS: in.CRS, Model: in.Model, ExpectedHash: in.Confirm})
+	encoded, err := json.Marshal(body)
 	if err != nil {
-		return internalError(fmt.Errorf("encode model save: %w", err))
+		return internalError(fmt.Errorf("encode %s request: %w", path, err))
 	}
 
-	resp, err := t.api.postJSON(ctx, "/api/v1/model", body)
+	resp, err := t.api.postJSON(ctx, path, encoded)
 	if err != nil {
 		return internalError(err)
 	}

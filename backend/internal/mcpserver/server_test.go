@@ -57,9 +57,27 @@ func newFixture(t *testing.T, allowWrites bool) fixture {
 	return newFixtureWrapped(t, allowWrites, nil)
 }
 
+// testPhotoTransmission is the decision a writable fixture is started
+// under, so it offers propose_windows as a server started with it does.
+const testPhotoTransmission = "engagement-test-decision-1"
+
 // newFixtureWrapped is newFixture with the server's handler wrapped by wrap,
-// for a test that must answer one route itself; nil wraps nothing.
+// for a test that must answer one route itself; nil wraps nothing. A
+// writable fixture is started with a photo transmission decision.
 func newFixtureWrapped(t *testing.T, allowWrites bool, wrap func(http.Handler) http.Handler) fixture {
+	t.Helper()
+
+	photoTransmission := ""
+	if allowWrites {
+		photoTransmission = testPhotoTransmission
+	}
+
+	return newFixtureWith(t, mcpserver.Options{AllowWrites: allowWrites, PhotoTransmission: photoTransmission}, wrap)
+}
+
+// newFixtureWith starts a server with opts, its version, audit path and
+// clock filled in.
+func newFixtureWith(t *testing.T, opts mcpserver.Options, wrap func(http.Handler) http.Handler) fixture {
 	t.Helper()
 
 	store, err := projectfs.New(t.TempDir())
@@ -84,12 +102,11 @@ func newFixtureWrapped(t *testing.T, allowWrites bool, wrap func(http.Handler) h
 		served = wrap(handler)
 	}
 
-	server, err := mcpserver.New(served, mcpserver.Options{
-		AllowWrites: allowWrites,
-		Version:     "test",
-		AuditPath:   store.MCPAuditLogPath(),
-		Clock:       func() time.Time { return fixedNow },
-	})
+	opts.Version = "test"
+	opts.AuditPath = store.MCPAuditLogPath()
+	opts.Clock = func() time.Time { return fixedNow }
+
+	server, err := mcpserver.New(served, opts)
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
@@ -281,7 +298,7 @@ func TestToolsListedFollowTheWriteGate(t *testing.T) {
 
 	if names := slices.Sorted(maps.Keys(writable)); !slices.Equal(names, []string{
 		"cancel_run", "estimate_run", "get_contours", "get_model", "get_run", "get_run_log", "get_run_results",
-		"list_runs", "list_standards", "project_status", "save_model", "start_run", "transform",
+		"list_runs", "list_standards", "project_status", "propose_windows", "save_model", "start_run", "transform",
 	}) {
 		t.Fatalf("writable server lists %v", names)
 	}

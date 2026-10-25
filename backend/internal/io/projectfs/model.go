@@ -3,6 +3,7 @@ package projectfs
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -393,4 +394,36 @@ func upsertArtifactRef(artifacts []project.ArtifactRef, ref project.ArtifactRef)
 	}
 
 	return append(out, ref)
+}
+
+// KeepImportRecord puts the saved model's import record back on a model read
+// from its normalized GeoJSON. That file carries the features only; the
+// source, import CRS, transform and time of the import live in the dump beside
+// it, and SaveModelIf rewrites the dump from the model it is given. Re-keying
+// a receiver or adding a window is not an import, so the record must survive it. A project
+// without a dump has no record to keep; one whose dump does not read is
+// refused rather than overwritten.
+func (s Store) KeepImportRecord(model *modelgeojson.Model) error {
+	raw, err := os.ReadFile(s.ModelArtifactPaths().Dump)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.KeepImportRecord", "read model dump", err)
+	}
+
+	var dump modelgeojson.ModelDump
+
+	err = json.Unmarshal(raw, &dump)
+	if err != nil {
+		return domainerrors.New(domainerrors.KindInternal, "projectfs.KeepImportRecord", "decode model dump", err)
+	}
+
+	model.ImportCRS = dump.ImportCRS
+	model.TransformApplied = dump.TransformApplied
+	model.ImportedAt = dump.ImportedAt
+	model.SourcePath = dump.SourcePath
+
+	return nil
 }

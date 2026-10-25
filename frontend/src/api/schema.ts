@@ -107,6 +107,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/facades/windows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add windows proposed from an image to the saved model
+         * @description Places each window as `/api/v1/facades/window` does and adds it to the project's saved model, as a compare-and-write against `expected_hash` (P18 D2). It is the write `aconiq mcp`'s `propose_windows` serves for an agent that read the windows off an image. A proposal is `proposed` and not `sensitive` — confirming a window or marking its room schutzbedürftig is a person's act — and carries at least one `evidence` entry naming the image: `kind` (orthophoto, oblique, street-level, site-photo, plan or citygml-lod3), `source_id` and `content_sha256`. Each entry is stamped with `transmission_basis`. Only new ids are added: a window the model already holds, reviewed or not, is never replaced. Nothing is corrected; the first proposal that breaks a rule refuses them all, and nothing is written.
+         */
+        post: operations["proposeFacadeWindows"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -737,19 +757,7 @@ export interface components {
             crs: string;
             /** @description A GeoJSON FeatureCollection in the v1 model schema, holding the window's building. */
             model: Record<string, never>;
-            window: {
-                building_ref: string;
-                edge: number;
-                evidence?: Record<string, never>[];
-                /** @description The window's feature id, without '/'. */
-                id: string;
-                part: number;
-                /** @enum {string} */
-                review_status?: "proposed" | "confirmed" | "rejected";
-                ring: number;
-                sensitive: boolean;
-                window: components["schemas"]["FacadeWindowFrame"];
-            };
+            window: components["schemas"]["WindowPlacement"];
         };
         PlaceWindowResponse: {
             /** @description The window feature: `kind: window`, its `facade` key and `window` frame, `sensitive` and `review_status`, and a Point geometry at its centre, in the request's `crs`. */
@@ -794,6 +802,19 @@ export interface components {
              * @description When the terrain artifact was last written
              */
             updated_at: string;
+        };
+        ProposeWindowsRequest: {
+            /** @description The hash of the saved model the windows were proposed on, as the server issued it. */
+            expected_hash: string;
+            /** @description The per-engagement decision under which the image could be sent to the model that read it. Stamped into every evidence entry. */
+            transmission_basis: string;
+            windows: components["schemas"]["WindowPlacement"][];
+        };
+        ProposeWindowsResponse: {
+            /** @description The receipt of the model now saved. */
+            hash: string;
+            warnings: components["schemas"]["ValidationIssue"][];
+            window_ids: string[];
         };
         Rectification: {
             /** @description Row-major 3×3 homography from (u, z) on the facade back to a pixel. */
@@ -1009,6 +1030,19 @@ export interface components {
             default_profile: string;
             name: string;
             profiles: components["schemas"]["ProfileInfo"][];
+        };
+        WindowPlacement: {
+            building_ref: string;
+            edge: number;
+            evidence?: Record<string, never>[];
+            /** @description The window's feature id, without '/'. */
+            id: string;
+            part: number;
+            /** @enum {string} */
+            review_status?: "proposed" | "confirmed" | "rejected";
+            ring: number;
+            sensitive: boolean;
+            window: components["schemas"]["FacadeWindowFrame"];
         };
     };
     responses: never;
@@ -1412,6 +1446,114 @@ export interface operations {
                 };
             };
             /** @description Failed to encode the window */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    proposeFacadeWindows: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Any non-empty value. A CORS simple request cannot set a custom header, so requiring one forces a preflight, which the origin allowlist then answers or does not. The value is never read. */
+                "X-Aconiq-Client": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeWindowsRequest"];
+            };
+        };
+        responses: {
+            /** @description The windows were added; the receipt of the model now saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposeWindowsResponse"];
+                };
+            };
+            /** @description Malformed body, a missing `expected_hash` or `transmission_basis`, or a proposal that breaks a rule: not proposed, sensitive, without evidence naming the image, an id the model already holds, or a window that cannot be placed (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token (`unauthorized`). Only reachable when the server was started with --api-token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refused before routing: the Host header is not on the allowlist (`forbidden_host`), a state-changing request arrived without the X-Aconiq-Client header (`client_header_required`), or the project manifest named a path outside the project root (`forbidden_path`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The project has no model yet (`model_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Method not allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The saved model is not the one `expected_hash` names (`hash_mismatch`); nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body exceeds this endpoint's limit (`request_too_large`) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Request body was not sent as the media type this endpoint parses (`unsupported_media_type`) */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Failed to read or save the model */
             500: {
                 headers: {
                     [name: string]: unknown;

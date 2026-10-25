@@ -103,6 +103,25 @@ because a client is free to ignore annotations.
 | `delete_run`     | `DELETE /api/v1/runs/{id}`    | the run id                                      |
 | `import_terrain` | `POST /api/v1/import/terrain` | the current terrain's digest, or `none`         |
 
+**Proposals from an image — `--allow-writes`, `--photo-transmission` and a matching `confirm`**
+(P18 D2, amended):
+
+| Tool              | Backed by                      | `confirm` must equal                                  |
+| ----------------- | ------------------------------ | ----------------------------------------------------- |
+| `propose_windows` | `POST /api/v1/facades/windows` | the hash of the model the windows were placed against |
+
+- `propose_windows` adds windows an agent read off a facade image to the saved model, and only
+  adds: an id the model holds is refused, so a window a person reviewed is never touched. It is
+  annotated additive (`destructiveHint: false`), but takes `confirm` as `save_model` does, because
+  each window is placed on the model the agent read. Its schema has no `sensitive` and no
+  `review_status`: a proposal is written `proposed` and not sensitive, and confirming a window or
+  marking its room _schutzbedürftig_ stays a person's act in the facade elevation. It refuses a
+  window without `evidence` naming the image (`kind`, `source_id`, `content_sha256`).
+- Sending a site photo to a hosted model is a disclosure of personal data, decided per engagement
+  (`docs/policies/data-handling.md`). The tool is listed only when the server was started with
+  `--photo-transmission <reference>` as well as `--allow-writes`: the person starting the server
+  records the decision, never the agent. The reference is opaque, never a path; it is stamped into
+  every proposal's evidence as `transmission_basis` and into every `propose_windows` audit line.
 - Without `--allow-writes`, the state-changing and destructive tools are **not listed at all**, so an
   agent cannot plan around tools it may not call. A server started read-only says so in its
   instructions.
@@ -166,7 +185,7 @@ metadata plus a resource reference, never inline in a tool result.
 7. **Audit log.** Every state-changing or destructive call is appended to
    `.noise/logs/mcp-audit.jsonl` as one JSON object: UTC timestamp, tool name, a SHA-256 digest of
    the canonicalised arguments, the outcome (`ok` or the error `code`), and the affected run id or
-   model hash. Argument values are not logged, only their digest: model payloads can be large and
+   model hash; a `propose_windows` line also names the `photo_transmission` decision. Argument values are not logged, only their digest: model payloads can be large and
    can carry customer geometry.
    The log is opened before the call is served: if it cannot be (a read-only disk, a permission),
    the call is refused with `audit_unavailable` and nothing is written, so no write happens
