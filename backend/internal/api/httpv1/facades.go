@@ -96,6 +96,15 @@ type issueFacadeResponse struct {
 	Edge int `json:"edge"`
 }
 
+// issueFacadeOf spells a finding's facade as the API does; nil stays nil.
+func issueFacadeOf(f *modelgeojson.IssueFacade) *issueFacadeResponse {
+	if f == nil {
+		return nil
+	}
+
+	return &issueFacadeResponse{Part: f.Part, Ring: f.Ring, Edge: f.Edge}
+}
+
 // handleFacadeElevation unfolds one building of the model in the body into its
 // facades, storeys and windows, for the frontend's elevation view in API mode
 // (P18 C2). Browser mode asks the WebAssembly kernel's `facadeElevation`, and
@@ -211,9 +220,8 @@ func elevationFindingsResponse(findings []modelgeojson.ValidationIssue) []elevat
 	out := make([]elevationFindingResponse, len(findings))
 
 	for i, f := range findings {
-		out[i] = elevationFindingResponse{Level: f.Level, Code: f.Code, FeatureID: f.FeatureID, Message: f.Message}
-		if f.Facade != nil {
-			out[i].Facade = &issueFacadeResponse{Part: f.Facade.Part, Ring: f.Facade.Ring, Edge: f.Facade.Edge}
+		out[i] = elevationFindingResponse{
+			Level: f.Level, Code: f.Code, FeatureID: f.FeatureID, Facade: issueFacadeOf(f.Facade), Message: f.Message,
 		}
 	}
 

@@ -803,12 +803,23 @@ export interface components {
              */
             updated_at: string;
         };
+        /** @description The image a window was read from. The server stamps each entry with `transmission_basis`. */
+        ProposalEvidence: {
+            attribution?: string;
+            captured_at?: string;
+            content_sha256: string;
+            /** @enum {string} */
+            kind: "orthophoto" | "oblique" | "street-level" | "site-photo" | "plan" | "citygml-lod3";
+            licence?: string;
+            /** @description The image's opaque reference in the engagement's store, never a path. */
+            source_id: string;
+        };
         ProposeWindowsRequest: {
             /** @description The hash of the saved model the windows were proposed on, as the server issued it. */
             expected_hash: string;
             /** @description The per-engagement decision under which the image could be sent to the model that read it. Stamped into every evidence entry. */
             transmission_basis: string;
-            windows: components["schemas"]["WindowPlacement"][];
+            windows: components["schemas"]["WindowProposal"][];
         };
         ProposeWindowsResponse: {
             /** @description The receipt of the model now saved. */
@@ -1022,6 +1033,12 @@ export interface components {
         };
         ValidationIssue: {
             code: string;
+            /** @description The facade of the building `feature_id` names, for a finding about one facade. */
+            facade?: {
+                edge: number;
+                part: number;
+                ring: number;
+            };
             /** @description The feature the finding is about; absent for model-wide findings */
             feature_id?: string;
             message: string;
@@ -1042,6 +1059,17 @@ export interface components {
             review_status?: "proposed" | "confirmed" | "rejected";
             ring: number;
             sensitive: boolean;
+            window: components["schemas"]["FacadeWindowFrame"];
+        };
+        /** @description A window read off an image, written `proposed` and not `sensitive`: confirming it or marking its room schutzbedürftig is a person's act in the facade elevation. */
+        WindowProposal: {
+            building_ref: string;
+            edge: number;
+            evidence: components["schemas"]["ProposalEvidence"][];
+            /** @description A new window feature id, without '/'. */
+            id: string;
+            part: number;
+            ring: number;
             window: components["schemas"]["FacadeWindowFrame"];
         };
     };

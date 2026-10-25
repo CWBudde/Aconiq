@@ -11,7 +11,7 @@ import (
 
 const (
 	photoHash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-	basis     = "engagement-2026-17/dpa-3"
+	basis     = "engagement-2026-17-dpa-3"
 )
 
 // proposal is a window an agent read off a photo of the house's south
@@ -112,6 +112,8 @@ func TestProposeWindowsRefuses(t *testing.T) {
 		"twice":            {[]WindowPlacement{proposal("p1", 6), proposal("p1", 8)}, basis, "given twice"},
 		"past its facade":  {with(func(p *WindowPlacement) { p.Frame.UM = 9.5 }), basis, "runs past"},
 		"no basis":         {[]WindowPlacement{proposal("p1", 6)}, " ", PropertyTransmissionBasis},
+		"a basis path":     {[]WindowPlacement{proposal("p1", 6)}, "/clients/Musterstraße 1/dpa.pdf", "must not be a path"},
+		"a pasted basis":   {[]WindowPlacement{proposal("p1", 6)}, strings.Repeat("x", 201), "longer than"},
 		"nothing proposed": {nil, basis, ErrNoProposal.Error()},
 	}
 

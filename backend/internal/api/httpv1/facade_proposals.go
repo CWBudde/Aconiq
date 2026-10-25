@@ -2,7 +2,6 @@ package httpv1
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/aconiq/backend/internal/domain/project"
 	"github.com/aconiq/backend/internal/facadeset"
@@ -113,11 +112,12 @@ func validProposal(w http.ResponseWriter, req proposeWindowsRequest) bool {
 		return false
 	}
 
-	if strings.TrimSpace(req.TransmissionBasis) == "" {
+	err := facadeset.ValidateTransmissionBasis(req.TransmissionBasis)
+	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    errorCodeBadRequest,
-			Message: transmissionBasisField + " is required: the per-engagement decision the image was read under",
-			Hint:    "aconiq mcp sends the value of its --photo-transmission flag.",
+			Message: transmissionBasisField + " must name the per-engagement decision the image was read under: " + err.Error(),
+			Hint:    "aconiq mcp sends the value of its --photo-transmission flag: an opaque reference, never a path.",
 		})
 
 		return false

@@ -18,7 +18,7 @@ import (
 
 const (
 	proposalPhotoHash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-	proposalBasis     = "engagement-2026-17/dpa-3"
+	proposalBasis     = "engagement-2026-17-dpa-3"
 )
 
 // savedHouseWithABedroom saves elevationHouse with one confirmed, sensitive
@@ -177,6 +177,10 @@ func TestFacadeWindowsProposeRefuses(t *testing.T) {
 		"none":             {projectfs.ExpectNone, proposalBasis, with(keep), http.StatusBadRequest, errorCodeBadRequest},
 		"a stale hash":     {strings.Repeat("0", 64), proposalBasis, with(keep), http.StatusConflict, errorCodeHashMismatch},
 		"no basis":         {"current", " ", with(keep), http.StatusBadRequest, errorCodeBadRequest},
+		"a basis path":     {"current", `C:\engagements\dpa.pdf`, with(keep), http.StatusBadRequest, errorCodeBadRequest},
+		"a source path": {"current", proposalBasis, with(func(w map[string]any) {
+			w["evidence"] = []any{map[string]any{"kind": "site-photo", "source_id": "photos/IMG_0042.jpg", "content_sha256": proposalPhotoHash}}
+		}), http.StatusBadRequest, errorCodeBadRequest},
 		"confirmed":        {"current", proposalBasis, with(func(w map[string]any) { w["review_status"] = "confirmed" }), http.StatusBadRequest, errorCodeBadRequest},
 		"sensitive":        {"current", proposalBasis, with(func(w map[string]any) { w["sensitive"] = true }), http.StatusBadRequest, errorCodeBadRequest},
 		"no evidence":      {"current", proposalBasis, with(func(w map[string]any) { delete(w, "evidence") }), http.StatusBadRequest, errorCodeBadRequest},
@@ -214,6 +218,28 @@ func TestFacadeWindowsProposeRefuses(t *testing.T) {
 				t.Error("a refused proposal changed the stored model")
 			}
 		})
+	}
+}
+
+// A warning about one facade keeps its {part, ring, edge} on the way out, so
+// a client finds the facade without parsing the message.
+func TestValidationIssuesResponseKeepsTheFacade(t *testing.T) {
+	t.Parallel()
+
+	got := validationIssuesResponse([]modelgeojson.ValidationIssue{
+		{Code: modelgeojson.CodeFacadeWindowsNoCandidate, FeatureID: "house", Facade: &modelgeojson.IssueFacade{Ring: 1, Edge: 3}, Message: "m"},
+		{Code: modelgeojson.CodeBuildingLevelsDisagree, FeatureID: "house", Message: "l"},
+	})
+
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	want := `[{"code":"facade.windows.no_candidate","feature_id":"house","facade":{"part":0,"ring":1,"edge":3},"message":"m"},` +
+		`{"code":"building.levels.disagrees","feature_id":"house","message":"l"}]`
+	if string(encoded) != want {
+		t.Errorf("warnings = %s\nwant       %s", encoded, want)
 	}
 }
 

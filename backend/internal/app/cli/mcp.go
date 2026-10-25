@@ -9,6 +9,7 @@ import (
 	"github.com/aconiq/backend/internal/api/httpv1"
 	"github.com/aconiq/backend/internal/buildinfo"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/facadeset"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/mcpserver"
 	"github.com/aconiq/backend/internal/standards"
@@ -93,7 +94,7 @@ func runMCP(cmd *cobra.Command, allowWrites bool, photoTransmission string) erro
 				"--photo-transmission offers propose_windows, which writes the model; it needs --allow-writes", nil)
 		}
 
-		err := mcpserver.ValidatePhotoTransmission(photoTransmission)
+		err := facadeset.ValidateTransmissionBasis(photoTransmission)
 		if err != nil {
 			return domainerrors.New(domainerrors.KindUserInput, "cli.mcp", "--photo-transmission", err)
 		}

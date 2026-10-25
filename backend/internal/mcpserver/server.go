@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aconiq/backend/internal/facadeset"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -178,7 +179,7 @@ func checkOptions(opts Options) error {
 		return errors.New("mcpserver: a photo transmission decision only applies with writes allowed")
 	}
 
-	err := ValidatePhotoTransmission(opts.PhotoTransmission)
+	err := facadeset.ValidateTransmissionBasis(opts.PhotoTransmission)
 	if err != nil {
 		return fmt.Errorf("mcpserver: %w", err)
 	}

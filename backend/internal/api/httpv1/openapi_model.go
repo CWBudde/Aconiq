@@ -159,6 +159,7 @@ func openapiModelSchemas() map[string]any {
 			"properties": map[string]any{
 				"code":       map[string]any{"type": "string"},
 				"feature_id": map[string]any{"type": "string", "description": "The feature the finding is about; absent for model-wide findings"},
+				"facade":     issueFacadeSchema(),
 				"message":    map[string]any{"type": "string"},
 			},
 		},

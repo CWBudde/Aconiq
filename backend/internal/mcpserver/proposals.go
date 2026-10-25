@@ -3,36 +3,11 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// maxPhotoTransmissionLength bounds the --photo-transmission reference: an
-// engagement's decision record is named in a few words, not pasted in.
-const maxPhotoTransmissionLength = 200
-
-// ValidatePhotoTransmission checks the reference to the per-engagement
-// decision a server offering propose_windows is started under (P18 D2): a
-// short, opaque reference, never a path, which could name the client
-// (docs/policies/data-handling.md).
-func ValidatePhotoTransmission(reference string) error {
-	trimmed := strings.TrimSpace(reference)
-
-	switch {
-	case trimmed == "":
-		return errors.New("the photo transmission reference is empty")
-	case len(trimmed) > maxPhotoTransmissionLength:
-		return fmt.Errorf("the photo transmission reference is longer than %d characters; name the decision, do not paste it", maxPhotoTransmissionLength)
-	case strings.ContainsAny(trimmed, `/\`):
-		return errors.New("the photo transmission reference must not be a path: name the decision in the engagement's records, not a file")
-	}
-
-	return nil
-}
 
 // proposeWindowsInput is what propose_windows takes. A proposal has no
 // sensitive and no review_status: the API writes it proposed and not

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -154,10 +155,30 @@ func TestOpenAPIDocumentsFacadeElevation(t *testing.T) {
 	for _, name := range []string{
 		"FacadeElevationRequest", "FacadeElevationResponse", "FacadeElevation", "ElevationWindow",
 		"FacadeWindowFrame", "PlaceWindowRequest", "PlaceWindowResponse", "PhotoTransform", "Rectification",
+		"ProposeWindowsRequest", "ProposeWindowsResponse", "WindowProposal", "ProposalEvidence",
 	} {
 		if _, ok := schemas[name]; !ok {
 			t.Errorf("expected schema %s", name)
 		}
+	}
+
+	propose, ok := paths["/api/v1/facades/windows"].(map[string]any)
+	if !ok {
+		t.Fatal("expected /api/v1/facades/windows path item")
+	}
+
+	assertOperationResponses(t, propose, "post", []string{"201", "400", "404", "405", "409", "413", "415"})
+
+	// A typed client can send the evidence a proposal needs, and only that.
+	evidence, _ := schemas["ProposalEvidence"].(map[string]any)
+	if required, _ := evidence["required"].([]string); !slices.Equal(required, []string{"kind", "source_id", "content_sha256"}) ||
+		evidence["additionalProperties"] != false {
+		t.Errorf("ProposalEvidence = %v, want kind, source_id and content_sha256 required, nothing else allowed", evidence)
+	}
+
+	issue, _ := schemas["ValidationIssue"].(map[string]any)
+	if properties, _ := issue["properties"].(map[string]any); properties["facade"] == nil {
+		t.Error("ValidationIssue does not document the facade a finding names")
 	}
 }
 

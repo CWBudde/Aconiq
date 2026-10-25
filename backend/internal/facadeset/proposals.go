@@ -97,6 +97,32 @@ var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // transmission_basis is not among them: the server stamps it.
 var proposalEvidenceKeys = []string{"kind", "source_id", "content_sha256", "captured_at", "licence", "attribution"}
 
+// maxTransmissionBasisLength bounds the transmission decision reference: an
+// engagement's decision record is named in a few words, not pasted in.
+const maxTransmissionBasisLength = 200
+
+// ValidateTransmissionBasis checks the reference to the per-engagement
+// decision a proposal is made under (P18 D2): a short, opaque reference,
+// never a path, which could name the client (docs/policies/data-handling.md).
+// `aconiq mcp --photo-transmission` and POST /api/v1/facades/windows hold it
+// to the same rule, since ProposeWindows stamps it into the model.
+func ValidateTransmissionBasis(reference string) error {
+	trimmed := strings.TrimSpace(reference)
+
+	switch {
+	case trimmed == "":
+		return fmt.Errorf("the %s reference is empty", PropertyTransmissionBasis)
+	case len(trimmed) > maxTransmissionBasisLength:
+		return fmt.Errorf("the %s reference is longer than %d characters; name the decision, do not paste it",
+			PropertyTransmissionBasis, maxTransmissionBasisLength)
+	case strings.ContainsAny(trimmed, `/\`):
+		return fmt.Errorf("the %s reference must not be a path: name the decision in the engagement's records, not a file",
+			PropertyTransmissionBasis)
+	}
+
+	return nil
+}
+
 // ErrNoProposal refuses a proposal call that proposes nothing.
 var ErrNoProposal = errors.New("no window was proposed")
 
@@ -110,8 +136,9 @@ var ErrNoProposal = errors.New("no window was proposed")
 // refuses them all, and an id the model already holds is refused rather than
 // replaced. It returns the new model and the ids it added, in order.
 func ProposeWindows(model modelgeojson.Model, proposals []WindowPlacement, basis string) (modelgeojson.Model, []string, error) {
-	if strings.TrimSpace(basis) == "" {
-		return modelgeojson.Model{}, nil, fmt.Errorf("a proposal needs the %s it was made under", PropertyTransmissionBasis)
+	err := ValidateTransmissionBasis(basis)
+	if err != nil {
+		return modelgeojson.Model{}, nil, err
 	}
 
 	if len(proposals) == 0 {

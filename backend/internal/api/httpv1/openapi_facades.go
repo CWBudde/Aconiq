@@ -111,6 +111,8 @@ func openapiFacadeSchemas() map[string]any {
 		"PlaceWindowResponse":    openapiPlaceWindowResponseSchema(),
 		"WindowPlacement":        openapiWindowPlacementSchema(),
 		"ProposeWindowsRequest":  openapiProposeWindowsRequestSchema(),
+		"WindowProposal":         openapiWindowProposalSchema(),
+		"ProposalEvidence":       openapiProposalEvidenceSchema(),
 		"ProposeWindowsResponse": openapiProposeWindowsResponseSchema(),
 		"PhotoTransform":         openapiPhotoTransformSchema(pair),
 		"Rectification":          openapiRectificationSchema(number),
@@ -183,8 +185,6 @@ func openapiElevationWindowSchema() map[string]any {
 // elevationFindingsSchema describes a list of validation findings as an
 // elevation carries them, with their level.
 func elevationFindingsSchema(description string) map[string]any {
-	index := map[string]any{"type": "integer"}
-
 	return map[string]any{
 		"type":        "array",
 		"description": description,
@@ -196,16 +196,24 @@ func elevationFindingsSchema(description string) map[string]any {
 				"level":      map[string]any{"type": "string", "enum": []string{"error", "warning"}},
 				"code":       map[string]any{"type": "string"},
 				"feature_id": map[string]any{"type": "string"},
-				"facade": map[string]any{
-					"type":                 "object",
-					"additionalProperties": false,
-					"required":             []string{"part", "ring", "edge"},
-					"properties":           map[string]any{"part": index, "ring": index, "edge": index},
-					"description":          "The facade of the building `feature_id` names, for a finding about one facade.",
-				},
-				"message": map[string]any{"type": "string"},
+				"facade":     issueFacadeSchema(),
+				"message":    map[string]any{"type": "string"},
 			},
 		},
+	}
+}
+
+// issueFacadeSchema is the facade a finding about one facade names, by the
+// canonical indices its key stores (P18 D3).
+func issueFacadeSchema() map[string]any {
+	index := map[string]any{"type": "integer"}
+
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"part", "ring", "edge"},
+		"properties":           map[string]any{"part": index, "ring": index, "edge": index},
+		"description":          "The facade of the building `feature_id` names, for a finding about one facade.",
 	}
 }
 
@@ -375,8 +383,62 @@ func openapiProposeWindowsRequestSchema() map[string]any {
 			"windows": map[string]any{
 				"type":     "array",
 				"minItems": 1,
-				"items":    map[string]any{"$ref": "#/components/schemas/WindowPlacement"},
+				"items":    map[string]any{"$ref": "#/components/schemas/WindowProposal"},
 			},
+		},
+	}
+}
+
+// openapiWindowProposalSchema is one window an agent proposes: a placement
+// without sensitive and review_status, which a proposal cannot claim, and
+// with the evidence that names the image.
+func openapiWindowProposalSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"id", "building_ref", "part", "ring", "edge", facadeWindowField, "evidence"},
+		"description": "A window read off an image, written `proposed` and not `sensitive`: confirming it or marking its " +
+			"room schutzbedürftig is a person's act in the facade elevation.",
+		"properties": map[string]any{
+			"id":              map[string]any{"type": "string", "minLength": 1, "description": "A new window feature id, without '/'."},
+			"building_ref":    map[string]any{"type": "string", "minLength": 1},
+			"part":            map[string]any{"type": "integer"},
+			"ring":            map[string]any{"type": "integer"},
+			"edge":            map[string]any{"type": "integer"},
+			facadeWindowField: map[string]any{"$ref": "#/components/schemas/FacadeWindowFrame"},
+			"evidence": map[string]any{
+				"type":     "array",
+				"minItems": 1,
+				"items":    map[string]any{"$ref": "#/components/schemas/ProposalEvidence"},
+			},
+		},
+	}
+}
+
+// openapiProposalEvidenceSchema is what a proposal's evidence entry may
+// carry: facadeset.ProposeWindows refuses any other member.
+func openapiProposalEvidenceSchema() map[string]any {
+	text := map[string]any{"type": "string"}
+
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"kind", "source_id", "content_sha256"},
+		"description":          "The image a window was read from. The server stamps each entry with `transmission_basis`.",
+		"properties": map[string]any{
+			"kind": map[string]any{
+				"type": "string",
+				"enum": []string{"orthophoto", "oblique", "street-level", "site-photo", "plan", "citygml-lod3"},
+			},
+			"source_id": map[string]any{
+				"type":        "string",
+				"pattern":     `^[^/\\]+$`,
+				"description": "The image's opaque reference in the engagement's store, never a path.",
+			},
+			"content_sha256": map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"},
+			"captured_at":    text,
+			"licence":        text,
+			"attribution":    text,
 		},
 	}
 }
