@@ -74,7 +74,7 @@ var argumentlessTools = []string{"list_runs", "list_standards", "project_status"
 // auditedTools are registered with the low-level AddTool so that a refused
 // call is still audited; they refuse with the layer's invalid_arguments
 // envelope. The SDK refuses the arguments of every other tool itself.
-var auditedTools = []string{"cancel_run", "save_model", "start_run"}
+var auditedTools = []string{"cancel_run", "propose_windows", "save_model", "start_run"}
 
 // refusedArguments are, per tool that takes arguments, argument sets its
 // input schema does not accept: a required field missing, a field of the
@@ -84,6 +84,20 @@ func refusedArguments() map[string]map[string]map[string]any {
 	runRequest := runRequestArgs("dummy-freefield")
 	transform := map[string]any{"source_crs": "EPSG:4326", "coordinates": []float64{9.73, 52.37}}
 	save := saveArgs(validModel, "none")
+	propose := proposeArgs(proposedWindow("p1"), strings.Repeat("0", 64))
+	window := func(edit func(map[string]any)) map[string]any {
+		w := proposedWindow("p1")
+		edit(w)
+
+		return proposeArgs(w, strings.Repeat("0", 64))
+	}
+	source := func(key string, value any) map[string]any {
+		return window(func(w map[string]any) {
+			entry := maps.Clone(w["evidence"].([]any)[0].(map[string]any))
+			entry[key] = value
+			w["evidence"] = []any{entry}
+		})
+	}
 
 	runIDRefusals := map[string]map[string]any{
 		"missing run_id":     {},
@@ -135,6 +149,23 @@ func refusedArguments() map[string]map[string]map[string]any {
 		"estimate_run": runRequestRefusals,
 		"start_run":    runRequestRefusals,
 		"cancel_run":   cancelRefusals,
+		"propose_windows": {
+			"missing windows":           without(propose, "windows"),
+			"missing confirm":           without(propose, "confirm"),
+			"no windows":                with(propose, "windows", []any{}),
+			"windows as an object":      with(propose, "windows", proposedWindow("p1")),
+			"a sensitive proposal":      window(func(w map[string]any) { w["sensitive"] = true }),
+			"a confirmed proposal":      window(func(w map[string]any) { w["review_status"] = "confirmed" }),
+			"missing evidence":          window(func(w map[string]any) { delete(w, "evidence") }),
+			"no evidence":               window(func(w map[string]any) { w["evidence"] = []any{} }),
+			"an empty id":               window(func(w map[string]any) { w["id"] = "" }),
+			"a google kind":             source("kind", "google"),
+			"an empty source_id":        source("source_id", ""),
+			"a path as source_id":       source("source_id", "photos/IMG_0042.jpg"),
+			"an uppercase content hash": source("content_sha256", strings.Repeat("A", 64)),
+			"an image in the evidence":  source("image", "data:image/jpeg;base64,/9j/"),
+			"unknown property":          with(propose, "transmission_basis", "anything"),
+		},
 		"save_model": {
 			"missing model":    without(save, "model"),
 			"missing confirm":  without(save, "confirm"),

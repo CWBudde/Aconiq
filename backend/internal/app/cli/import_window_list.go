@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -71,9 +70,9 @@ func mergeWindowList(cmd *cobra.Command, state commandState, store projectfs.Sto
 		return 0, domainerrors.New(domainerrors.KindValidation, op, "normalize model", err)
 	}
 
-	err = keepImportRecord(store, &model)
+	err = store.KeepImportRecord(&model)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("keep the model's import record: %w", err)
 	}
 
 	windows, err := placeWindowRows(model, rows)
@@ -81,7 +80,10 @@ func mergeWindowList(cmd *cobra.Command, state commandState, store projectfs.Sto
 		return 0, domainerrors.New(domainerrors.KindUserInput, op, "window list "+relativePath(store.Root(), listPath), err)
 	}
 
-	merged, replaced := mergeWindows(model, windows)
+	merged, replaced, err := facadeset.MergeWindows(model, windows, facadeset.ReplaceWindows)
+	if err != nil {
+		return 0, domainerrors.New(domainerrors.KindUserInput, op, "window list "+relativePath(store.Root(), listPath), err)
+	}
 
 	_, err = store.SaveModelIf(&proj, merged, modelgeojson.Validate(merged), hash)
 
@@ -173,38 +175,4 @@ func windowBuilding(row windowimport.Row, model modelgeojson.Model) (string, err
 	}
 
 	return ids[0], nil
-}
-
-// mergeWindows replaces the model's windows of the same id and appends the
-// rest, leaving the model passed in as it was. It returns the new model and
-// how many windows it replaced.
-func mergeWindows(model modelgeojson.Model, windows []modelgeojson.Feature) (modelgeojson.Model, int) {
-	byID := make(map[string]modelgeojson.Feature, len(windows))
-	for _, w := range windows {
-		byID[w.ID] = w
-	}
-
-	out := model
-	out.Features = slices.Clone(model.Features)
-	replaced := 0
-
-	for i, feature := range out.Features {
-		w, ok := byID[strings.TrimSpace(feature.ID)]
-		if !ok || feature.Kind != modelgeojson.FeatureKindWindow {
-			continue
-		}
-
-		out.Features[i] = w
-		delete(byID, w.ID)
-
-		replaced++
-	}
-
-	for _, w := range windows {
-		if _, pending := byID[w.ID]; pending {
-			out.Features = append(out.Features, w)
-		}
-	}
-
-	return out, replaced
 }

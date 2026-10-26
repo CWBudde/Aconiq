@@ -147,6 +147,7 @@ const south: FacadeElevation = {
       findings: [],
     },
   ],
+  findings: [],
 };
 
 // A 10 m × 9 m facade at 32 view units per metre, from (36, 324) up: with

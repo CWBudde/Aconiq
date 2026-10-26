@@ -9,6 +9,7 @@ import (
 	"github.com/aconiq/backend/internal/api/httpv1"
 	"github.com/aconiq/backend/internal/buildinfo"
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
+	"github.com/aconiq/backend/internal/facadeset"
 	"github.com/aconiq/backend/internal/io/projectfs"
 	"github.com/aconiq/backend/internal/mcpserver"
 	"github.com/aconiq/backend/internal/standards"
@@ -17,7 +18,10 @@ import (
 )
 
 func newMCPCommand() *cobra.Command {
-	var allowWrites bool
+	var (
+		allowWrites       bool
+		photoTransmission string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "mcp",
@@ -51,24 +55,49 @@ version, profile and receiver mode explicitly, never a default, and computes
 the saved model. Every state-changing call is appended to
 .noise/logs/mcp-audit.jsonl.
 
+With --allow-writes and --photo-transmission, propose_windows is offered too:
+an agent that read windows off a facade image adds them to the model as
+proposals, proposed and not sensitive, for a person to confirm in the facade
+elevation; it adds only new windows, and takes confirm as save_model does.
+Sending a site photo to a hosted model is a disclosure of personal data,
+decided per engagement before the first image leaves the machine
+(docs/policies/data-handling.md). --photo-transmission records that decision:
+it names the engagement's decision record (an opaque reference, never a path),
+and is stamped into every proposal's evidence and every propose_windows audit
+line. The agent cannot set it.
+
 The server stops when stdin closes or on SIGINT/SIGTERM, and stops the runs it
 started first.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runMCP(cmd, allowWrites)
+			return runMCP(cmd, allowWrites, photoTransmission)
 		},
 	}
 
 	cmd.Flags().BoolVar(&allowWrites, "allow-writes", false,
 		"Offer the tools that change the project (start_run, cancel_run, save_model); every such call is audited")
+	cmd.Flags().StringVar(&photoTransmission, "photo-transmission", "",
+		"The engagement's decision that site photos may be sent to the model reading them; with --allow-writes, offers propose_windows")
 
 	return cmd
 }
 
-func runMCP(cmd *cobra.Command, allowWrites bool) error {
+func runMCP(cmd *cobra.Command, allowWrites bool, photoTransmission string) error {
 	state, ok := stateFromCommand(cmd)
 	if !ok {
 		return domainerrors.New(domainerrors.KindInternal, "cli.mcp", "command state unavailable", nil)
+	}
+
+	if cmd.Flags().Changed("photo-transmission") {
+		if !allowWrites {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.mcp",
+				"--photo-transmission offers propose_windows, which writes the model; it needs --allow-writes", nil)
+		}
+
+		err := facadeset.ValidateTransmissionBasis(photoTransmission)
+		if err != nil {
+			return domainerrors.New(domainerrors.KindUserInput, "cli.mcp", "--photo-transmission", err)
+		}
 	}
 
 	store, err := projectfs.New(state.Config.ProjectPath)
@@ -96,16 +125,18 @@ func runMCP(cmd *cobra.Command, allowWrites bool) error {
 	handler := httpv1.NewServeHandler(store, nowUTC, registry, httpv1.ServeOptions{Logger: state.Logger})
 
 	server, err := mcpserver.New(handler, mcpserver.Options{
-		AllowWrites: allowWrites,
-		Version:     buildinfo.Version(),
-		AuditPath:   store.MCPAuditLogPath(),
-		Logger:      state.Logger,
+		AllowWrites:       allowWrites,
+		Version:           buildinfo.Version(),
+		AuditPath:         store.MCPAuditLogPath(),
+		Logger:            state.Logger,
+		PhotoTransmission: photoTransmission,
 	})
 	if err != nil {
 		return domainerrors.New(domainerrors.KindInternal, "cli.mcp", "build MCP server", err)
 	}
 
-	state.Logger.Info("mcp started", "project", store.Root(), "allow_writes", allowWrites)
+	state.Logger.Info("mcp started", "project", store.Root(), "allow_writes", allowWrites,
+		"photo_transmission", photoTransmission != "")
 
 	// cobra's streams rather than mcp.StdioTransport, which binds os.Stdin and
 	// os.Stdout itself: they are the same files in production, and a test can

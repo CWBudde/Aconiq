@@ -298,6 +298,7 @@ POST /api/v1/model                     replace the project model (the `aconiq im
 POST /api/v1/transform                 project a coordinate batch between two CRS (`target_crs: "auto"` picks the zone `aconiq run` would)
 POST /api/v1/facades/elevation         one building of the model in the body, unfolded into facades, storeys and windows
 POST /api/v1/facades/window            a window drawn in a facade's frame, keyed and centred as the model stores it
+POST /api/v1/facades/windows           add windows proposed from an image to the saved model (`expected_hash` required; only new ids)
 POST /api/v1/facades/rectify           a facade photo's four corners, solved into the homography that draws it onto the facade
 GET  /api/v1/openapi.json
 ```

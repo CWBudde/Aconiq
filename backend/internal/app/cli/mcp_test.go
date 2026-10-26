@@ -326,6 +326,88 @@ func TestMCPClosesRunsAPreviousProcessLeftOpen(t *testing.T) {
 	}
 }
 
+// propose_windows exists only under --allow-writes and --photo-transmission:
+// a window read off an image lands in the model as a proposal, and the audit
+// line names the decision it was made under.
+func TestMCPProposesWindowsUnderAPhotoTransmissionDecision(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "MCP", "--crs", "EPSG:25832")
+
+	session, done := runMCPInProcess(t, "--project", projectDir, "mcp", "--allow-writes", "--photo-transmission", "engagement-7-decision-2")
+	session.initialize(t)
+
+	if names := strings.Join(session.toolNames(t), ","); !strings.Contains(names, "propose_windows") {
+		t.Fatalf("a server started with a photo transmission decision lists %s", names)
+	}
+
+	house := `{"type":"FeatureCollection","features":[{"type":"Feature","id":"house",` +
+		`"properties":{"kind":"building","height_m":9},"geometry":{"type":"Polygon","coordinates":` +
+		`[[[547000,5795000],[547010,5795000],[547010,5795008],[547000,5795008],[547000,5795000]]]}}]}`
+
+	text, isError := session.callTool(t, "save_model", map[string]any{"model": json.RawMessage(house), "confirm": "none"})
+	if isError {
+		t.Fatalf("save_model: %s", text)
+	}
+
+	var saved struct {
+		Hash string `json:"hash"`
+	}
+
+	if err := json.Unmarshal([]byte(text), &saved); err != nil {
+		t.Fatalf("decode save_model: %v", err)
+	}
+
+	text, isError = session.callTool(t, "propose_windows", map[string]any{
+		"confirm": saved.Hash,
+		"windows": []any{map[string]any{
+			"id": "p1", "building_ref": "house", "part": 0, "ring": 0, "edge": 0,
+			"window": map[string]any{"u_m": 2, "sill_z_m": 3.9, "width_m": 1.2, "height_m": 1.5},
+			"evidence": []any{map[string]any{
+				"kind": "site-photo", "source_id": "photo-0001",
+				"content_sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+			}},
+		}},
+	})
+	if isError || !strings.Contains(text, `"p1"`) {
+		t.Fatalf("propose_windows: %s", text)
+	}
+
+	rest, err := session.finish(t, done)
+	if err != nil || len(rest) != 0 {
+		t.Fatalf("aconiq mcp: %v, trailing stdout %q", err, rest)
+	}
+
+	audit, err := os.ReadFile(filepath.Join(projectDir, ".noise", "logs", "mcp-audit.jsonl"))
+	lines := strings.Split(strings.TrimSpace(string(audit)), "\n")
+
+	if err != nil || len(lines) != 2 || !strings.Contains(lines[1], `"tool":"propose_windows"`) ||
+		!strings.Contains(lines[1], `"outcome":"ok"`) || !strings.Contains(lines[1], `"photo_transmission":"engagement-7-decision-2"`) {
+		t.Fatalf("audit log = %q (%v)", audit, err)
+	}
+}
+
+// The photo transmission decision offers a write, so it needs
+// --allow-writes, and it is a reference, never a path.
+func TestMCPRefusesAPhotoTransmissionDecisionItCannotUse(t *testing.T) {
+	t.Parallel()
+
+	projectDir := t.TempDir()
+	mustRunCLI(t, "--project", projectDir, "init", "--name", "MCP", "--crs", "EPSG:25832")
+
+	for _, args := range [][]string{
+		{"--photo-transmission", "engagement-7-decision-2"},
+		{"--allow-writes", "--photo-transmission", "engagements/7/dpa.pdf"},
+		{"--allow-writes", "--photo-transmission", " "},
+	} {
+		err := runCLI(append([]string{"--project", projectDir, "mcp"}, args...)...)
+		if err == nil || !strings.Contains(err.Error(), "photo-transmission") {
+			t.Errorf("aconiq mcp %v: err = %v, want the flag refused", args, err)
+		}
+	}
+}
+
 func TestMCPRefusesArguments(t *testing.T) {
 	t.Parallel()
 

@@ -309,6 +309,27 @@ lies wholly on neither and is not imported either. The
 `openings` section of `.noise/model/citygml-import-report.json` and the
 command's output name each one and why.
 
+An agent writes them through `aconiq mcp`'s `propose_windows`
+(`POST /api/v1/facades/windows`, P18 D2): `proposed`, not `sensitive`, only
+new ids, each with at least one `evidence` entry of a known `kind` with a
+`source_id` and a `content_sha256`. Each entry also carries
+`transmission_basis`, the per-engagement decision the server was started
+under (`aconiq mcp --photo-transmission`), which records that the image could
+be sent to the model that read it.
+
+Validation cross-checks the windows against their building's geometry
+(P18 D3). Both checks are review flags: warnings that refuse neither a save
+nor a facade run, on the building's feature id. Neither counts a rejected
+window or one whose key is unresolved or moved. OSM's `building:levels`
+leaves roof storeys out, so a facade with dormer or attic windows can trip the
+row check on a count that is right; reject or re-check those windows rather
+than the count.
+
+| Code                          | Level   | Raised when                                                                                                                                                                                                                                          |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `building.levels.disagrees`   | warning | The building's `building:levels` (a positive integer) is less than the rows one facade's window sills form (a new row above a 1 m gap), or its `height_m`, when `height_source` is neither `levels` nor `assumed`, gives a storey outside 2.2–4.5 m. |
+| `facade.windows.no_candidate` | warning | A facade carries a window while another footprint stands against all of it, so facade mode places no point there. The issue's `facade` names the edge (`{part, ring, edge}`).                                                                        |
+
 ## Standard-Specific Geometry Conventions
 
 The normalized model stays standard-agnostic, but some standards consume extra

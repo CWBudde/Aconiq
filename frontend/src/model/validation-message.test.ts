@@ -142,6 +142,18 @@ const ISSUES: {
     featureId: "w1",
     params: {},
   },
+  "building.levels.disagrees": {
+    level: "warning",
+    code: "building.levels.disagrees",
+    featureId: "b1",
+    params: {},
+  },
+  "facade.windows.no_candidate": {
+    level: "warning",
+    code: "facade.windows.no_candidate",
+    featureId: "b1",
+    params: {},
+  },
   "receiver.coordinates.invalid": {
     level: "error",
     code: "receiver.coordinates.invalid",

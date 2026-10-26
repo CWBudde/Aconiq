@@ -60,6 +60,7 @@ func Validate(model Model) ValidationReport {
 
 	// After the walk: a facade receiver may come before its building.
 	facades.resolve(model, &report)
+	facades.crossCheck(model, &report)
 
 	validateCRSPlausibility(model.ProjectCRS, allPoints, &report)
 

@@ -199,10 +199,15 @@ func writeModelNotFound(w http.ResponseWriter, err error) bool {
 // validationIssueResponse is one validation finding as the API reports it.
 // The level is left out: the list an issue sits in already says whether it is
 // an error or a warning.
+//
+// Facade names the facade of the building FeatureID names, for a finding
+// about one facade (facade.windows.no_candidate), so a client need not parse
+// the message to find it.
 type validationIssueResponse struct {
-	Code      string `json:"code"`
-	FeatureID string `json:"feature_id,omitempty"`
-	Message   string `json:"message"`
+	Code      string               `json:"code"`
+	FeatureID string               `json:"feature_id,omitempty"`
+	Facade    *issueFacadeResponse `json:"facade,omitempty"`
+	Message   string               `json:"message"`
 }
 
 // handleModelSave replaces the project model with the FeatureCollection in the
@@ -412,6 +417,7 @@ func validationIssuesResponse(issues []modelgeojson.ValidationIssue) []validatio
 		out = append(out, validationIssueResponse{
 			Code:      issue.Code,
 			FeatureID: issue.FeatureID,
+			Facade:    issueFacadeOf(issue.Facade),
 			Message:   issue.Message,
 		})
 	}

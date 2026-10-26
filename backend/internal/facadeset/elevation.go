@@ -23,14 +23,18 @@ import (
 // building of the model (window.facade.unresolved) is in no building's
 // elevation: nothing says which building it meant, and the validation report
 // lists it.
+//
+// Findings are what validation reports about the building as a whole, such
+// as a storey count its windows or its height disagree with (P18 D3).
 type BuildingElevation struct {
-	BuildingRef      string            `json:"building_ref"`
-	HeightM          float64           `json:"height_m"`
-	Levels           int               `json:"levels,omitempty"`
-	SlabHeightsM     []float64         `json:"slab_heights_m"`
-	SlabHeightSource string            `json:"slab_height_source"`
-	Facades          []FacadeElevation `json:"facades"`
-	Detached         []ElevationWindow `json:"detached"`
+	BuildingRef      string                         `json:"building_ref"`
+	HeightM          float64                        `json:"height_m"`
+	Levels           int                            `json:"levels,omitempty"`
+	SlabHeightsM     []float64                      `json:"slab_heights_m"`
+	SlabHeightSource string                         `json:"slab_height_source"`
+	Facades          []FacadeElevation              `json:"facades"`
+	Detached         []ElevationWindow              `json:"detached"`
+	Findings         []modelgeojson.ValidationIssue `json:"findings"`
 }
 
 // FacadeElevation is one facade: its canonical edge, with from / to in the
@@ -42,18 +46,21 @@ type BuildingElevation struct {
 // against, found by the probe facade mode drops a point by
 // (geo.PartyWallSpans): it places no station there, and a run over the facade
 // (a courtyard one only when courtyards are included) refuses a sensitive
-// window that is not rejected whose centre is on one.
+// window that is not rejected whose centre is on one. Findings are what
+// validation reports about this facade, such as windows on a facade another
+// building stands against from end to end (P18 D3).
 type FacadeElevation struct {
-	Part       int               `json:"part"`
-	Ring       int               `json:"ring"`
-	Edge       int               `json:"edge"`
-	From       [2]float64        `json:"from"`
-	To         [2]float64        `json:"to"`
-	LengthM    float64           `json:"length_m"`
-	FacingDeg  float64           `json:"facing_deg"`
-	Courtyard  bool              `json:"courtyard"`
-	PartyWalls []geo.FacadeSpan  `json:"party_walls"`
-	Windows    []ElevationWindow `json:"windows"`
+	Part       int                            `json:"part"`
+	Ring       int                            `json:"ring"`
+	Edge       int                            `json:"edge"`
+	From       [2]float64                     `json:"from"`
+	To         [2]float64                     `json:"to"`
+	LengthM    float64                        `json:"length_m"`
+	FacingDeg  float64                        `json:"facing_deg"`
+	Courtyard  bool                           `json:"courtyard"`
+	PartyWalls []geo.FacadeSpan               `json:"party_walls"`
+	Windows    []ElevationWindow              `json:"windows"`
+	Findings   []modelgeojson.ValidationIssue `json:"findings"`
 }
 
 // ElevationWindow is a window feature on the facade it names, with what
@@ -125,11 +132,13 @@ func Elevation(model modelgeojson.Model, buildingRef string) (BuildingElevation,
 			Courtyard:  key.Ring > 0,
 			PartyWalls: append([]geo.FacadeSpan{}, e.PartyWalls...),
 			Windows:    []ElevationWindow{},
+			Findings:   []modelgeojson.ValidationIssue{},
 		}
 		onEdge[[3]int{key.Part, key.Ring, key.Edge}] = i
 	}
 
 	findings := windowFindings(model)
+	elevation.Findings = buildingFindings(elevation.Facades, onEdge, findings[ref])
 
 	for _, f := range model.Features {
 		if f.Kind != modelgeojson.FeatureKindWindow {
@@ -176,8 +185,28 @@ func buildingFeature(model modelgeojson.Model, ref string) (modelgeojson.Feature
 	return modelgeojson.Feature{}, false
 }
 
+// buildingFindings sorts the building's own findings: those about one of its
+// facades go to that facade, and the rest are returned, the building's.
+func buildingFindings(facades []FacadeElevation, onEdge map[[3]int]int, findings []modelgeojson.ValidationIssue) []modelgeojson.ValidationIssue {
+	building := []modelgeojson.ValidationIssue{}
+
+	for _, issue := range findings {
+		if issue.Facade == nil {
+			building = append(building, issue)
+
+			continue
+		}
+
+		if i, exists := onEdge[[3]int{issue.Facade.Part, issue.Facade.Ring, issue.Facade.Edge}]; exists {
+			facades[i].Findings = append(facades[i].Findings, issue)
+		}
+	}
+
+	return building
+}
+
 // windowFindings is the validation report's errors and warnings, by feature
-// id.
+// id: a window's, and its building's.
 func windowFindings(model modelgeojson.Model) map[string][]modelgeojson.ValidationIssue {
 	report := modelgeojson.Validate(model)
 	byID := make(map[string][]modelgeojson.ValidationIssue)

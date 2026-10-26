@@ -77,6 +77,10 @@ export function validationIssueText(issue: ValidationIssue): string {
       return m.msg_validation_window_frame_outside();
     case "window.frame.above_building":
       return m.msg_validation_window_frame_above_building();
+    case "building.levels.disagrees":
+      return m.msg_validation_building_levels_disagrees();
+    case "facade.windows.no_candidate":
+      return m.msg_validation_facade_windows_no_candidate();
 
     case "source.rls19.surface_type.invalid":
       return m.msg_validation_source_rls19_surface_type_invalid(issue.params);

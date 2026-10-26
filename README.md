@@ -232,6 +232,12 @@ Only with `--allow-writes`:
 | `cancel_run` | Stop a run this server started                                                                                                                           |
 | `save_model` | Replace the whole model; `confirm` must be the hash of the model being replaced, or `none` on a project without one                                      |
 
+Only with `--allow-writes` and `--photo-transmission <reference>`:
+
+| Tool              | What it does                                                                                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `propose_windows` | Add windows read off a facade image as proposals, proposed and not sensitive, each with `evidence` naming the image; only new ids, and `confirm` as for `save_model` |
+
 Resources: `aconiq://project`, `aconiq://standards`, `aconiq://runs/{id}`,
 `aconiq://runs/{id}/provenance` (the run's `provenance.json` as recorded) and
 `aconiq://artifacts/{id}`.
@@ -243,6 +249,12 @@ Resources: `aconiq://project`, `aconiq://standards`, `aconiq://runs/{id}`,
 - `save_model`'s `confirm` binds the save to the model the agent read: a model that changed since
   is refused with `hash_mismatch`, not overwritten. A model that fails the GeoJSON schema is refused
   with its validation issues; nothing is corrected.
+- `propose_windows` exists only when the person starting the server records, with
+  `--photo-transmission`, the engagement's decision that site photos may be sent to the model
+  reading them: that is a disclosure of personal data (`docs/policies/data-handling.md`), and not
+  something an agent decides. The reference is stamped into each proposal's evidence and each audit
+  line. A proposal cannot be confirmed or marked sensitive, and never replaces a window; a person
+  reviews it in the facade elevation.
 - A scaffold-tier standard is refused unless `start_run` passes `experimental: true`, as on the CLI.
 - A normative run over facade receivers (`receiver_mode: "facade"`, or model receivers carrying a
   facade link) that are still proposed, or whose slab height is assumed, is refused unless

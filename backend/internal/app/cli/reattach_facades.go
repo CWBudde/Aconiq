@@ -1,12 +1,10 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"strings"
 
 	domainerrors "github.com/aconiq/backend/internal/domain/errors"
@@ -154,9 +152,9 @@ func proposeProjectReattachments(store projectfs.Store, maxShiftM float64) (proj
 		return projectReattachment{}, domainerrors.New(domainerrors.KindValidation, "cli.reattach-facades", "normalize model", err)
 	}
 
-	err = keepImportRecord(store, &model)
+	err = store.KeepImportRecord(&model)
 	if err != nil {
-		return projectReattachment{}, err
+		return projectReattachment{}, fmt.Errorf("keep the model's import record: %w", err)
 	}
 
 	reattachments, err := modelgeojson.ProposeFacadeReattachments(model, maxShiftM)
@@ -165,38 +163,6 @@ func proposeProjectReattachments(store projectfs.Store, maxShiftM float64) (proj
 	}
 
 	return projectReattachment{proj: proj, model: model, hash: hash, reattachments: reattachments}, nil
-}
-
-// keepImportRecord puts the saved model's import record back on a model read
-// from its normalized GeoJSON. That file carries the features only; the
-// source, import CRS, transform and time of the import live in the dump beside
-// it, and SaveModelIf rewrites the dump from the model it is given. Re-keying
-// a receiver is not an import, so the record must survive it. A project
-// without a dump has no record to keep; one whose dump does not read is
-// refused rather than overwritten.
-func keepImportRecord(store projectfs.Store, model *modelgeojson.Model) error {
-	raw, err := os.ReadFile(store.ModelArtifactPaths().Dump)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-
-	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.reattach-facades", "read model dump", err)
-	}
-
-	var dump modelgeojson.ModelDump
-
-	err = json.Unmarshal(raw, &dump)
-	if err != nil {
-		return domainerrors.New(domainerrors.KindInternal, "cli.reattach-facades", "decode model dump", err)
-	}
-
-	model.ImportCRS = dump.ImportCRS
-	model.TransformApplied = dump.TransformApplied
-	model.ImportedAt = dump.ImportedAt
-	model.SourcePath = dump.SourcePath
-
-	return nil
 }
 
 // save writes the proposed keys into the model, unless the model on disk is

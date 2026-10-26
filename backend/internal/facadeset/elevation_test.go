@@ -212,3 +212,60 @@ func TestElevationPartyWalls(t *testing.T) {
 		t.Errorf("Generate: err = %v, want the window against the party wall refused, and only it", err)
 	}
 }
+
+// The geometry cross-checks (P18 D3) reach the elevation where they belong: a
+// storey count the height disagrees with on the building, windows on a
+// facade a neighbour stands against from end to end on that facade. Both are
+// review flags, so a facade run over the building still places its points.
+func TestElevationCrossChecks(t *testing.T) {
+	t.Parallel()
+
+	shop := windowSpec("shop", 2, false, "")
+	shop.Edge = 2
+
+	model := windowModel(t, windowSpec("bed", 2, true, geo.ReviewStatusConfirmed), shop)
+	// 9 m over one storey: no storey is that tall.
+	model.Features[0].Properties = map[string]any{"building:levels": "1", "height_source": "measured"}
+
+	height := 6.0
+	model.Features = append(model.Features, modelgeojson.Feature{
+		ID: "neighbour", Kind: modelgeojson.FeatureKindBuilding, GeometryType: modelgeojson.GeometryTypePolygon,
+		HeightM: &height,
+		Coordinates: []any{[]any{
+			[]any{546999.0, 5795008.0},
+			[]any{547011.0, 5795008.0},
+			[]any{547011.0, 5795018.0},
+			[]any{546999.0, 5795018.0},
+			[]any{546999.0, 5795008.0},
+		}},
+	})
+
+	elevation, err := Elevation(model, "house")
+	if err != nil {
+		t.Fatalf("Elevation: %v", err)
+	}
+
+	if len(elevation.Findings) != 1 || elevation.Findings[0].Code != modelgeojson.CodeBuildingLevelsDisagree {
+		t.Errorf("building findings = %+v, want the storey count flagged", elevation.Findings)
+	}
+
+	for _, f := range elevation.Facades {
+		want := 0
+		if f.Edge == 2 {
+			want = 1
+		}
+
+		if len(f.Findings) != want || (want == 1 && f.Findings[0].Code != modelgeojson.CodeFacadeWindowsNoCandidate) {
+			t.Errorf("facade %d findings = %+v, want %d no-candidate flag(s)", f.Edge, f.Findings, want)
+		}
+	}
+
+	listed, _, err := Generate(houseRequest, rls19RoadID, model)
+	if err != nil {
+		t.Fatalf("Generate: %v, want the review flags not to refuse the run", err)
+	}
+
+	if !slices.ContainsFunc(listed.Receivers, func(r geo.PointReceiver) bool { return r.ID == "facade/house/p0r0e0/w/bed" }) {
+		t.Errorf("receivers = %+v, want the bed window's point", listed.Receivers)
+	}
+}

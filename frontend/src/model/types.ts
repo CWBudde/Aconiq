@@ -109,6 +109,15 @@ export interface ValidationIssueParams {
   "window.frame.above_building": NoIssueParams;
 
   /*
+   * The review flags that cross-check a building's windows against its
+   * geometry (P18 D3), the kernel's alone like the four above: a storey
+   * count its windows or its height disagree with, and windows on a facade a
+   * neighbour stands against from end to end. Warnings that never refuse.
+   */
+  "building.levels.disagrees": NoIssueParams;
+  "facade.windows.no_candidate": NoIssueParams;
+
+  /*
    * Self-intersection, mirroring `modelgeojson.checkSelfIntersection` — the
    * spellings are the backend's, deliberately, because two lists that mean the
    * same thing and say it differently are how this drifted in the first place.

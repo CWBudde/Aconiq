@@ -45,6 +45,8 @@ function plainIssue(finding: ElevationFinding): ValidationIssue | null {
     case "window.facade.moved":
     case "window.frame.outside":
     case "window.frame.above_building":
+    case "building.levels.disagrees":
+    case "facade.windows.no_candidate":
       return {
         level: finding.level,
         code: finding.code,
