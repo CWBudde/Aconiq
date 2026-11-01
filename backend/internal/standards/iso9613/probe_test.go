@@ -269,7 +269,9 @@ func TestEstimateIsWithinAFactorOfTheRun(t *testing.T) {
 	receivers := probeReceivers(20)
 
 	estimate, err := Estimate(t.Context(), receivers, sources, cfg, runestimate.Options{
-		Budget:  150 * time.Millisecond,
+		// The production budget, for the reason schall03's
+		// TestNormativeEstimateIsWithinAFactorOfTheRun gives.
+		Budget:  runestimate.DefaultBudget,
 		Workers: 1,
 	})
 	if err != nil {
