@@ -103,6 +103,20 @@ because a client is free to ignore annotations.
 | `delete_run`     | `DELETE /api/v1/runs/{id}`    | the run id                                      |
 | `import_terrain` | `POST /api/v1/import/terrain` | the current terrain's digest, or `none`         |
 
+How the two that are not `save_model` reach their route (SL-1.4, amended):
+
+- `delete_run` takes `run_id` and `confirm`, and the MCP layer compares the two itself: a `confirm`
+  that is not the run id is refused with `confirm_mismatch` before the API sees the call. The API's
+  own refusals (a run still being written, export bundles inside the run directory, no such run)
+  reach the agent in its words.
+- `import_terrain` takes the GeoTIFF as `path`, **relative to the project root**, never as file
+  content in the arguments: a DTM runs to tens of megabytes, which belong neither in the MCP stream
+  nor in the agent's context. The path must pass `filepath.IsLocal` and is opened through `os.Root`
+  on the project directory, so neither `..` nor a symlink reaches outside it (Security policy 3).
+  The file is read up to the API's 50 MB cap plus one byte and sent as the API's multipart upload,
+  with `confirm` as `expected_hash`. Whether it is a GeoTIFF, whether it is too large, and whether
+  the terrain changed since the agent read its hash stay the API's to judge.
+
 **Proposals from an image — `--allow-writes`, `--photo-transmission` and a matching `confirm`**
 (P18 D2, amended):
 
@@ -184,8 +198,8 @@ metadata plus a resource reference, never inline in a tool result.
    agent can read back. The model is always the project's saved model, the one `get_model` shows.
 7. **Audit log.** Every state-changing or destructive call is appended to
    `.noise/logs/mcp-audit.jsonl` as one JSON object: UTC timestamp, tool name, a SHA-256 digest of
-   the canonicalised arguments, the outcome (`ok` or the error `code`), and the affected run id or
-   model hash; a `propose_windows` line also names the `photo_transmission` decision. Argument values are not logged, only their digest: model payloads can be large and
+   the canonicalised arguments, the outcome (`ok` or the error `code`), and the affected run id,
+   model hash or terrain hash; a `propose_windows` line also names the `photo_transmission` decision. Argument values are not logged, only their digest: model payloads can be large and
    can carry customer geometry.
    The log is opened before the call is served: if it cannot be (a read-only disk, a permission),
    the call is refused with `audit_unavailable` and nothing is written, so no write happens
@@ -310,6 +324,7 @@ The implementation phases inherit these gaps, which the boundaries above make ne
   open decision about `POST /api/v1/validate` (`PLAN.md`, Open decisions → Behaviour and API). Until
   it is decided, validation happens on `save_model`.
 - **Audit log**: written since SL-1.2 for `save_model`, the first write tool, so no build offers an
-  unaudited write (`internal/mcpserver/audit.go`). SL-1.4 extends it to the run tools as they land.
+  unaudited write (`internal/mcpserver/audit.go`). SL-1.3 and SL-1.4 extended it to every
+  state-changing and destructive tool as it landed.
 - **Network imports** stay outside the first surface; adding them is a new decision, not a flag
   flip.
