@@ -2934,12 +2934,19 @@ never confirms, marks sensitive or replaces a window.
 Source matching uses the same evidence mechanism, but on nadir imagery. It comes after the
 windows, which are the user's immediate need.
 
+Live constraint (#147): which sources a run computes is `sourcereview.Review`'s on both targets,
+never the frontend's, and a source traced from imagery is `proposed` until a person confirms it.
+The orthophoto reaches the map from LGLN's WMS only; a feature references it by the GetMap request
+and the response's SHA-256, never by a copy (`data-handling.md`).
+
 - [ ] **E1 Road sources**: overlay OSM road lines on an orthophoto in the map, and let the user
       split roads into Fahrstreifen and correct lane count and position, with evidence recorded
       as in the data model. RLS-19 computes per Fahrstreifen, and OSM's `lanes=` is often missing in Linden.
-- [ ] **E2 Parking areas and rooftop plant**: draw RLS-19 Parkplätze and ISO 9613-2 / TA Lärm point
-      sources (Rückkühler, Lüftungsanlagen) from the orthophoto, with `review_status`, so a
-      source someone mapped from imagery is distinguishable from one taken from plans.
+      The overlay, the traced-source evidence and the review gate exist (E2); a split or corrected
+      road is a traced source like any other. Found on the way, not fixed: the OSM import copies
+      `lanes=`, which counts both directions, into `lanes`, and `resolveRLS19LaneCount` reads it as
+      `lane_count`, which is per direction group, so `SourceLineOffsetM` shifts a two-way `lanes=2`
+      way 1.75 m to the right. Correcting it moves normative levels, so it is breaking (P5).
 
 ### Phase F — Pilot: a Linden-Mitte row house
 
