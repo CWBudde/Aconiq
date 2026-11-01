@@ -3091,8 +3091,6 @@ change to any of them amends the ADR first.
 
 ### Subphase SL-1.4 — Evidence and documentation
 
-Every ADR-002 tool is served and audited (#124, #132, #146); nothing is open here.
-
 Live constraint (#132, #146): every tool's input schema is pinned in
 `internal/mcpserver/testdata/tools-*.golden.json`, and every tool that takes arguments has its
 refusals in `TestEveryToolRefusesArgumentsItsSchemaDoesNot`, which fails when a listed tool is
