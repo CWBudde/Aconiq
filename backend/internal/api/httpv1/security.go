@@ -82,6 +82,12 @@ const (
 	maxTerrainMemoryBytes = 8 << 20  // buffered in memory; the rest would spill to a temp file
 )
 
+// MaxTerrainUploadBytes is the cap on a terrain upload's whole multipart body.
+// The MCP layer's import_terrain reads a project file up to it plus one byte
+// and leaves the refusal to this handler, so the two must share one value: a
+// smaller copy there would truncate a file into a body this cap admits.
+const MaxTerrainUploadBytes = maxTerrainUploadBytes
+
 // allowedOverpassHosts is the set of Overpass API servers the HTTP API may be
 // pointed at. `overpass_endpoint` arrives in a request body, so without this the
 // endpoint is a general-purpose HTTP client for whoever can reach the API: an

@@ -53,28 +53,37 @@ func (r apiResponse) toolResult() *mcp.CallToolResult {
 }
 
 func (c apiClient) get(ctx context.Context, path string) (apiResponse, error) {
-	return c.do(ctx, http.MethodGet, path, nil)
+	return c.do(ctx, http.MethodGet, path, "", nil)
 }
 
 func (c apiClient) postJSON(ctx context.Context, path string, body []byte) (apiResponse, error) {
-	return c.do(ctx, http.MethodPost, path, body)
-}
-
-func (c apiClient) do(ctx context.Context, method string, path string, body []byte) (apiResponse, error) {
-	var reader io.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
+	if body == nil {
+		return c.do(ctx, http.MethodPost, path, "", nil)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, "http://"+loopbackHost+path, reader)
+	return c.do(ctx, http.MethodPost, path, "application/json", bytes.NewReader(body))
+}
+
+func (c apiClient) delete(ctx context.Context, path string) (apiResponse, error) {
+	return c.do(ctx, http.MethodDelete, path, "", nil)
+}
+
+// postStream posts body as it is read, declared as contentType: a terrain
+// upload is streamed into the handler rather than held twice in memory.
+func (c apiClient) postStream(ctx context.Context, path string, contentType string, body io.Reader) (apiResponse, error) {
+	return c.do(ctx, http.MethodPost, path, contentType, body)
+}
+
+func (c apiClient) do(ctx context.Context, method string, path string, contentType string, body io.Reader) (apiResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, method, "http://"+loopbackHost+path, body)
 	if err != nil {
 		return apiResponse{}, fmt.Errorf("build %s %s: %w", method, path, err)
 	}
 
 	req.Host = loopbackHost
 
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 
 	if method != http.MethodGet {

@@ -39,6 +39,8 @@ const (
 	toolEstimateRun   = "estimate_run"
 	toolStartRun      = "start_run"
 	toolCancelRun     = "cancel_run"
+	toolDeleteRun     = "delete_run"
+	toolImportTerrain = "import_terrain"
 	// toolProposeWindows is offered only to a server started with a photo
 	// transmission decision (Options.PhotoTransmission).
 	toolProposeWindows = "propose_windows"
@@ -49,12 +51,20 @@ const (
 	// errorCodeConfirmRequired refuses a destructive call that names no state
 	// it read.
 	errorCodeConfirmRequired = "confirm_required"
+	// errorCodeConfirmMismatch refuses a delete_run whose confirm is not the
+	// run it names.
+	errorCodeConfirmMismatch = "confirm_mismatch"
+	// errorCodeInvalidPath refuses an import_terrain path that is not a file
+	// inside the project.
+	errorCodeInvalidPath = "invalid_path"
 	// errorCodeInvalidArguments refuses arguments the tool's input schema does
 	// not accept.
 	errorCodeInvalidArguments = "invalid_arguments"
 	// errorCodeAuditUnavailable refuses a state-changing call whose audit
 	// entry could not be opened, so that no write happens unaudited.
 	errorCodeAuditUnavailable = "audit_unavailable"
+	// errorCodeInternal is a call this layer could not serve at all.
+	errorCodeInternal = "internal_error"
 )
 
 // Options configures the server.
@@ -68,6 +78,10 @@ type Options struct {
 	// AuditPath is the JSONL file every state-changing call is appended to.
 	// Required when AllowWrites is set.
 	AuditPath string
+	// ProjectRoot is the directory of the project the handler serves. Required
+	// when AllowWrites is set: import_terrain reads its file from inside it and
+	// from nowhere else.
+	ProjectRoot string
 	// PhotoTransmission is the reference to the per-engagement decision under
 	// which a site photo may be sent to the model that reads windows off it
 	// (P18 D2; docs/policies/data-handling.md). It is the person starting the
@@ -112,6 +126,7 @@ func New(handler http.Handler, opts Options) (*mcp.Server, error) {
 		api:               apiClient{handler: handler},
 		audit:             &auditLog{path: opts.AuditPath, clock: clock},
 		logger:            logger,
+		projectRoot:       opts.ProjectRoot,
 		photoTransmission: strings.TrimSpace(opts.PhotoTransmission),
 	}
 
@@ -171,6 +186,10 @@ func checkOptions(opts Options) error {
 		return errors.New("mcpserver: writes need an audit log path")
 	}
 
+	if opts.AllowWrites && opts.ProjectRoot == "" {
+		return errors.New("mcpserver: writes need the project root")
+	}
+
 	if opts.PhotoTransmission == "" {
 		return nil
 	}
@@ -217,6 +236,11 @@ func (t tools) addWriteTools(server *mcp.Server, proposals bool) error {
 		return err
 	}
 
+	err = t.addDestructiveTools(server)
+	if err != nil {
+		return err
+	}
+
 	if !proposals {
 		return nil
 	}
@@ -237,7 +261,7 @@ func instructions(allowWrites, proposals bool) string {
 		return common + " This server was started read-only (without --allow-writes): no tool changes the project, and none is listed."
 	}
 
-	writes := common + " Writes are enabled (--allow-writes): start_run and cancel_run, and save_model. Every state-changing call is recorded in the project's MCP audit log. " +
+	writes := common + " Writes are enabled (--allow-writes): start_run and cancel_run, and the destructive save_model, delete_run and import_terrain. Every state-changing call is recorded in the project's MCP audit log. " +
 		"Destructive tools require confirm, a value you must have read first. Runs this server started are stopped when it exits."
 
 	if !proposals {
@@ -252,6 +276,8 @@ type tools struct {
 	api    apiClient
 	audit  *auditLog
 	logger *slog.Logger
+	// projectRoot is Options.ProjectRoot.
+	projectRoot string
 	// photoTransmission is Options.PhotoTransmission, trimmed.
 	photoTransmission string
 }
@@ -418,7 +444,7 @@ func invalidArguments(tool string, err error, hint string) served {
 
 // internalError is a call this layer could not serve at all.
 func internalError(err error) served {
-	return served{result: toolError{Code: "internal_error", Message: err.Error()}.result(), outcome: "internal_error"}
+	return served{result: toolError{Code: errorCodeInternal, Message: err.Error()}.result(), outcome: errorCodeInternal}
 }
 
 // serveSaveModel validates and serves one save_model call.
