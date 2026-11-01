@@ -2861,7 +2861,15 @@ flags that refuse neither a save nor a run, shown in the elevation with the buil
 concern: `building.levels.disagrees` (a facade's window sills in more rows than `building:levels`, or
 a height not derived from the count giving a storey outside 2.2–4.5 m) and
 `facade.windows.no_candidate` (windows on a facade another footprint covers end to end); a window
-outside its facade was already reported (D3, #145).
+outside its facade was already reported (D3, #145). The map shows LGLN's DOP20 orthophoto over the
+basemap, straight from LGLN's open WMS and never stored. A source drawn over it and ticked as traced
+is saved `proposed`, with an `orthophoto` evidence entry: the GetMap request for its padded area in
+the project CRS and the SHA-256 of the response, or why there is none. The feature editor confirms or
+rejects it; the map dashes proposed sources and fades rejected ones. `internal/sourcereview` decides
+on both targets which sources a run computes (the kernel's `reviewSources`): a rejected one is left
+out, and a normative run over a proposed one is refused without `--allow-unconfirmed`, with
+`source_proposed_count` / `source_rejected_count` in provenance, the run summary and the report
+(E2, #147).
 LGLN LoD2 carries building `gml:id`s but no
 openings, and Lower Saxony does not publish LoD3. The footprint mask
 (`geo.MaskPointsInFootprints`) is strict-interior, so a point 5 cm in front of a facade is kept,
