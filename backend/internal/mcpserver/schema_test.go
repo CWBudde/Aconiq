@@ -74,7 +74,7 @@ var argumentlessTools = []string{"list_runs", "list_standards", "project_status"
 // auditedTools are registered with the low-level AddTool so that a refused
 // call is still audited; they refuse with the layer's invalid_arguments
 // envelope. The SDK refuses the arguments of every other tool itself.
-var auditedTools = []string{"cancel_run", "propose_windows", "save_model", "start_run"}
+var auditedTools = []string{"cancel_run", "delete_run", "import_terrain", "propose_windows", "save_model", "start_run"}
 
 // refusedArguments are, per tool that takes arguments, argument sets its
 // input schema does not accept: a required field missing, a field of the
@@ -110,6 +110,9 @@ func refusedArguments() map[string]map[string]map[string]any {
 	// read tools answer an empty one as the API's not_found.
 	cancelRefusals := maps.Clone(runIDRefusals)
 	cancelRefusals["empty run_id"] = map[string]any{"run_id": ""}
+
+	deleteRun := map[string]any{"run_id": "run-1", "confirm": "run-1"}
+	terrain := map[string]any{"path": "dtm.tif", "confirm": "none"}
 
 	runRequestRefusals := map[string]map[string]any{
 		"missing standard_id":           without(runRequest, "standard_id"),
@@ -149,6 +152,23 @@ func refusedArguments() map[string]map[string]map[string]any {
 		"estimate_run": runRequestRefusals,
 		"start_run":    runRequestRefusals,
 		"cancel_run":   cancelRefusals,
+		"delete_run": {
+			"missing run_id":   without(deleteRun, "run_id"),
+			"missing confirm":  without(deleteRun, "confirm"),
+			"empty run_id":     with(deleteRun, "run_id", ""),
+			"numeric run_id":   with(deleteRun, "run_id", 7),
+			"confirm as true":  with(deleteRun, "confirm", true),
+			"unknown property": with(deleteRun, "force", true),
+		},
+		"import_terrain": {
+			"missing path":     without(terrain, "path"),
+			"missing confirm":  without(terrain, "confirm"),
+			"empty path":       with(terrain, "path", ""),
+			"path as an array": with(terrain, "path", []string{"dtm.tif"}),
+			"numeric confirm":  with(terrain, "confirm", 0),
+			"file content":     with(terrain, "data", "SUkqAA=="),
+			"a project path":   with(terrain, "project", "/tmp/other"),
+		},
 		"propose_windows": {
 			"missing windows":           without(propose, "windows"),
 			"missing confirm":           without(propose, "confirm"),

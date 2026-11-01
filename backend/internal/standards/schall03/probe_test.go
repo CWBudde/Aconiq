@@ -485,7 +485,11 @@ func TestNormativeEstimateIsWithinAFactorOfTheRun(t *testing.T) {
 
 	receivers, scene := probeNormativeScene(t, 8000, 10)
 
-	estimate, err := EstimateNormative(t.Context(), receivers, scene, runestimate.Options{Budget: 200 * time.Millisecond, Workers: 1})
+	// The production budget, not a shorter one: the probe charges counting the
+	// run's units and its warm-up to the budget, and on a slow runner a 200 ms
+	// budget left four units timed (#146), too few to hold to a factor. It
+	// ends once its sample is timed, so a fast machine pays nothing for it.
+	estimate, err := EstimateNormative(t.Context(), receivers, scene, runestimate.Options{Budget: runestimate.DefaultBudget, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +511,8 @@ func TestPreviewEstimateIsWithinAFactorOfTheRun(t *testing.T) {
 	receivers, sources := probePreviewScene(60, 12)
 	cfg, pack := DefaultPropagationConfig(), BuiltinDataPack()
 
-	estimate, err := EstimatePreview(t.Context(), receivers, sources, cfg, pack, runestimate.Options{Budget: 150 * time.Millisecond, Workers: 1})
+	// The production budget, for the reason TestNormativeEstimateIsWithinAFactorOfTheRun gives.
+	estimate, err := EstimatePreview(t.Context(), receivers, sources, cfg, pack, runestimate.Options{Budget: runestimate.DefaultBudget, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

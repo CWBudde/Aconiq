@@ -128,6 +128,7 @@ func runMCP(cmd *cobra.Command, allowWrites bool, photoTransmission string) erro
 		AllowWrites:       allowWrites,
 		Version:           buildinfo.Version(),
 		AuditPath:         store.MCPAuditLogPath(),
+		ProjectRoot:       store.Root(),
 		Logger:            state.Logger,
 		PhotoTransmission: photoTransmission,
 	})

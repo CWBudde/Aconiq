@@ -175,10 +175,11 @@ Errors use a single JSON envelope (`code`, `message`, `details`, `hint`).
 `aconiq mcp` serves one project to an AI agent over the
 [Model Context Protocol](https://modelcontextprotocol.io). It speaks MCP over stdin and stdout and
 opens no socket. The project is the one `--project` names, fixed for the life of the process, and
-no tool takes a path. Each tool is a thin adapter over the local HTTP API, served in process: a
+no tool takes a project path. The one file path a tool takes, `import_terrain`'s, is relative to
+the project root and cannot leave it. Each tool is a thin adapter over the local HTTP API, served in process: a
 call it forwards is judged by the API and answered with the API's own JSON, error envelope
 included. Before forwarding, the MCP layer refuses arguments the tool's input schema does not
-accept — a missing required field, a wrong type, an unknown property — and a `save_model`
+accept — a missing required field, a wrong type, an unknown property — and a destructive call
 without `confirm`. `start_run` and `estimate_run` require the scenario, standard, version, profile
 and receiver mode, non-empty, where the CLI would default them. stdout carries the protocol
 and nothing else; logs go to stderr.
@@ -189,7 +190,7 @@ With Claude Code:
 
 ```bash
 claude mcp add aconiq -- aconiq mcp --project /path/to/project
-# or, to let the agent save the model and start runs:
+# or, to let the agent save the model, start and delete runs, and import a terrain:
 claude mcp add aconiq -- aconiq mcp --project /path/to/project --allow-writes
 ```
 
@@ -226,11 +227,13 @@ Always offered (read-only):
 
 Only with `--allow-writes`:
 
-| Tool         | What it does                                                                                                                                             |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `start_run`  | Start a run of the saved model; scenario, standard, version, profile and receiver mode (`auto-grid`, `custom` or `facade`) are required, never defaulted |
-| `cancel_run` | Stop a run this server started                                                                                                                           |
-| `save_model` | Replace the whole model; `confirm` must be the hash of the model being replaced, or `none` on a project without one                                      |
+| Tool             | What it does                                                                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start_run`      | Start a run of the saved model; scenario, standard, version, profile and receiver mode (`auto-grid`, `custom` or `facade`) are required, never defaulted                                    |
+| `cancel_run`     | Stop a run this server started                                                                                                                                                              |
+| `save_model`     | Replace the whole model; `confirm` must be the hash of the model being replaced, or `none` on a project without one                                                                         |
+| `delete_run`     | Delete a finished run and its directory, keeping export bundles; `confirm` must repeat `run_id`                                                                                             |
+| `import_terrain` | Replace the terrain with a GeoTIFF inside the project, named by its `path` relative to the project root; `confirm` must be the terrain hash `project_status` reports, or `none` without one |
 
 Only with `--allow-writes` and `--photo-transmission <reference>`:
 
@@ -249,6 +252,11 @@ Resources: `aconiq://project`, `aconiq://standards`, `aconiq://runs/{id}`,
 - `save_model`'s `confirm` binds the save to the model the agent read: a model that changed since
   is refused with `hash_mismatch`, not overwritten. A model that fails the GeoJSON schema is refused
   with its validation issues; nothing is corrected.
+- `delete_run` and `import_terrain` are destructive too. `delete_run` deletes nothing unless
+  `confirm` repeats the run id, and a run still being written is refused. `import_terrain`'s
+  `confirm` is the terrain hash `project_status` reports, so a terrain replaced since is refused
+  with `hash_mismatch`. Its `path` must name a file inside the project: an absolute path, a `..`
+  climb out of it, or a symlink that leads out of it is refused before anything is read.
 - `propose_windows` exists only when the person starting the server records, with
   `--photo-transmission`, the engagement's decision that site photos may be sent to the model
   reading them: that is a disclosure of personal data (`docs/policies/data-handling.md`), and not
@@ -281,6 +289,9 @@ The boundaries, the security policy and the exposed fields are specified in
   list the five loudest receivers by night." (needs `--allow-writes`)
 - "Give me the 5 dB contours of the latest grid run in EPSG:4326."
 - "Why did the last run fail? Read its log."
+- "Delete the failed runs from last week." (needs `--allow-writes`)
+- "Import `dtm/dgm1.tif` as the project's terrain." (needs `--allow-writes`; the file must already
+  be inside the project)
 
 ## Scope Boundaries
 

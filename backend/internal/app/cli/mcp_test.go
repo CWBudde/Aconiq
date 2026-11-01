@@ -3,6 +3,8 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -588,12 +590,59 @@ func TestMCPStartsARunAndReadsItsResults(t *testing.T) {
 		t.Fatalf("an estimate created a run: %.300s", text)
 	}
 
+	// The finished run is deleted with its directory, once confirm repeats
+	// its id.
+	text, isError = session.callTool(t, "delete_run", map[string]any{"run_id": started.ID, "confirm": started.ID})
+	if isError || !strings.Contains(text, started.ID) {
+		t.Fatalf("delete_run (is_error %v): %s", isError, text)
+	}
+
+	if text, _ := session.callTool(t, "list_runs", map[string]any{}); strings.Contains(text, started.ID) {
+		t.Fatalf("list_runs after delete_run: %.300s", text)
+	}
+
+	_, err = os.Stat(filepath.Join(projectDir, ".noise", "runs", started.ID))
+	if !os.IsNotExist(err) {
+		t.Fatalf("the run directory survived delete_run (%v)", err)
+	}
+
+	// A DTM inside the project becomes the terrain, read from the path given.
+	err = os.MkdirAll(filepath.Join(projectDir, "dtm"), 0o750)
+	if err != nil {
+		t.Fatalf("create dtm directory: %v", err)
+	}
+
+	writeFlatGeoTIFF(t, filepath.Join(projectDir, "dtm", "flat.tif"), 4, 3, 499990, 5800020, 10, 55.25)
+
+	text, isError = session.callTool(t, "import_terrain", map[string]any{"path": "dtm/flat.tif", "confirm": "none"})
+	if isError {
+		t.Fatalf("import_terrain: %s", text)
+	}
+
+	terrainHash := sha256OfFile(t, filepath.Join(projectDir, "dtm", "flat.tif"))
+	if text, _ := session.callTool(t, "project_status", map[string]any{}); !strings.Contains(text, terrainHash) {
+		t.Fatalf("project_status after import_terrain names no terrain %s: %.400s", terrainHash, text)
+	}
+
 	rest, err := session.finish(t, done)
 	if err != nil || len(rest) != 0 {
 		t.Fatalf("aconiq mcp: %v, trailing stdout %q", err, rest)
 	}
 
-	assertAuditedRunTools(t, projectDir, started.ID)
+	assertAuditedRunTools(t, projectDir, started.ID, terrainHash)
+}
+
+func sha256OfFile(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	sum := sha256.Sum256(data)
+
+	return hex.EncodeToString(sum[:])
 }
 
 // awaitMCPRun polls get_run, as an agent does, until the run has ended, and
@@ -631,8 +680,9 @@ func awaitMCPRun(t *testing.T, session *mcpSession, runID string) string {
 }
 
 // assertAuditedRunTools checks the audit log recorded the start, with the run
-// it started, and the refused cancel, with the code it was refused with.
-func assertAuditedRunTools(t *testing.T, projectDir string, runID string) {
+// it started, the refused cancel, with the code it was refused with, the
+// delete of that run, and the terrain import, with the terrain it left.
+func assertAuditedRunTools(t *testing.T, projectDir string, runID string, terrainHash string) {
 	t.Helper()
 
 	store, err := projectfs.New(projectDir)
@@ -658,9 +708,11 @@ func assertAuditedRunTools(t *testing.T, projectDir string, runID string) {
 		entries = append(entries, entry)
 	}
 
-	if len(entries) != 2 ||
+	if len(entries) != 4 ||
 		entries[0]["tool"] != "start_run" || entries[0]["outcome"] != "ok" || entries[0]["run_id"] != runID ||
-		entries[1]["tool"] != "cancel_run" || entries[1]["outcome"] != "run_not_running" || entries[1]["run_id"] != runID {
+		entries[1]["tool"] != "cancel_run" || entries[1]["outcome"] != "run_not_running" || entries[1]["run_id"] != runID ||
+		entries[2]["tool"] != "delete_run" || entries[2]["outcome"] != "ok" || entries[2]["run_id"] != runID ||
+		entries[3]["tool"] != "import_terrain" || entries[3]["outcome"] != "ok" || entries[3]["terrain_hash"] != terrainHash {
 		t.Fatalf("audit = %v", entries)
 	}
 }

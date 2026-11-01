@@ -231,8 +231,13 @@ func TestRunIDArgumentsCannotLeaveTheirRoute(t *testing.T) {
 	}
 
 	for _, id := range []string{"..", ".", "..%2F..%2Fmodel", "../../model", "a/b", ""} {
-		for _, tool := range []string{"get_run", "get_run_log", "get_contours", "get_run_results", "cancel_run"} {
-			result := f.call(t, tool, map[string]any{"run_id": id})
+		for _, tool := range []string{"get_run", "get_run_log", "get_contours", "get_run_results", "cancel_run", "delete_run"} {
+			args := map[string]any{"run_id": id}
+			if tool == "delete_run" {
+				args["confirm"] = id
+			}
+
+			result := f.call(t, tool, args)
 
 			text := resultText(t, result)
 			if strings.Contains(text, "FeatureCollection") {
@@ -240,9 +245,9 @@ func TestRunIDArgumentsCannotLeaveTheirRoute(t *testing.T) {
 			}
 
 			// Not a redirect or any other route's answer: the id names no
-			// run. cancel_run's schema refuses an empty id before that.
+			// run. cancel_run's and delete_run's schemas refuse an empty id before that.
 			want := "not_found"
-			if tool == "cancel_run" && id == "" {
+			if (tool == "cancel_run" || tool == "delete_run") && id == "" {
 				want = "invalid_arguments"
 			}
 

@@ -104,6 +104,7 @@ func newFixtureWith(t *testing.T, opts mcpserver.Options, wrap func(http.Handler
 
 	opts.Version = "test"
 	opts.AuditPath = store.MCPAuditLogPath()
+	opts.ProjectRoot = store.Root()
 	opts.Clock = func() time.Time { return fixedNow }
 
 	server, err := mcpserver.New(served, opts)
@@ -297,8 +298,8 @@ func TestToolsListedFollowTheWriteGate(t *testing.T) {
 	writable := listTools(t, newFixture(t, true).session)
 
 	if names := slices.Sorted(maps.Keys(writable)); !slices.Equal(names, []string{
-		"cancel_run", "estimate_run", "get_contours", "get_model", "get_run", "get_run_log", "get_run_results",
-		"list_runs", "list_standards", "project_status", "propose_windows", "save_model", "start_run", "transform",
+		"cancel_run", "delete_run", "estimate_run", "get_contours", "get_model", "get_run", "get_run_log", "get_run_results",
+		"import_terrain", "list_runs", "list_standards", "project_status", "propose_windows", "save_model", "start_run", "transform",
 	}) {
 		t.Fatalf("writable server lists %v", names)
 	}

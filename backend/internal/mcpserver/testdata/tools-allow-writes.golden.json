@@ -23,6 +23,34 @@
     }
   },
   {
+    "name": "delete_run",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm": {
+          "description": "The run id again. A delete is refused unless confirm repeats run_id.",
+          "type": "string"
+        },
+        "run_id": {
+          "description": "The run's id, as list_runs returned it.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "confirm"
+      ],
+      "type": "object"
+    }
+  },
+  {
     "name": "estimate_run",
     "annotations": {
       "idempotentHint": false,
@@ -213,6 +241,34 @@
       },
       "required": [
         "run_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "import_terrain",
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false
+    },
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "confirm": {
+          "description": "The hash of the terrain being replaced, as project_status returned it, or none when the project has no terrain yet.",
+          "type": "string"
+        },
+        "path": {
+          "description": "The GeoTIFF (.tif or .tiff) to import, relative to the project root; it cannot leave the project. Its elevations must be in the project CRS.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "confirm"
       ],
       "type": "object"
     }

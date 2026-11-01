@@ -34,7 +34,8 @@ Rationale:
 - `.noise/logs/` : shared logs
   - `mcp-audit.jsonl` : one JSON object per state-changing `aconiq mcp` tool call (`time`, `tool`,
     `args_sha256`, `outcome`, `model_hash` after a successful `save_model` or `propose_windows`,
-    `run_id` for `start_run` and `cancel_run`, and `photo_transmission` for `propose_windows`);
+    `run_id` for `start_run`, `cancel_run` and `delete_run`, `terrain_hash` after a successful
+    `import_terrain`, and `photo_transmission` for `propose_windows`);
     argument values are
     recorded only as the SHA-256 of their canonical JSON
 

@@ -39,15 +39,19 @@ type auditEntry struct {
 	// RunID is the run a run tool started or asked to stop, as the call named
 	// it.
 	RunID string `json:"run_id,omitempty"`
+	// TerrainHash is the terrain a successful import_terrain left in place.
+	TerrainHash string `json:"terrain_hash,omitempty"`
 	// PhotoTransmission is the per-engagement decision a propose_windows
 	// call was made under (Options.PhotoTransmission).
 	PhotoTransmission string `json:"photo_transmission,omitempty"`
 }
 
 // affected is what a state-changing call touched, for its audit entry: the
-// model a save left in place, or the run a run tool acted on.
+// model a save or the terrain an import left in place, or the run a run tool
+// acted on.
 type affected struct {
 	modelHash         string
+	terrainHash       string
 	runID             string
 	photoTransmission string
 }
@@ -90,12 +94,13 @@ func (a *auditLog) open() (*pendingEntry, error) {
 // opened entry, whatever the call's outcome.
 func (p *pendingEntry) finish(tool string, arguments json.RawMessage, outcome string, touched affected) error {
 	line, err := json.Marshal(auditEntry{
-		Time:       p.log.clock().UTC().Format(time.RFC3339),
-		Tool:       tool,
-		ArgsSHA256: argumentsDigest(arguments),
-		Outcome:    outcome,
-		ModelHash:  touched.modelHash,
-		RunID:      touched.runID,
+		Time:        p.log.clock().UTC().Format(time.RFC3339),
+		Tool:        tool,
+		ArgsSHA256:  argumentsDigest(arguments),
+		Outcome:     outcome,
+		ModelHash:   touched.modelHash,
+		RunID:       touched.runID,
+		TerrainHash: touched.terrainHash,
 
 		PhotoTransmission: touched.photoTransmission,
 	})
