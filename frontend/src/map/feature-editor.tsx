@@ -99,6 +99,12 @@ import {
   SCHALL03_SURFACE_TYPES,
   SCHALL03_WALL_SURFACES,
 } from "@/model/schall03";
+import {
+  sourceEvidence,
+  sourceReviewStatus,
+  withSourceReviewStatus,
+  type SourceReviewStatus,
+} from "@/model/source-review";
 import { MapPanel } from "./map-panel";
 import { m } from "@/i18n/messages";
 
@@ -632,6 +638,9 @@ function SourceFields({ feature }: { feature: ModelFeature }) {
   return (
     <div className="space-y-3">
       <DerivedSourceType feature={feature} derived={derived} />
+      {sourceReviewStatus(feature) !== undefined ? (
+        <SourceReviewFields feature={feature} />
+      ) : null}
       {derived === "line" ? (
         <>
           <RLS19RoadFields feature={feature} />
@@ -886,6 +895,106 @@ function AcousticsReviewNotice({ feature }: { feature: ModelFeature }) {
           : m.action_mark_acoustics_reviewed()}
       </Button>
     </div>
+  );
+}
+
+const REVIEW_OPTIONS: { status: SourceReviewStatus; label: () => string }[] = [
+  { status: "proposed", label: m.option_review_proposed },
+  { status: "confirmed", label: m.option_review_confirmed },
+  { status: "rejected", label: m.option_review_rejected },
+];
+
+/**
+ * A source traced from imagery (P18 E2): its review state, which a person sets
+ * here, and the evidence it was read from, which nobody edits. Three pressed
+ * buttons rather than a select, like the basemap picker: the states are few,
+ * exclusive, and each is one click.
+ */
+function SourceReviewFields({ feature }: { feature: ModelFeature }) {
+  const updateFeature = useModelStore((s) => s.updateFeature);
+  const status = sourceReviewStatus(feature);
+  const evidence = sourceEvidence(feature);
+
+  return (
+    <FieldSection
+      title={m.label_source_review()}
+      note={m.msg_source_review_note()}
+    >
+      <div
+        role="group"
+        aria-label={m.label_source_review()}
+        className="grid grid-cols-3 gap-0.5"
+      >
+        {REVIEW_OPTIONS.map((option) => {
+          const active = status === option.status;
+          return (
+            <Button
+              key={option.status}
+              variant={active ? "default" : "outline"}
+              size="sm"
+              className="h-7 px-2 text-xs"
+              aria-pressed={active}
+              onClick={() => {
+                if (!active) {
+                  updateFeature(withSourceReviewStatus(feature, option.status));
+                }
+              }}
+            >
+              {option.label()}
+            </Button>
+          );
+        })}
+      </div>
+      {evidence.length > 0 ? (
+        <FieldGroup label={m.label_source_evidence()}>
+          <ul className="space-y-1.5">
+            {evidence.map((entry, index) => (
+              <EvidenceEntry key={index} entry={entry} />
+            ))}
+          </ul>
+        </FieldGroup>
+      ) : null}
+    </FieldSection>
+  );
+}
+
+function EvidenceEntry({ entry }: { entry: Record<string, unknown> }) {
+  const text = (key: string): string | undefined => {
+    const value = entry[key];
+    return typeof value === "string" && value !== "" ? value : undefined;
+  };
+  const sourceId = text("source_id");
+  const hash = text("content_sha256");
+  const note = text("note");
+
+  return (
+    <li className="space-y-0.5 text-2xs leading-relaxed text-muted-foreground">
+      <p>
+        <span className="font-medium text-foreground">
+          {text("kind") ?? "?"}
+        </span>
+        {text("retrieved_at") !== undefined
+          ? ` · ${text("retrieved_at") ?? ""}`
+          : ""}
+      </p>
+      {text("attribution") !== undefined ? <p>{text("attribution")}</p> : null}
+      {sourceId?.startsWith("https://") === true ? (
+        <a
+          href={sourceId}
+          target="_blank"
+          rel="noreferrer"
+          className="block truncate underline"
+        >
+          {sourceId}
+        </a>
+      ) : null}
+      {hash !== undefined ? (
+        <p className="font-mono">{`sha256 ${hash.slice(0, 16)}…`}</p>
+      ) : null}
+      {hash === undefined && note !== undefined ? (
+        <p className="text-warning">{m.msg_evidence_no_hash({ note })}</p>
+      ) : null}
+    </li>
   );
 }
 

@@ -741,6 +741,16 @@
   "section_basemap": "Hintergrundkarte",
   "label_orthophoto": "Luftbild (LGLN)",
   "msg_orthophoto_failed": "Das Luftbild konnte nicht geladen werden. Es braucht eine Verbindung zum LGLN.",
+  "label_traced_from_orthophoto": "Aus dem Luftbild abgezeichnet",
+  "msg_traced_from_orthophoto_help": "Wird als Vorschlag gespeichert, mit Bildausschnitt und dessen Hash als Nachweis. Eine normative Berechnung lehnt ihn ab, bis jemand ihn bestätigt.",
+  "status_saving_traced_source": "Bild wird festgehalten…",
+  "label_source_review": "Prüfung",
+  "msg_source_review_note": "Aus Bildmaterial erfasst. Eine normative Berechnung lehnt eine vorgeschlagene Quelle ohne Zustimmung ab und lässt eine verworfene weg.",
+  "option_review_proposed": "Vorgeschlagen",
+  "option_review_confirmed": "Bestätigt",
+  "option_review_rejected": "Verworfen",
+  "label_source_evidence": "Nachweis",
+  "msg_evidence_no_hash": "Kein Bild-Hash: {note}",
   "label_basemap_light": "Hell",
   "label_basemap_bright": "Kräftig",
   "label_basemap_dark": "Dunkel",
@@ -892,7 +902,17 @@
   "msg_facade_spacing_help": "Pflichtangabe. Es gibt keinen Vorgabewert: wie dicht eine Fassade abgetastet wird, entscheiden Sie.",
   "label_facade_courtyard": "Hoffassaden einbeziehen",
   "label_allow_unconfirmed": "Auch über unbestätigte Punkte rechnen",
-  "msg_allow_unconfirmed_help": "Erzeugte Fassadenpunkte sind Vorschläge, bis jemand sie bestätigt. Eine normative Berechnung lehnt sie ohne diese Zustimmung ab; ihre Anzahl wird dann mit dem Ergebnis festgehalten.",
+  "msg_allow_unconfirmed_help": "Erzeugte Fassadenpunkte und aus Bildmaterial abgezeichnete Quellen sind Vorschläge, bis jemand sie bestätigt. Eine normative Berechnung lehnt sie ohne diese Zustimmung ab; ihre Anzahl wird dann mit dem Ergebnis festgehalten.",
+  "msg_proposed_sources": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} aus Bildmaterial abgezeichnete Quelle ist noch ein Vorschlag.",
+        "countPlural=other": "{count} aus Bildmaterial abgezeichnete Quellen sind noch Vorschläge."
+      }
+    }
+  ],
   "msg_facade_incomplete": "Mindestens ein Gebäude und einen Abstand größer als 0 m angeben.",
   "msg_facade_opt_in_required": "Eine normative Norm rechnet an erzeugten Fassadenpunkten nur mit dieser Zustimmung: Sie bleiben Vorschläge, bis jemand sie bestätigt.",
   "action_facade_elevation": "Fassadenansicht",

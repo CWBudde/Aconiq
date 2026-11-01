@@ -92,7 +92,13 @@ describe("orthophotoEvidence", () => {
     const entry = await orthophotoEvidence("EPSG:25832", BOX, {
       now: NOW,
       fetch: (input) => {
-        requested.push(String(input));
+        requested.push(
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url,
+        );
         return Promise.resolve(new Response(new TextEncoder().encode("abc")));
       },
     });

@@ -61,6 +61,8 @@ export const LAYER_IDS = {
   sourcesArea: "sources-area-fill",
   sourcesReviewLine: "sources-review-line",
   sourcesReviewPoint: "sources-review-point",
+  sourcesProposedLine: "sources-proposed-line",
+  sourcesProposedPoint: "sources-proposed-point",
   receiversPoint: "receivers-point",
   flashLine: "map-flash-line",
   flashPoint: "map-flash-point",
@@ -221,6 +223,19 @@ export const BARRIER_LAYERS: LayerSpecification[] = [
   },
 ];
 
+/**
+ * A source a person rejected (P18 E2): drawn faded, because no run computes
+ * it — `sourcereview.Review` leaves it out on both targets — but still drawn,
+ * so it can be found and its review changed.
+ */
+const REJECTED_SOURCE: ExpressionSpecification = [
+  "==",
+  ["get", "review_status"],
+  "rejected",
+];
+
+const REJECTED_OPACITY = 0.3;
+
 export const SOURCE_LAYERS: LayerSpecification[] = [
   {
     id: LAYER_IDS.sourcesArea,
@@ -238,6 +253,8 @@ export const SOURCE_LAYERS: LayerSpecification[] = [
         "case",
         ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
         0.4,
+        REJECTED_SOURCE,
+        0.06,
         0.2,
       ],
     },
@@ -260,6 +277,7 @@ export const SOURCE_LAYERS: LayerSpecification[] = [
         5.5,
         3,
       ],
+      "line-opacity": ["case", REJECTED_SOURCE, REJECTED_OPACITY, 1],
     },
   },
   {
@@ -275,6 +293,8 @@ export const SOURCE_LAYERS: LayerSpecification[] = [
         5,
       ],
       "circle-color": "#e63946",
+      "circle-opacity": ["case", REJECTED_SOURCE, REJECTED_OPACITY, 1],
+      "circle-stroke-opacity": ["case", REJECTED_SOURCE, REJECTED_OPACITY, 1],
       "circle-stroke-width": [
         "case",
         ["boolean", ["feature-state", SELECTED_STATE_KEY], false],
@@ -331,6 +351,13 @@ const REVIEW_REQUIRED_FILTER: ExpressionSpecification = [
   ["!=", ["get", PROP_ACOUSTICS_REVIEWED], true],
 ];
 
+/** A source traced from imagery that nobody has confirmed yet (P18 E2). */
+const PROPOSED_SOURCE_FILTER: ExpressionSpecification = [
+  "==",
+  ["get", "review_status"],
+  "proposed",
+];
+
 export const REVIEW_LAYERS: LayerSpecification[] = [
   {
     id: LAYER_IDS.sourcesReviewLine,
@@ -358,6 +385,34 @@ export const REVIEW_LAYERS: LayerSpecification[] = [
       "circle-stroke-width": 2.5,
       "circle-stroke-color": REVIEW_COLOR,
       "circle-stroke-opacity": 0.6,
+    },
+  },
+  // A source traced from imagery and not yet confirmed (P18 E2): the same
+  // violet — both ask a person to look — but a finer dash, and a filter of
+  // its own, because a proposal is not an acoustics finding.
+  {
+    id: LAYER_IDS.sourcesProposedLine,
+    type: "line",
+    source: SOURCE_IDS.sources,
+    filter: ["all", PROPOSED_SOURCE_FILTER, ["!=", ["geometry-type"], "Point"]],
+    layout: { "line-join": "round", "line-cap": "butt" },
+    paint: {
+      "line-color": REVIEW_COLOR,
+      "line-width": 2,
+      "line-offset": -4,
+      "line-dasharray": [1, 1.5],
+    },
+  },
+  {
+    id: LAYER_IDS.sourcesProposedPoint,
+    type: "circle",
+    source: SOURCE_IDS.sources,
+    filter: ["all", PROPOSED_SOURCE_FILTER, ["==", ["geometry-type"], "Point"]],
+    paint: {
+      "circle-radius": 8,
+      "circle-opacity": 0,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": REVIEW_COLOR,
     },
   },
 ];
@@ -536,7 +591,12 @@ export const MODEL_LAYER_GROUPS: LayerGroup[] = [
   {
     id: "review-required",
     label: m.label_review_required,
-    layerIds: [LAYER_IDS.sourcesReviewLine, LAYER_IDS.sourcesReviewPoint],
+    layerIds: [
+      LAYER_IDS.sourcesReviewLine,
+      LAYER_IDS.sourcesReviewPoint,
+      LAYER_IDS.sourcesProposedLine,
+      LAYER_IDS.sourcesProposedPoint,
+    ],
     defaultVisible: true,
   },
   {

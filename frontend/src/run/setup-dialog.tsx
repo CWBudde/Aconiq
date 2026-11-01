@@ -63,6 +63,7 @@ import {
   offersFacadeMode,
   receiversCarryFacadeReview,
 } from "@/run/facade-draft";
+import { proposedSourceCount, sourceOptInMissing } from "@/model/source-review";
 import {
   parameterDescription,
   parameterGroup,
@@ -266,6 +267,7 @@ function RunSetupForm({
   const receiversFacadeLinked = useModelStore((s) =>
     receiversCarryFacadeReview(s.receivers),
   );
+  const proposedSources = useModelStore((s) => proposedSourceCount(s.features));
   const calcArea = useModelStore((s) => s.calcArea);
   // Where a run reads the saved model, starting one with unsaved edits would
   // silently compute the project's older copy. The same save the header
@@ -330,10 +332,18 @@ function RunSetupForm({
   const facadeNormative = selectedStandard?.evidence_tier === "normative";
   // A custom run is refused over unconfirmed facade points too, so it offers
   // the same opt-in — where a placed receiver carries anything the gate reads.
+  // And so is any run over sources traced from imagery that nobody confirmed
+  // (P18 E2), whatever its receivers: the gate is on the model's sources.
   const unconfirmedOptInOffered =
     facadeNormative &&
     (receiverMode === "facade" ||
-      (receiverMode === "custom" && receiversFacadeLinked));
+      (receiverMode === "custom" && receiversFacadeLinked) ||
+      proposedSources > 0);
+  const sourcesBlocked = sourceOptInMissing(
+    proposedSources,
+    facadeNormative,
+    facadeDraft.allowUnconfirmed,
+  );
   // A facade run the backend can only refuse is not sent, nor estimated:
   // incomplete, or normative over generated (always proposed) points without
   // the opt-in.
@@ -421,7 +431,8 @@ function RunSetupForm({
     !unsavedChanges &&
     !startBlocked &&
     !customReceiversMissing &&
-    !facadeBlocked;
+    !facadeBlocked &&
+    !sourcesBlocked;
   const runEstimate = useRunEstimate(estimateWanted ? runSpec : null);
 
   function handleSubmit() {
@@ -429,7 +440,8 @@ function RunSetupForm({
       experimentalOptInMissing ||
       unsavedChanges ||
       startBlocked ||
-      facadeBlocked
+      facadeBlocked ||
+      sourcesBlocked
     )
       return;
 
@@ -690,7 +702,12 @@ function RunSetupForm({
                 {m.msg_receivers_placed({ count: receiverCount })}
               </p>
             ) : null}
-            {receiverMode === "custom" && unconfirmedOptInOffered ? (
+            {facadeNormative && proposedSources > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {m.msg_proposed_sources({ count: proposedSources })}
+              </p>
+            ) : null}
+            {receiverMode !== "facade" && unconfirmedOptInOffered ? (
               <AllowUnconfirmedField
                 checked={facadeDraft.allowUnconfirmed}
                 onChange={(allowUnconfirmed) => {
@@ -891,7 +908,8 @@ function RunSetupForm({
               unsavedChanges ||
               startBlocked ||
               customReceiversMissing ||
-              facadeBlocked
+              facadeBlocked ||
+              sourcesBlocked
             }
           >
             <Play aria-hidden="true" className="mr-2 h-4 w-4" />

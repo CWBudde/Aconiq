@@ -124,3 +124,74 @@ describe("the review-flag filter", () => {
     expect(needsAcousticsReview(asFeature(stringlySigned))).toBe(true);
   });
 });
+
+/**
+ * Sources traced from imagery (P18 E2) are drawn dashed while proposed, by
+ * layers of their own: a proposal is not an acoustics finding, so it stays
+ * out of the filter above and the invariant that filter shares with the
+ * validator.
+ */
+describe("the proposed-source flag", () => {
+  function drawsProposed(
+    properties: Record<string, unknown>,
+    type: 1 | 2 = 2,
+  ): boolean {
+    const id =
+      type === 1
+        ? LAYER_IDS.sourcesProposedPoint
+        : LAYER_IDS.sourcesProposedLine;
+    const layer = REVIEW_LAYERS.find((spec) => spec.id === id);
+    const filter =
+      layer !== undefined && "filter" in layer ? layer.filter : undefined;
+    expect(filter).toBeDefined();
+    return featureFilter(filter as FilterSpecification).filter(
+      { zoom: 14 } as never,
+      { type, properties } as never,
+      {} as never,
+    );
+  }
+
+  it("flags a proposed source, point or line", () => {
+    expect(drawsProposed({ review_status: "proposed" })).toBe(true);
+    expect(drawsProposed({ review_status: "proposed" }, 1)).toBe(true);
+  });
+
+  it("leaves a confirmed, rejected or unreviewed source alone", () => {
+    expect(drawsProposed({ review_status: "confirmed" })).toBe(false);
+    expect(drawsProposed({ review_status: "rejected" })).toBe(false);
+    expect(drawsProposed({})).toBe(false);
+  });
+
+  it("does not draw the acoustics flag for a proposal", () => {
+    expect(drawsFlag({ review_status: "proposed" })).toBe(false);
+  });
+});
+
+describe("a rejected source", () => {
+  it("is drawn faded, and only it", async () => {
+    const { createExpression } =
+      await import("@maplibre/maplibre-gl-style-spec");
+    const { SOURCE_LAYERS } = await import("./layers");
+    const line = SOURCE_LAYERS.find(
+      (spec) => spec.id === LAYER_IDS.sourcesLine,
+    );
+    const opacity =
+      line !== undefined && "paint" in line
+        ? (line.paint as Record<string, unknown>)["line-opacity"]
+        : undefined;
+    const parsed = createExpression(opacity);
+    if (parsed.result !== "success") throw new Error("unparsable opacity");
+    const at = (properties: Record<string, unknown>): unknown =>
+      parsed.value.evaluate(
+        { zoom: 14 } as never,
+        {
+          type: 2,
+          properties,
+        } as never,
+      );
+
+    expect(at({ review_status: "rejected" })).toBe(0.3);
+    expect(at({ review_status: "proposed" })).toBe(1);
+    expect(at({})).toBe(1);
+  });
+});

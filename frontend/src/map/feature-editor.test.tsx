@@ -1776,3 +1776,71 @@ describe("FeatureEditor link into the results", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 });
+
+/**
+ * A source traced from imagery (P18 E2) carries a review state and the image
+ * it was read from. The editor is where a person confirms or rejects it; a
+ * source nobody mapped from imagery shows no review at all.
+ */
+describe("FeatureEditor source review", () => {
+  const traced: ModelFeature = {
+    ...source,
+    id: "traced-1",
+    properties: {
+      review_status: "proposed",
+      evidence: [
+        {
+          kind: "orthophoto",
+          source_id:
+            "https://opendata.lgln.niedersachsen.de/doorman/noauth/dop_wms?REQUEST=GetMap",
+          content_sha256: "ab".repeat(32),
+          retrieved_at: "2026-11-01T12:00:00.000Z",
+          attribution: "© GeoBasis-DE/LGLN 2026, Daten geändert, CC BY 4.0",
+        },
+        { kind: "orthophoto", source_id: "x", note: "offline" },
+      ],
+    },
+  };
+
+  function reviewButton(label: string): HTMLElement {
+    return within(
+      screen.getByRole("group", { name: m.label_source_review() }),
+    ).getByRole("button", { name: label });
+  }
+
+  it("confirms a traced source and keeps the evidence it was read from", () => {
+    edit(traced);
+
+    expect(reviewButton(m.option_review_proposed())).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(reviewButton(m.option_review_confirmed()));
+
+    const saved = useModelStore
+      .getState()
+      .features.find((feature) => feature.id === "traced-1");
+    expect(saved?.properties?.["review_status"]).toBe("confirmed");
+    expect(saved?.properties?.["evidence"]).toEqual(
+      traced.properties?.["evidence"],
+    );
+  });
+
+  it("lists the evidence, and says why an entry has no hash", () => {
+    edit(traced);
+
+    expect(screen.getByText(/GeoBasis-DE\/LGLN 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/abababababab/)).toBeInTheDocument();
+    expect(
+      screen.getByText(m.msg_evidence_no_hash({ note: "offline" })),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no review for a source nobody mapped from imagery", () => {
+    edit(source);
+
+    expect(
+      screen.queryByRole("group", { name: m.label_source_review() }),
+    ).not.toBeInTheDocument();
+  });
+});

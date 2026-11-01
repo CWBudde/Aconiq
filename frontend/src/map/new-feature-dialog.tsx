@@ -42,7 +42,14 @@ import {
 } from "@/model/types";
 import type { ModelReceiver } from "@/model/types";
 import { useModelStore } from "@/model/model-store";
+import { featureBBox, tracedFromImagery } from "@/model/source-review";
+import { Checkbox } from "@/ui/components/checkbox";
 import { m } from "@/i18n/messages";
+import { useMapStore } from "./map-store";
+import { ORTHOPHOTO_GROUP_ID, orthophotoEvidence } from "./orthophoto";
+
+/** How long saving a traced source waits for LGLN before saving without a hash. */
+const EVIDENCE_FETCH_TIMEOUT_MS = 15_000;
 
 interface NewFeatureDialogProps {
   open: boolean;
@@ -241,10 +248,19 @@ export function NewFeatureDialog({
     String(DEFAULT_GROUND_FACTOR),
   );
   const [vertices, setVertices] = useState<VertexInput[]>([blankVertex()]);
+  // Whether a source was traced from the orthophoto (P18 E2). Asked, not
+  // inferred: the overlay being open does not mean the source came from it.
+  const orthophotoShown = useMapStore(
+    (s) => s.layerVisibility[ORTHOPHOTO_GROUP_ID] === true,
+  );
+  const [traced, setTraced] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   // Reset the form whenever the dialog is (re)opened, for either path.
   useEffect(() => {
     if (!open) return;
+    setTraced(true);
+    setSaving(false);
     if (geometry) {
       setKind(inferKind(geometry.type));
       setSourceType(inferSourceType(geometry.type));
@@ -286,7 +302,8 @@ export function NewFeatureDialog({
   );
 
   const effectiveGeometry = geometry ?? typedGeometry(targetType, vertices);
-  const canSave = effectiveGeometry !== null;
+  const canSave = effectiveGeometry !== null && !saving;
+  const traceOffered = kind === "source" && orthophotoShown;
 
   // `aria-disabled`, not `disabled`, for the reason `ui/mode-gate.tsx` argues
   // in full and `map/draw-toolbar.tsx` implements: a disabled DOM button is out
@@ -343,6 +360,29 @@ export function NewFeatureDialog({
           }
         : {}),
     };
+
+    if (traceOffered && traced) {
+      // The evidence names the area it was traced in and hashes what LGLN
+      // answered for it, so it is fetched before the feature exists. A
+      // failure still saves the source as traced, with the reason in place
+      // of the hash (`orthophotoEvidence`).
+      setSaving(true);
+      void orthophotoEvidence(crs, featureBBox(saved), {
+        fetch: (input) =>
+          fetch(input, {
+            signal: AbortSignal.timeout(EVIDENCE_FETCH_TIMEOUT_MS),
+          }),
+      }).then((evidence) => {
+        addFeature({
+          ...feature,
+          properties: tracedFromImagery({}, evidence),
+        });
+        setSaving(false);
+        onClose();
+      });
+      return;
+    }
+
     addFeature(feature);
     onClose();
   }, [
@@ -353,6 +393,9 @@ export function NewFeatureDialog({
     sourceType,
     height,
     groundFactor,
+    traceOffered,
+    traced,
+    crs,
     addFeature,
     addReceiver,
     onClose,
@@ -448,6 +491,27 @@ export function NewFeatureDialog({
             </div>
           ) : null}
 
+          {traceOffered ? (
+            <div className="flex items-start gap-2.5">
+              <Checkbox
+                id={`${fieldId}-traced`}
+                className="mt-0.5"
+                checked={traced}
+                onCheckedChange={(value) => {
+                  setTraced(value === true);
+                }}
+              />
+              <div className="space-y-1">
+                <Label htmlFor={`${fieldId}-traced`} className="text-xs">
+                  {m.label_traced_from_orthophoto()}
+                </Label>
+                <p className="text-2xs leading-relaxed text-muted-foreground">
+                  {m.msg_traced_from_orthophoto_help()}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
           {typing ? (
             <VertexEditor
               crs={crs}
@@ -517,7 +581,7 @@ export function NewFeatureDialog({
             </div>
           ) : null}
 
-          {canSave ? null : (
+          {effectiveGeometry !== null ? null : (
             <p id={reasonId} className="text-xs text-muted-foreground">
               {m.msg_coordinate_entry_incomplete()}
             </p>
@@ -531,7 +595,7 @@ export function NewFeatureDialog({
             size="sm"
             className={cn(!canSave && "opacity-50 cursor-not-allowed")}
             aria-disabled={canSave ? undefined : true}
-            aria-describedby={canSave ? undefined : reasonId}
+            aria-describedby={effectiveGeometry !== null ? undefined : reasonId}
             onClick={(event) => {
               if (!canSave) {
                 refuse(event);
@@ -540,7 +604,7 @@ export function NewFeatureDialog({
               handleSave();
             }}
           >
-            {m.action_add_feature()}
+            {saving ? m.status_saving_traced_source() : m.action_add_feature()}
           </Button>
         </DialogFooter>
       </DialogContent>
