@@ -3091,15 +3091,15 @@ change to any of them amends the ADR first.
 
 ### Subphase SL-1.4 — Evidence and documentation
 
-- [ ] Add deterministic outputs, audit logging for the run tools, and integration tests
-      `aconiq mcp` already speaks stdio, and `.noise/logs/mcp-audit.jsonl` already records
-      `save_model`, `start_run` and `cancel_run` (`internal/mcpserver/audit.go`); `delete_run` and
-      `import_terrain` must record into it as they land (ADR-002, Security policy 7).
+Every ADR-002 tool is served and audited (#124, #132, #146); nothing is open here.
 
-Live constraint (#132): every tool's input schema is pinned in
+Live constraint (#132, #146): every tool's input schema is pinned in
 `internal/mcpserver/testdata/tools-*.golden.json`, and every tool that takes arguments has its
 refusals in `TestEveryToolRefusesArgumentsItsSchemaDoesNot`, which fails when a listed tool is
-missing from it. A new tool joins both, and the README's MCP Server section lists it.
+missing from it. A new tool joins both, and the README's MCP Server section lists it. A new read
+tool also joins `TestReadToolsAreDeterministic`, or `nonDeterministicTools` with the reason its
+answer is a measurement. A tool that reads a file takes a path relative to the project root and
+opens it through `os.Root` (`openProjectFile`), as `import_terrain` does (ADR-002, amended).
 
 ## Phase SL-2 — AVV Baulärm assessment ([#112](https://github.com/CWBudde/Aconiq/issues/112))
 
