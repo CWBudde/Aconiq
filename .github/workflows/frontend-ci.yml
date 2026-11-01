@@ -97,8 +97,14 @@ jobs:
   # which loads the kernel from frontend/public/, so the same kernel build runs
   # here first. The smoke suite and the axe accessibility baseline
   # (frontend/e2e/) both run through `bun run test:e2e`.
+  #
+  # The image is named, not `ubuntu-latest`: Playwright ships browsers per OS
+  # release, and when `ubuntu-latest` moved to 26.04 the pinned 1.58 had none
+  # for it, so the job broke overnight on a change nobody made (#146). The
+  # image and `@playwright/test` in frontend/package.json move together, in one
+  # reviewed commit, once the Playwright release lists the new image.
   frontend-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
