@@ -554,6 +554,28 @@ export interface CustomReceiversResponse {
 }
 
 /**
+ * `wasmkernel.ReviewSourcesRequest`: a run's sources as a v1 model in `crs`,
+ * the run's compute CRS, the standard it computes, and `--allow-unconfirmed`.
+ */
+export interface ReviewSourcesRequest {
+  crs: string;
+  model: unknown;
+  standard_id: string;
+  allow_unconfirmed?: boolean;
+}
+
+/**
+ * Which sources a run leaves out (rejected), how many proposed ones it
+ * computes, and the provenance keys `aconiq run` records for both.
+ */
+export interface ReviewSourcesResponse {
+  excluded_ids: string[];
+  proposed_count: number;
+  rejected_count: number;
+  metadata: Record<string, string>;
+}
+
+/**
  * Where the coordinates ended up. `target_crs` is the CRS they are actually in,
  * which for an `auto` request is the resolved zone. `applied` is false only
  * when nothing moved, and then `coordinates` are the input values verbatim.

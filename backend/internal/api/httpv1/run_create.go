@@ -35,9 +35,9 @@ type createRunRequest struct {
 	FacadeIncludeCourtyard bool     `json:"facade_include_courtyard,omitempty"`
 
 	// AllowUnconfirmed lets a normative run compute at facade points that are
-	// still proposed or whose slab height is assumed. The run command refuses
-	// them without it; there is no fast path here, because counting them
-	// needs the model.
+	// still proposed or whose slab height is assumed, and over sources that
+	// are still proposed. The run command refuses them without it; there is
+	// no fast path here, because counting them needs the model.
 	AllowUnconfirmed bool `json:"allow_unconfirmed,omitempty"`
 }
 

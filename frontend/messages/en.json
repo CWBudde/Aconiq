@@ -568,6 +568,7 @@
   "msg_validation_receiver_coordinates_invalid": "Receiver coordinates must be finite",
   "msg_validation_receiver_height_invalid": "Receiver height_m must be greater than 0",
   "msg_validation_window_invalid": "Window property {field} is missing or malformed",
+  "msg_validation_source_review_invalid": "Source review field {field} is malformed",
   "msg_validation_window_geometry_invalid": "Window geometry must be Point",
   "msg_validation_window_facade_unresolved": "The window's facade key names no building in the model",
   "msg_validation_window_facade_moved": "The window's facade key no longer names an edge of its building",
@@ -738,6 +739,18 @@
   "label_bimschv16_area_category": "Area category (16. BImSchV)",
   "msg_bimschv16_area_category_absent": "Not set = this receiver is skipped by the 16. BImSchV assessment; there is no default category.",
   "section_basemap": "Basemap",
+  "label_orthophoto": "Orthophoto (LGLN)",
+  "msg_orthophoto_failed": "The orthophoto could not be loaded. It needs a connection to LGLN.",
+  "label_traced_from_orthophoto": "Traced from the orthophoto",
+  "msg_traced_from_orthophoto_help": "Saved as proposed, with the image area and its hash as evidence. A normative run refuses it until someone confirms it.",
+  "status_saving_traced_source": "Recording the image…",
+  "label_source_review": "Review",
+  "msg_source_review_note": "Mapped from imagery. A normative run refuses a proposed source without the opt-in and leaves a rejected one out.",
+  "option_review_proposed": "Proposed",
+  "option_review_confirmed": "Confirmed",
+  "option_review_rejected": "Rejected",
+  "label_source_evidence": "Evidence",
+  "msg_evidence_no_hash": "No image hash: {note}",
   "label_basemap_light": "Light",
   "label_basemap_bright": "Bright",
   "label_basemap_dark": "Dark",
@@ -889,7 +902,17 @@
   "msg_facade_spacing_help": "Required. There is no default: how densely a facade is sampled is your choice.",
   "label_facade_courtyard": "Include courtyard facades",
   "label_allow_unconfirmed": "Run over unconfirmed points",
-  "msg_allow_unconfirmed_help": "Generated facade points are proposed until someone confirms them. A normative run refuses them unless you opt in; their count is then recorded with the result.",
+  "msg_allow_unconfirmed_help": "Generated facade points and sources traced from imagery are proposed until someone confirms them. A normative run refuses them unless you opt in; their count is then recorded with the result.",
+  "msg_proposed_sources": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} source traced from imagery is still proposed.",
+        "countPlural=other": "{count} sources traced from imagery are still proposed."
+      }
+    }
+  ],
   "msg_facade_incomplete": "Name at least one building and a spacing greater than 0 m.",
   "msg_facade_opt_in_required": "A normative standard runs over generated facade points only with this opt-in: they stay proposed until someone confirms them.",
   "action_facade_elevation": "Facade elevation",

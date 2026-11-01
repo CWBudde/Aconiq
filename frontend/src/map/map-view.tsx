@@ -7,6 +7,7 @@ import { m } from "@/i18n/messages";
 import { MapContext } from "./use-map";
 import { BASEMAP_SOURCE_ID, basemapStyle, OFFLINE_STYLE } from "./basemap";
 import { useMapStore } from "./map-store";
+import { ORTHOPHOTO_GROUP_ID, ORTHOPHOTO_SOURCE_ID } from "./orthophoto";
 import { OfflineNotice } from "./offline-notice";
 import { LAYER_IDS, SOURCE_IDS } from "./layers";
 
@@ -85,8 +86,12 @@ function enableWebGLForSession(): void {
  * for `map.on("error")` is the bare `ErrorEvent`, which does not declare it.
  */
 function isBasemapTileFailure(event: unknown): boolean {
-  if (typeof event !== "object" || event === null) return false;
-  return (event as { sourceId?: unknown }).sourceId === BASEMAP_SOURCE_ID;
+  return eventSourceId(event) === BASEMAP_SOURCE_ID;
+}
+
+function eventSourceId(event: unknown): unknown {
+  if (typeof event !== "object" || event === null) return undefined;
+  return (event as { sourceId?: unknown }).sourceId;
 }
 
 /**
@@ -206,7 +211,16 @@ export function MapView({
     try {
       m = new maplibregl.Map({
         container: containerRef.current,
-        style: tilesFailed ? OFFLINE_STYLE : basemapStyle(basemap),
+        // The orthophoto's visibility is read, not subscribed to: the layer
+        // control shows and hides it on the live map, and a rebuild only has
+        // to start where the user left it.
+        style: tilesFailed
+          ? OFFLINE_STYLE
+          : basemapStyle(basemap, undefined, {
+              orthophoto:
+                useMapStore.getState().layerVisibility[ORTHOPHOTO_GROUP_ID] ===
+                true,
+            }),
         center: viewRef.current.center,
         zoom: viewRef.current.zoom,
         attributionControl: {},
@@ -241,6 +255,11 @@ export function MapView({
     // alone — see `offline-notice.tsx` for why the two stay separate.
     const handleError = (event: unknown) => {
       if (isBasemapTileFailure(event)) reportTilesFailed();
+      // The orthophoto failing leaves the basemap alone; the layer control
+      // says so beside its toggle.
+      if (eventSourceId(event) === ORTHOPHOTO_SOURCE_ID) {
+        useMapStore.getState().reportOrthophotoFailed();
+      }
     };
     m.on("error", handleError);
 

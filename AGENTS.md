@@ -114,9 +114,10 @@ PLAN.md           Roadmap and the single status source
 | `wasm/`   | `js/wasm` entry point exposing the compute kernel to the browser as `window.aconiq` |
 
 `window.aconiq` exposes `rls19Road`, `rls19RoadShard`, `rls19RoadGrid`, `estimate`, `transform`,
-`maskFootprints`, `facadeReceivers`, `customReceivers`, `facadeElevation`, `placeWindow`,
-`rectifyFacade`, `standards`, `contours`, `loadTerrain`, `clearTerrain`, `defaultConfig`, `health`
-and `projectStatus`. Twelve of those carry contracts worth knowing before writing browser-mode code:
+`maskFootprints`, `facadeReceivers`, `customReceivers`, `reviewSources`, `facadeElevation`,
+`placeWindow`, `rectifyFacade`, `standards`, `contours`, `loadTerrain`, `clearTerrain`,
+`defaultConfig`, `health` and `projectStatus`. Thirteen of those carry contracts worth knowing
+before writing browser-mode code:
 
 - **`rls19RoadGrid`** is the export an automatic-grid run uses. The request names its receivers as
   `grid: {origin_x, origin_y, resolution_m, width, height, height_m}` instead of a `receivers`
@@ -168,6 +169,12 @@ and `projectStatus`. Twelve of those carry contracts worth knowing before writin
   with their properties, already in the compute CRS, and `compute-crs.ts` moves a receiver's
   `facade.from` / `to` there with it, as `modelgeojson.Reproject` does. The frontend must not
   decide which hand-placed point a run may assess.
+- **`reviewSources`** settles which of a run's sources it computes through `sourcereview.Review`,
+  the call `aconiq run` and its estimate make on the model they load (P18 E2): it names the
+  `rejected` sources for the caller to leave out, and refuses a normative run over a `proposed`
+  one unless `allow_unconfirmed` is set, in the run's words. Every browser run asks it before it
+  builds a single source, and writes the `source_*_count` keys it answers into the run summary.
+  The frontend must not decide which traced source a run may compute.
 - **`facadeElevation`** unfolds one building for the facade elevation view through
   `facadeset.Elevation`, which `POST /api/v1/facades/elevation` answers from too: each canonical
   edge with its length and the bearing it faces, the storeys' slab heights facade mode places at,
@@ -239,6 +246,7 @@ host `go test` can reach it; `cmd/wasm/main.go` is `//go:build js && wasm` and h
 | `report/reporting/`         | Offline report generation: `report-context.json`, `report.md`, `report.html`, `report.typ`, optional PDF           |
 | `results/`                  | Result containers: raster API + binary/JSON persistence, receiver table API + CSV/JSON                             |
 | `runestimate/`              | Run-time estimate: stratified kernel probe, extrapolation, chunk-schedule replay; standards opt in via `Kernel`    |
+| `sourcereview/`             | Which sources a run computes: rejected ones left out, a normative run over proposed ones refused without opt-in    |
 | `standards/`                | The registry that assembles the standards modules the CLI can run                                                  |
 | `standards/descriptorjson/` | The one JSON encoding of a standards descriptor, shared by the HTTP API and the WASM kernel                        |
 | `standards/framework/`      | Standard descriptors, parameter schemas, version/profile resolution, registry type                                 |

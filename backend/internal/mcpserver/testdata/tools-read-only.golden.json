@@ -10,7 +10,7 @@
       "additionalProperties": false,
       "properties": {
         "allow_unconfirmed": {
-          "description": "Opt in to a normative run over facade receivers that are still proposed or whose slab height is assumed. Without it such a run is refused; with it their counts are recorded in the run's provenance and report.",
+          "description": "Opt in to a normative run over facade receivers that are still proposed or whose slab height is assumed, or over sources that are still proposed. Without it such a run is refused; with it their counts are recorded in the run's provenance and report.",
           "type": "boolean"
         },
         "experimental": {

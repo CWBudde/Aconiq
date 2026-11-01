@@ -92,7 +92,8 @@ const (
 	// windows facade receiver mode places at. Absent is false: the window is
 	// kept as context.
 	PropertySensitive = "sensitive"
-	// PropertyEvidence lists where a window's placement came from.
+	// PropertyEvidence lists where a window's placement, or a source mapped
+	// from imagery, came from.
 	PropertyEvidence = "evidence"
 	// PropertyHeightBasis names what a receiver placed at a window took its
 	// height from (geo.HeightBasis*).

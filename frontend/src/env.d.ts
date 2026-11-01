@@ -77,6 +77,8 @@ interface Window {
     facadeReceivers: (json: string) => Promise<string>;
     /** See `AconiqKernel.customReceivers`. */
     customReceivers: (json: string) => Promise<string>;
+    /** See `AconiqKernel.reviewSources`. */
+    reviewSources: (json: string) => Promise<string>;
     /** See `AconiqKernel.facadeElevation`. */
     facadeElevation: (json: string) => Promise<string>;
     /** See `AconiqKernel.placeWindow`. */

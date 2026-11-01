@@ -18,6 +18,7 @@ import {
 } from "./layers";
 import { useMapStore } from "./map-store";
 import { MapContext } from "./use-map";
+import { ORTHOPHOTO_GROUP_ID, ORTHOPHOTO_LAYER_ID } from "./orthophoto";
 import { m } from "@/i18n/messages";
 
 /**
@@ -311,5 +312,40 @@ describe("the basemap picker", () => {
     renderControl(new FakeMap());
 
     expect(pickerButton("dark")).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("the orthophoto toggle", () => {
+  it("starts hidden, and the first click shows it", () => {
+    const map = new FakeMap();
+    renderControl(map);
+    const label = m.label_orthophoto();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_show_layer({ label }) }),
+    );
+
+    expect(visibilityOf(map, ORTHOPHOTO_LAYER_ID)).toEqual(["visible"]);
+    expect(useMapStore.getState().layerVisibility[ORTHOPHOTO_GROUP_ID]).toBe(
+      true,
+    );
+    expect(toggleFor(label)).toBeInTheDocument();
+  });
+
+  it("says so when its tiles fail, and showing it again retries", () => {
+    useMapStore.setState({
+      layerVisibility: { [ORTHOPHOTO_GROUP_ID]: true },
+      orthophotoFailed: true,
+    });
+    renderControl(new FakeMap());
+
+    expect(screen.getByText(m.msg_orthophoto_failed())).toBeInTheDocument();
+
+    const label = m.label_orthophoto();
+    fireEvent.click(toggleFor(label));
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_show_layer({ label }) }),
+    );
+    expect(useMapStore.getState().orthophotoFailed).toBe(false);
   });
 });

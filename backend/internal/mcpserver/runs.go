@@ -61,7 +61,7 @@ type runRequestInput struct {
 	FacadeBuildings        []string `json:"facade_buildings,omitempty"         jsonschema:"With receiver_mode facade: the buildings whose facades carry receivers, each a building feature id from get_model or \"<street> <number>\" as its addr:street and addr:housenumber spell it."`
 	FacadeSpacingM         *float64 `json:"facade_spacing_m,omitempty"         jsonschema:"With receiver_mode facade: the station spacing along each facade in metres. Required there; there is no default."`
 	FacadeIncludeCourtyard bool     `json:"facade_include_courtyard,omitempty" jsonschema:"With receiver_mode facade: also place receivers on courtyard facades."`
-	AllowUnconfirmed       bool     `json:"allow_unconfirmed,omitempty"        jsonschema:"Opt in to a normative run over facade receivers that are still proposed or whose slab height is assumed. Without it such a run is refused; with it their counts are recorded in the run's provenance and report."`
+	AllowUnconfirmed       bool     `json:"allow_unconfirmed,omitempty"        jsonschema:"Opt in to a normative run over facade receivers that are still proposed or whose slab height is assumed, or over sources that are still proposed. Without it such a run is refused; with it their counts are recorded in the run's provenance and report."`
 }
 
 var requiredRunFields = []string{"scenario_id", "standard_id", "standard_version", "standard_profile", "receiver_mode"}
@@ -139,7 +139,7 @@ func (t tools) addRunWriteTools(server *mcp.Server) error {
 		Name: toolStartRun,
 		Description: "Start a run of the saved model and return its row at once (status pending or running); it computes in the background. " +
 			"Poll get_run for progress, then read get_run_results, get_contours or get_run_log. " +
-			"A scaffold-tier standard is refused without experimental: true, and a normative run over proposed or assumed-height facade receivers without allow_unconfirmed: true. " +
+			"A scaffold-tier standard is refused without experimental: true, and a normative run over proposed or assumed-height facade receivers, or over proposed sources, without allow_unconfirmed: true. " +
 			"Runs this server started stop when it exits.",
 		InputSchema: startSchema,
 		Annotations: stateChanging,

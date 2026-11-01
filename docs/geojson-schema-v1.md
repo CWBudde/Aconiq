@@ -49,6 +49,25 @@ so a file Aconiq produced says what it is, and read so one can come back.
   - `line` -> `LineString` or `MultiLineString`
   - `area` -> `Polygon` or `MultiPolygon`
 
+#### Sources mapped from imagery
+
+A source someone traced from an image (P18 E2) carries the two review fields a
+`window` carries, in the same shapes; a malformed one is `source.review.invalid`.
+Both are optional. A source without them was taken from plans or an import and
+is computed as it always was.
+
+| Property        | Meaning                                                                                                                                                                                                                                                                                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `review_status` | `proposed`, `confirmed` or `rejected`.                                                                                                                                                                                                                                                                                                                               |
+| `evidence`      | An array of objects, where the source was read from. A source traced over the map's LGLN orthophoto has one `kind: orthophoto` entry: the WMS GetMap request for its padded area as `source_id`, the SHA-256 of the response as `content_sha256` (absent, with a `note`, when none was had), `retrieved_at`, `licence` (`CC-BY-4.0`), `terms_url` and `attribution`. |
+
+What a run does with them is `internal/sourcereview`'s, on both targets: a
+`rejected` source is left out of every run, and a normative run over a
+`proposed` one is refused unless it passes `--allow-unconfirmed` (the API's and
+MCP's `allow_unconfirmed`), the opt-in that lifts the facade-receiver gate too.
+With the opt-in, provenance and the run summary carry `source_proposed_count`;
+`source_rejected_count` is recorded whenever a source was left out.
+
 ### `building` Features
 
 - `height_m` required and `> 0`. Missing is `building.height.required`, zero or
@@ -625,6 +644,10 @@ Validation uses project CRS from `.noise/project.json`.
 does not reach the file on disk — `ToFeatureCollection` does not emit it — so a
 bump would be a stamp nobody consults. v1 has been widened in place before, for
 `bimschv16_area_category` on `receiver` features.
+
+- **2026-11-01 — `review_status` and `evidence` on `source` features.** Sources
+  traced from imagery (P18 E2). An older binary ignores both, so it computes a
+  proposed or rejected source like any other.
 
 - **2026-10-23 — `window` feature kind.** Windows in their facade's frame,
   from which facade receiver mode places its points (P18 C1). The same

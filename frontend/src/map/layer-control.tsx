@@ -9,17 +9,28 @@ import { MapPanel } from "./map-panel";
 import { useMapStore } from "./map-store";
 import { useMap } from "./use-map";
 import { BASEMAP_IDS, basemapLabel } from "./basemap";
+import { ORTHOPHOTO_GROUP_ID, ORTHOPHOTO_LAYER_ID } from "./orthophoto";
 import { m } from "@/i18n/messages";
 
-function LayerToggle({ group }: { group: LayerGroup }) {
+function LayerToggle({
+  group,
+  onShow,
+}: {
+  group: LayerGroup;
+  /** Called when the toggle shows the group, before the map is told. */
+  onShow?: () => void;
+}) {
   const map = useMap();
   const visibility = useMapStore((s) => s.layerVisibility);
-  const toggleLayer = useMapStore((s) => s.toggleLayer);
+  const setLayerVisible = useMapStore((s) => s.setLayerVisible);
 
   const visible = visibility[group.id] ?? group.defaultVisible;
 
   const handleToggle = () => {
-    toggleLayer(group.id);
+    // Set, not toggled in the store: `toggleLayer` reads an unset group as
+    // visible, which a group hidden by default — the orthophoto — is not.
+    setLayerVisible(group.id, !visible);
+    if (!visible) onShow?.();
     if (!map) return;
     const newVisibility = !visible ? "visible" : "none";
     for (const layerId of group.layerIds) {
@@ -145,6 +156,38 @@ export function LayerControl() {
         {m.section_basemap()}
       </div>
       <BasemapPicker />
+      <OrthophotoToggle />
     </MapPanel>
+  );
+}
+
+const ORTHOPHOTO_GROUP: LayerGroup = {
+  id: ORTHOPHOTO_GROUP_ID,
+  label: m.label_orthophoto,
+  layerIds: [ORTHOPHOTO_LAYER_ID],
+  defaultVisible: false,
+};
+
+/**
+ * LGLN's orthophoto over the basemap, to trace sources from (P18 E2). Off by
+ * default: it is fetched from LGLN while shown, and most work does not need
+ * it. A failed tile says so here; showing it again is the retry.
+ */
+function OrthophotoToggle() {
+  const failed = useMapStore((s) => s.orthophotoFailed);
+  const clearFailed = useMapStore((s) => s.clearOrthophotoFailed);
+  const visible = useMapStore(
+    (s) => s.layerVisibility[ORTHOPHOTO_GROUP_ID] ?? false,
+  );
+
+  return (
+    <div className="mt-1 grid gap-0.5">
+      <LayerToggle group={ORTHOPHOTO_GROUP} onShow={clearFailed} />
+      {visible && failed ? (
+        <p role="status" className="max-w-48 px-2 text-xs text-destructive">
+          {m.msg_orthophoto_failed()}
+        </p>
+      ) : null}
+    </div>
   );
 }

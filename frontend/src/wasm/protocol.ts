@@ -21,6 +21,7 @@ export type KernelMethod =
   | "maskFootprints"
   | "facadeReceivers"
   | "customReceivers"
+  | "reviewSources"
   | "facadeElevation"
   | "placeWindow"
   | "rectifyFacade"
@@ -82,6 +83,7 @@ export type KernelCall =
   | { id: number; method: "maskFootprints"; json: string }
   | { id: number; method: "facadeReceivers"; json: string }
   | { id: number; method: "customReceivers"; json: string }
+  | { id: number; method: "reviewSources"; json: string }
   | { id: number; method: "facadeElevation"; json: string }
   | { id: number; method: "placeWindow"; json: string }
   | { id: number; method: "rectifyFacade"; json: string }

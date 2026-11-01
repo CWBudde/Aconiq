@@ -64,6 +64,7 @@ interface AconiqExports {
   maskFootprints(json: string): Promise<string>;
   facadeReceivers(json: string): Promise<string>;
   customReceivers(json: string): Promise<string>;
+  reviewSources(json: string): Promise<string>;
   facadeElevation(json: string): Promise<string>;
   placeWindow(json: string): Promise<string>;
   rectifyFacade(json: string): Promise<string>;
@@ -240,6 +241,8 @@ async function dispatch(call: KernelCall): Promise<string | null> {
       return exports.facadeReceivers(call.json);
     case "customReceivers":
       return exports.customReceivers(call.json);
+    case "reviewSources":
+      return exports.reviewSources(call.json);
     case "facadeElevation":
       return exports.facadeElevation(call.json);
     case "placeWindow":

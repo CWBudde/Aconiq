@@ -97,6 +97,13 @@ export interface ValidationIssueParams {
   "window.geometry.invalid": NoIssueParams;
 
   /*
+   * A source's review fields (`review_status`, `evidence`), which a source
+   * mapped from imagery carries, mirroring `modelgeojson`'s
+   * `source.review.invalid`: `field` names the malformed one.
+   */
+  "source.review.invalid": { field: string };
+
+  /*
    * The warnings that measure a window against its building. `validate.ts`
    * emits none of them — measuring a key against its edge is the kernel's
    * alone — but the facade elevation shows the kernel's findings, and their

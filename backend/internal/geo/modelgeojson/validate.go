@@ -192,7 +192,16 @@ func validateSourceKind(feature Feature, geomType string, report *ValidationRepo
 	case !geometryCompatibleWithSourceType(geomType, sourceType):
 		addError(report, "source.geometry.mismatch", id, fmt.Sprintf("geometry type %s does not match source_type %s", geomType, sourceType))
 	}
+
+	for _, problem := range reviewProblems(feature.Properties) {
+		addError(report, CodeSourceReviewInvalid, id, fmt.Sprintf("source %q: %s", id, problem))
+	}
 }
+
+// CodeSourceReviewInvalid is a source whose review_status or evidence is
+// malformed. Both are optional on a source: a source mapped from imagery
+// carries them (P18 E2), one taken from plans or an import need not.
+const CodeSourceReviewInvalid = "source.review.invalid"
 
 // validateGroundFactor checks a ground zone's ground_factor property.
 //

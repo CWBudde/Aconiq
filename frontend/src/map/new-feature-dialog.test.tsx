@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NewFeatureDialog } from "./new-feature-dialog";
 import { useModelStore } from "@/model/model-store";
 import type { Geometry } from "@/model/types";
 import { m } from "@/i18n/messages";
+import { useMapStore } from "./map-store";
+import { ORTHOPHOTO_GROUP_ID } from "./orthophoto";
 
 /**
  * The receiver branch of this dialog had never been exercised: `option_receiver`
@@ -550,5 +552,83 @@ describe("NewFeatureDialog coordinate entry", () => {
     const state = useModelStore.getState();
     expect(state.receivers).toHaveLength(1);
     expect(state.receivers[0]?.geometry).toEqual(point);
+  });
+});
+
+/**
+ * A source drawn over the orthophoto is a proposal traced from imagery (P18
+ * E2): it is saved `proposed`, with the GetMap request of its area and the
+ * hash of what LGLN answered. The person drawing says whether it was traced
+ * there — the overlay being open is not proof — so the tick is offered, on by
+ * default, only while the overlay is shown.
+ */
+describe("NewFeatureDialog over the orthophoto", () => {
+  const utmPoint: Geometry = { type: "Point", coordinates: [550000, 5800000] };
+
+  beforeEach(() => {
+    useModelStore.setState({ crs: "EPSG:25832" });
+    useMapStore.setState({
+      layerVisibility: { [ORTHOPHOTO_GROUP_ID]: true },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(new Response(new TextEncoder().encode("abc"))),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useMapStore.setState({ layerVisibility: {} });
+  });
+
+  it("saves a traced source proposed, with the image it was traced from", async () => {
+    renderDialog(utmPoint);
+    expect(
+      screen.getByRole("checkbox", { name: m.label_traced_from_orthophoto() }),
+    ).toBeChecked();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_add_feature() }),
+    );
+
+    await waitFor(() => {
+      expect(useModelStore.getState().features).toHaveLength(1);
+    });
+    const properties = useModelStore.getState().features[0]?.properties;
+    expect(properties?.["review_status"]).toBe("proposed");
+    const evidence = properties?.["evidence"] as Record<string, unknown>[];
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]).toMatchObject({
+      kind: "orthophoto",
+      content_sha256:
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      licence: "CC-BY-4.0",
+    });
+    expect(String(evidence[0]?.["source_id"])).toContain("CRS=EPSG:25832");
+  });
+
+  it("saves an ordinary source when the tick is taken off", () => {
+    renderDialog(utmPoint);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: m.label_traced_from_orthophoto() }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: m.action_add_feature() }),
+    );
+
+    expect(useModelStore.getState().features[0]?.properties).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("offers no tick while the overlay is hidden, or for anything but a source", () => {
+    useMapStore.setState({ layerVisibility: {} });
+    renderDialog(utmPoint);
+    expect(
+      screen.queryByRole("checkbox", {
+        name: m.label_traced_from_orthophoto(),
+      }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -169,6 +169,13 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 		return preparedRun{}, err
 	}
 
+	// The sources a person rejected are left out, and a normative run over
+	// sources nobody confirmed is refused, before the row exists.
+	inputs, sources, err := reviewRunSources(inputs, resolvedStandard, req.facade.allowUnconfirmed)
+	if err != nil {
+		return preparedRun{}, err
+	}
+
 	// The receivers too: a facade set the standard has no rule for, and a
 	// normative run over facade points nobody confirmed, are refused before
 	// the row exists.
@@ -176,6 +183,8 @@ func prepareRun(cmd *cobra.Command, state commandState, req runCommandRequest) (
 	if err != nil {
 		return preparedRun{}, err
 	}
+
+	receivers = receivers.withSources(sources, req.facade.allowUnconfirmed)
 
 	run, provenance, err := store.CreateRun(projectfs.CreateRunSpec{
 		RunID:      req.runID,

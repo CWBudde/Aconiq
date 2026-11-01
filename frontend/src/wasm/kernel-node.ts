@@ -37,6 +37,8 @@ import type {
   Rectification,
   CustomReceiversRequest,
   CustomReceiversResponse,
+  ReviewSourcesRequest,
+  ReviewSourcesResponse,
   FootprintMaskRequest,
   FootprintMaskResponse,
   GridComputeRequest,
@@ -85,6 +87,7 @@ interface GoRuntimeGlobal {
     maskFootprints: (json: string) => Promise<string>;
     facadeReceivers: (json: string) => Promise<string>;
     customReceivers: (json: string) => Promise<string>;
+    reviewSources: (json: string) => Promise<string>;
     facadeElevation: (json: string) => Promise<string>;
     placeWindow: (json: string) => Promise<string>;
     rectifyFacade: (json: string) => Promise<string>;
@@ -242,6 +245,14 @@ async function loadNodeKernel(): Promise<AconiqKernel> {
         exports.customReceivers(JSON.stringify(req)),
       );
       return JSON.parse(json) as CustomReceiversResponse;
+    },
+    async reviewSources(
+      req: ReviewSourcesRequest,
+    ): Promise<ReviewSourcesResponse> {
+      const json = await withKernelErrors(
+        exports.reviewSources(JSON.stringify(req)),
+      );
+      return JSON.parse(json) as ReviewSourcesResponse;
     },
     async facadeElevation(
       req: FacadeElevationRequest,

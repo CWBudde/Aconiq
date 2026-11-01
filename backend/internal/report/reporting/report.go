@@ -149,6 +149,8 @@ func applyRunSummary(ctx *reportContext, summary runSummaryEnvelope) {
 	ctx.FacadeProposedCount = optionalIntString(summary.FacadeProposedCount)
 	ctx.FacadeAssumedHeightCount = optionalIntString(summary.FacadeAssumedHeightCount)
 	ctx.FacadeRejectedCount = optionalIntString(summary.FacadeRejectedCount)
+	ctx.SourceProposedCount = optionalIntString(summary.SourceProposedCount)
+	ctx.SourceRejectedCount = optionalIntString(summary.SourceRejectedCount)
 }
 
 func formatTime(value time.Time) string {

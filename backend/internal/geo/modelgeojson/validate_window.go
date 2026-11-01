@@ -101,16 +101,8 @@ func validateWindowProperties(feature Feature, featureID string, report *Validat
 		}
 	}
 
-	if v, ok := presentProperty(props, PropertyReviewStatus); ok {
-		if s, isString := v.(string); !isString || !slices.Contains(reviewStatuses, s) {
-			invalid(fmt.Sprintf("%s %#v must be one of %s", PropertyReviewStatus, v, strings.Join(reviewStatuses, "|")))
-		}
-	}
-
-	if v, ok := presentProperty(props, PropertyEvidence); ok {
-		if problem := evidenceProblem(v); problem != "" {
-			invalid(PropertyEvidence + " " + problem)
-		}
+	for _, problem := range reviewProblems(props) {
+		invalid(problem)
 	}
 
 	frame, frameProblem := parseWindowFrame(props[PropertyWindow])
@@ -162,6 +154,28 @@ func parseWindowFrame(value any) (geo.FacadeWindow, string) {
 	}
 
 	return frame, ""
+}
+
+// reviewProblems checks the two review fields a feature mapped from evidence
+// carries — a window, or a source traced from an image (P18 E2) — one problem
+// per malformed field, each led by the field's name. Both are optional: an
+// absent review_status is the kind's default, absent evidence says nothing.
+func reviewProblems(props map[string]any) []string {
+	var problems []string
+
+	if v, ok := presentProperty(props, PropertyReviewStatus); ok {
+		if s, isString := v.(string); !isString || !slices.Contains(reviewStatuses, s) {
+			problems = append(problems, fmt.Sprintf("%s %#v must be one of %s", PropertyReviewStatus, v, strings.Join(reviewStatuses, "|")))
+		}
+	}
+
+	if v, ok := presentProperty(props, PropertyEvidence); ok {
+		if problem := evidenceProblem(v); problem != "" {
+			problems = append(problems, PropertyEvidence+" "+problem)
+		}
+	}
+
+	return problems
 }
 
 // evidenceProblem checks that evidence is a list of objects. Their fields are

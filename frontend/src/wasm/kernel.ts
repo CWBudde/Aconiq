@@ -41,6 +41,8 @@ import {
   type Rectification,
   type CustomReceiversRequest,
   type CustomReceiversResponse,
+  type ReviewSourcesRequest,
+  type ReviewSourcesResponse,
   type FootprintMaskRequest,
   type FootprintMaskResponse,
   type GridComputeRequest,
@@ -141,6 +143,13 @@ export interface AconiqKernel {
   customReceivers(
     req: CustomReceiversRequest,
   ): Promise<CustomReceiversResponse>;
+  /**
+   * Which of a run's sources it computes, by `sourcereview.Review` — the call
+   * `aconiq run` makes on the model it loads (P18 E2). A `rejected` source is
+   * named in `excluded_ids` for the caller to leave out; a normative run over
+   * a `proposed` one is rejected in that run's words unless it opted in.
+   */
+  reviewSources(req: ReviewSourcesRequest): Promise<ReviewSourcesResponse>;
   /**
    * One building unfolded into its facades, storeys and windows, by
    * `facadeset.Elevation` — the code `POST /api/v1/facades/elevation`
@@ -384,6 +393,7 @@ function retainingTerrain(client: KernelClient): AconiqKernel {
     maskFootprints: (req) => client.maskFootprints(req),
     facadeReceivers: (req) => client.facadeReceivers(req),
     customReceivers: (req) => client.customReceivers(req),
+    reviewSources: (req) => client.reviewSources(req),
     facadeElevation: (req) => client.facadeElevation(req),
     placeWindow: (req) => client.placeWindow(req),
     rectifyFacade: (req) => client.rectifyFacade(req),

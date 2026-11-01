@@ -1661,7 +1661,8 @@ async function computeRLS19Road(
   const prepared = await prepareRLS19Request(kernel, spec, {
     maskFootprints: true,
   });
-  const { request, layout, maskedCells, projection, listed } = prepared;
+  const { request, layout, maskedCells, projection, listed, sourceReview } =
+    prepared;
   const { sources, parking, buildings, receiverCount } = prepared;
 
   // The lock spans the compute, not just the persist: the id is minted
@@ -1740,6 +1741,10 @@ async function computeRLS19Road(
       // The CLI writes the latter to provenance; a browser run has no
       // provenance file, so the summary carries them.
       ...(listed !== null ? listedSummary(listed) : undefined),
+      // The sources the kernel's review left in unconfirmed and left out,
+      // and the opt-in, under `cli.receiverSet.withSources`'s keys, each only
+      // when it applies.
+      ...sourceReview.metadata,
       reporting_precision_db: 0.1,
       // The CLI's own key names (`cli.provenanceProjectCRSKey` and
       // `provenanceComputeCRSKey`), because results are expressed in the
@@ -1968,7 +1973,24 @@ async function prepareRLS19Request(
   });
   const projection = computeModel.projection;
 
-  const features = computeModel.features;
+  // Which sources the run computes is the kernel's call —
+  // `sourcereview.Review`, which `aconiq run` makes on the model it loads —
+  // never this file's: a rejected source is left out, and a normative run over
+  // a proposed one refuses here, before a run id is minted, in the CLI's words
+  // (P18 E2). Before anything reads the features, so the grid extent and the
+  // receivers see the same model the run computes.
+  const sourceReview = await kernel.reviewSources({
+    crs: projection.computeCRS,
+    model: featuresToGeoJSON(
+      computeModel.features.filter((feature) => feature.kind === "source"),
+    ),
+    standard_id: spec.standardId,
+    ...(spec.allowUnconfirmed === true ? { allow_unconfirmed: true } : {}),
+  });
+  const excluded = new Set(sourceReview.excluded_ids);
+  const features = computeModel.features.filter(
+    (feature) => !(feature.kind === "source" && excluded.has(feature.id)),
+  );
   const sources = buildRoadSources(features, spec.params);
   const parking = buildParkingSources(features);
   if (sources.length === 0 && parking.sources.length === 0) {
@@ -2174,6 +2196,7 @@ async function prepareRLS19Request(
     maskedCells,
     projection,
     listed,
+    sourceReview,
     sources,
     parking,
     buildings,

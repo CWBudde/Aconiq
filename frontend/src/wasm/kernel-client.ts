@@ -38,6 +38,8 @@ import {
   type Rectification,
   type CustomReceiversRequest,
   type CustomReceiversResponse,
+  type ReviewSourcesRequest,
+  type ReviewSourcesResponse,
   type FootprintMaskRequest,
   type FootprintMaskResponse,
   type GridComputeRequest,
@@ -491,6 +493,18 @@ export class KernelClient implements AconiqKernel {
     return JSON.parse(
       KernelClient.json(value, "customReceivers"),
     ) as CustomReceiversResponse;
+  }
+
+  async reviewSources(
+    req: ReviewSourcesRequest,
+  ): Promise<ReviewSourcesResponse> {
+    const value = await this.call(
+      (id) => ({ id, method: "reviewSources", json: JSON.stringify(req) }),
+      [],
+    );
+    return JSON.parse(
+      KernelClient.json(value, "reviewSources"),
+    ) as ReviewSourcesResponse;
   }
 
   async facadeElevation(

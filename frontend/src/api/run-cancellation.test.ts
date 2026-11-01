@@ -115,6 +115,14 @@ vi.mock("@/wasm/kernel", () => ({
           rejected_count: 0,
           metadata: {},
         }),
+      // Every source is kept, for the same reason.
+      reviewSources: () =>
+        Promise.resolve({
+          excluded_ids: [],
+          proposed_count: 0,
+          rejected_count: 0,
+          metadata: {},
+        }),
       standards: () =>
         Promise.resolve([
           {

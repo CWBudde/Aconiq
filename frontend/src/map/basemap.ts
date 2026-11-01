@@ -1,5 +1,6 @@
 import type { RasterLayerSpecification, StyleSpecification } from "maplibre-gl";
 import { m } from "@/i18n/messages";
+import { ORTHOPHOTO_SOURCE_ID, orthophotoStyle } from "./orthophoto";
 import { getTileURL } from "./tile-source";
 
 /**
@@ -28,7 +29,8 @@ function createRasterStyle(
   name: string,
   tileUrl: string,
   backgroundColor: string,
-  rasterPaint?: RasterLayerSpecification["paint"],
+  rasterPaint: RasterLayerSpecification["paint"] | undefined,
+  orthophotoVisible: boolean,
 ): StyleSpecification {
   const rasterLayer: RasterLayerSpecification = {
     id: "osm-raster",
@@ -36,6 +38,11 @@ function createRasterStyle(
     source: BASEMAP_SOURCE_ID,
     paint: rasterPaint ?? {},
   };
+  // In the style rather than added by a component: directly over the
+  // basemap tiles is where it belongs, and everything the map adds later —
+  // results, model — lands above it without having to know it exists. Hidden,
+  // it requests no tiles; the layer control shows it without a rebuild.
+  const orthophoto = orthophotoStyle(orthophotoVisible);
 
   return {
     version: 8,
@@ -47,6 +54,7 @@ function createRasterStyle(
         tileSize: 256,
         attribution: "&copy; OpenStreetMap contributors",
       },
+      [ORTHOPHOTO_SOURCE_ID]: orthophoto.source,
     },
     layers: [
       {
@@ -57,6 +65,7 @@ function createRasterStyle(
         },
       },
       rasterLayer,
+      orthophoto.layer,
     ],
   };
 }
@@ -165,6 +174,7 @@ export function isBasemapId(value: unknown): value is BasemapId {
 export function basemapStyle(
   id: BasemapId,
   tileUrl: string = getTileURL(),
+  options: { orthophoto?: boolean } = {},
 ): StyleSpecification {
   // Widened on purpose: each recipe's literal type names its own paint keys,
   // so the union has to be read through the declared shape.
@@ -174,6 +184,7 @@ export function basemapStyle(
     tileUrl,
     recipe.background,
     recipe.paint,
+    options.orthophoto === true,
   );
 }
 

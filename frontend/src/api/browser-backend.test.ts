@@ -19,7 +19,11 @@ import { getFeatureBBox } from "@/model/grid-estimate";
 import { useModelStore } from "@/model/model-store";
 import { normalizeModelGeoJSON } from "@/model/normalize";
 import { buildReceiverTableCSV } from "@/model/receiver-csv";
-import type { GeoJSONFeatureCollection, ModelFeature } from "@/model/types";
+import type {
+  GeoJSONFeatureCollection,
+  ModelFeature,
+  ModelReceiver,
+} from "@/model/types";
 import type {
   ComputeRequest,
   CustomReceiversRequest,
@@ -28,6 +32,8 @@ import type {
   FacadeReceiversResponse,
   GridComputeRequest,
   KernelReceiverFacade,
+  ReviewSourcesRequest,
+  ReviewSourcesResponse,
   TransformRequest,
 } from "@/wasm/types";
 import type {
@@ -156,6 +162,53 @@ function customAnswer(
 }
 
 /**
+ * Records every `reviewSources` request, and answers it the way
+ * `sourcereview.Review` does: a `rejected` source is named for the caller to
+ * leave out, and a normative run over a `proposed` one is refused without the
+ * opt-in. The real decision is pinned by the Go tests; this file sees what
+ * `startRun` asks and what it does with the answer.
+ */
+const reviewRequests: ReviewSourcesRequest[] = [];
+
+function reviewAnswer(
+  req: ReviewSourcesRequest,
+): Promise<ReviewSourcesResponse> {
+  const model = req.model as GeoJSONFeatureCollection;
+  const answer: ReviewSourcesResponse = {
+    excluded_ids: [],
+    proposed_count: 0,
+    rejected_count: 0,
+    metadata: {},
+  };
+  for (const feature of model.features) {
+    const status = feature.properties.review_status;
+    if (status === "rejected") {
+      answer.excluded_ids.push(String(feature.id));
+      answer.rejected_count++;
+    } else if (status === "proposed") {
+      answer.proposed_count++;
+    }
+  }
+  if (answer.proposed_count > 0 && req.allow_unconfirmed !== true) {
+    return Promise.reject(
+      new Error(
+        `sources: run.sources: standard "rls19-road" is normative and the model includes ${String(answer.proposed_count)} proposed source(s): pass --allow-unconfirmed to run anyway`,
+      ),
+    );
+  }
+  if (answer.proposed_count > 0) {
+    answer.metadata.source_proposed_count = String(answer.proposed_count);
+    if (req.allow_unconfirmed === true) {
+      answer.metadata.allow_unconfirmed = "true";
+    }
+  }
+  if (answer.rejected_count > 0) {
+    answer.metadata.source_rejected_count = String(answer.rejected_count);
+  }
+  return Promise.resolve(answer);
+}
+
+/**
  * A descriptor the stubbed kernel can publish. Only `id` carries weight here —
  * `startRun`'s first gate matches on it — but the shape is the real one, so a
  * field this file invents cannot pass for a field the Go encoding emits.
@@ -257,6 +310,10 @@ vi.mock("@/wasm/kernel", () => ({
       customReceivers: (req: CustomReceiversRequest) => {
         customRequests.push(req);
         return customAnswer(req);
+      },
+      reviewSources: (req: ReviewSourcesRequest) => {
+        reviewRequests.push(req);
+        return reviewAnswer(req);
       },
       standards: () => Promise.resolve(publishedStandards),
       defaultConfig: () => Promise.resolve({}),
@@ -1138,6 +1195,105 @@ describe("browserBackend.startRun custom mode gate", () => {
     expect(summary).toMatchObject({
       facade_proposed_count: 1,
       facade_rejected_count: 1,
+      allow_unconfirmed: "true",
+    });
+  });
+});
+
+/**
+ * Sources mapped from imagery carry a review state (P18 E2). Which of them a
+ * run computes is the kernel's call — `sourcereview.Review`, which `aconiq
+ * run` makes — so the browser asks before it builds a single source, leaves
+ * out what the kernel names, and records the counts as the CLI does.
+ */
+describe("browserBackend.startRun source review", () => {
+  const PLAIN_RECEIVER: ModelReceiver = {
+    id: "r1",
+    heightM: 4,
+    geometry: { type: "Point", coordinates: [50, 20] },
+  };
+
+  function roadAt(id: string, y: number, review?: string): ModelFeature {
+    return {
+      ...ROAD,
+      id,
+      properties: {
+        ...ROAD.properties,
+        ...(review !== undefined ? { review_status: review } : {}),
+      },
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [0, y],
+          [100, y],
+        ],
+      },
+    };
+  }
+
+  function placeSources(): void {
+    useModelStore.setState({
+      features: [
+        roadAt("planned", 0),
+        roadAt("traced", -10, "proposed"),
+        roadAt("gone", -20, "rejected"),
+      ],
+      receivers: [PLAIN_RECEIVER],
+      calcArea: null,
+      crs: "EPSG:25832",
+    });
+  }
+
+  beforeEach(async () => {
+    await resetStores();
+    reviewRequests.length = 0;
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: () => "blob:mock/review",
+      revokeObjectURL: () => undefined,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("refuses a proposed source under a normative standard before a run exists", async () => {
+    placeSources();
+
+    await expect(browserBackend.startRun(RUN_SPEC)).rejects.toThrow(
+      /1 proposed source\(s\).*--allow-unconfirmed/,
+    );
+    expect(await browserBackend.getRuns()).toEqual([]);
+    expect(reviewRequests[0]?.standard_id).toBe("rls19-road");
+    expect(reviewRequests[0]?.crs).toBe("EPSG:25832");
+    const sent = reviewRequests[0]?.model as GeoJSONFeatureCollection;
+    expect(sent.features.map((feature) => feature.id)).toEqual([
+      "planned",
+      "traced",
+      "gone",
+    ]);
+  });
+
+  it("leaves the rejected source out and records the counts with the opt-in", async () => {
+    placeSources();
+
+    const run = await browserBackend.startRun({
+      ...RUN_SPEC,
+      allowUnconfirmed: true,
+    });
+
+    expect(reviewRequests[0]?.allow_unconfirmed).toBe(true);
+    const summaryRef = run.artifacts.find(
+      (artifact) => artifact.kind === "run.result.summary",
+    );
+    const summary = await browserBackend.getArtifactContent<
+      Record<string, unknown>
+    >(summaryRef?.id ?? "");
+    expect(summary).toMatchObject({
+      source_count: 2,
+      source_proposed_count: "1",
+      source_rejected_count: "1",
       allow_unconfirmed: "true",
     });
   });
