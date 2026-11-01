@@ -63,6 +63,8 @@ const (
 	// errorCodeAuditUnavailable refuses a state-changing call whose audit
 	// entry could not be opened, so that no write happens unaudited.
 	errorCodeAuditUnavailable = "audit_unavailable"
+	// errorCodeCancelled is a call cancelled before the API accepted it.
+	errorCodeCancelled = "cancelled"
 	// errorCodeInternal is a call this layer could not serve at all.
 	errorCodeInternal = "internal_error"
 )

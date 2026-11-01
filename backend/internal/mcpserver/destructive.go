@@ -132,6 +132,11 @@ func (t tools) serveImportTerrain(ctx context.Context, schema *jsonschema.Resolv
 	digest := sha256.New()
 
 	resp, err := t.uploadTerrain(ctx, file, filepath.Base(in.Path), in.Confirm, digest)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return refused(errorCodeCancelled, "import_terrain was cancelled before the API accepted the file: "+err.Error(),
+			"Nothing was replaced; call it again to import the file.", affected{})
+	}
+
 	if err != nil {
 		return internalError(err)
 	}
@@ -149,7 +154,7 @@ func (t tools) serveImportTerrain(ctx context.Context, schema *jsonschema.Resolv
 	}
 }
 
-// refused is a refusal this layer makes before any request, audited under
+// refused is a refusal this layer makes itself, not the API, audited under
 // its own code.
 func refused(code, message, hint string, touched affected) served {
 	return served{result: toolError{Code: code, Message: message, Hint: hint}.result(), outcome: code, touched: touched}
@@ -205,10 +210,19 @@ func openProjectFile(root, rel string) (*os.File, *toolError) {
 // with confirm as expected_hash, and digests what it sends. It reads at most
 // one byte past the API's cap: that is enough for the API to refuse an
 // oversized file, and no file is read whole on the way to a refusal.
+//
+// The request is served in process, so nothing cancels it the way a
+// transport would, and the terrain handler never reads r.Context(). A
+// cancelled call closes the pipe instead: the handler's next read and the
+// producer's next write fail, and the call answers ctx's error unless the
+// API had already accepted the upload.
 func (t tools) uploadTerrain(ctx context.Context, file io.Reader, name, expected string, digest hash.Hash) (apiResponse, error) {
 	reader, writer := io.Pipe()
 	form := multipart.NewWriter(writer)
 	written := make(chan error, 1)
+
+	stop := context.AfterFunc(ctx, func() { _ = reader.CloseWithError(context.Cause(ctx)) })
+	defer stop()
 
 	go func() {
 		err := writeTerrainForm(form, io.TeeReader(io.LimitReader(file, httpv1.MaxTerrainUploadBytes+1), digest), name, expected)
@@ -226,6 +240,10 @@ func (t tools) uploadTerrain(ctx context.Context, file io.Reader, name, expected
 
 	if err != nil {
 		return apiResponse{}, err
+	}
+
+	if !resp.ok() && ctx.Err() != nil {
+		return apiResponse{}, fmt.Errorf("terrain upload: %w", context.Cause(ctx))
 	}
 
 	// A write that failed for any reason but the handler hanging up has sent
