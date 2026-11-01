@@ -524,7 +524,7 @@ func openapiCreateRunRequestSchema() map[string]any {
 			"allow_unconfirmed": map[string]any{
 				"type":        "boolean",
 				"default":     false,
-				"description": "Required for a normative run over facade receivers that are still proposed or whose slab height is assumed; their counts are then stamped into provenance, the run summary and the report.",
+				"description": "Required for a normative run over facade receivers that are still proposed or whose slab height is assumed, or over sources that are still proposed; their counts are then stamped into provenance, the run summary and the report.",
 			},
 			"params": map[string]any{
 				"type":                 "object",

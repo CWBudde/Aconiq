@@ -820,3 +820,57 @@ func TestUnconfirmedFacadeNoteStatesOnlyItsCounts(t *testing.T) {
 		}
 	}
 }
+
+// Sources mapped from imagery get their own sentence (P18 E2). The opt-in is
+// named once per report: when the facade note already names it, the source
+// note does not again.
+func TestUnconfirmedSourceNoteStatesOnlyItsCounts(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		ctx        reportContext
+		want       []string
+		wantNoneOf []string
+	}{
+		{name: "nothing", ctx: reportContext{}},
+		{
+			name:       "rejected only",
+			ctx:        reportContext{SourceRejectedCount: "3"},
+			want:       []string{"3 rejected source(s) were left out."},
+			wantNoneOf: []string{"nobody has confirmed", "--allow-unconfirmed"},
+		},
+		{
+			name: "proposed",
+			ctx:  reportContext{SourceProposedCount: "2", AllowUnconfirmed: true},
+			want: []string{
+				"This run computed 2 proposed source(s): nobody has confirmed these sources",
+				"The run was started with --allow-unconfirmed.",
+			},
+		},
+		{
+			name:       "proposed beside facade points",
+			ctx:        reportContext{SourceProposedCount: "2", FacadeProposedCount: "4", AllowUnconfirmed: true},
+			want:       []string{"2 proposed source(s)"},
+			wantNoneOf: []string{"--allow-unconfirmed"},
+		},
+	} {
+		note := unconfirmedSourceNote(tc.ctx)
+
+		if len(tc.want) == 0 && note != "" {
+			t.Fatalf("%s: note = %q, want none", tc.name, note)
+		}
+
+		for _, part := range tc.want {
+			if !strings.Contains(note, part) {
+				t.Fatalf("%s: note %q does not state %q", tc.name, note, part)
+			}
+		}
+
+		for _, part := range tc.wantNoneOf {
+			if strings.Contains(note, part) {
+				t.Fatalf("%s: note %q states %q", tc.name, note, part)
+			}
+		}
+	}
+}

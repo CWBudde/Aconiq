@@ -53,6 +53,12 @@ type receiverSet struct {
 	assumedHeight int
 	rejected      int
 
+	// sourceProposed and sourceRejected are the model's sources a review
+	// left in unconfirmed and left out (withSources). They ride here because
+	// these counts are what provenance and the run summary are stamped from.
+	sourceProposed int
+	sourceRejected int
+
 	// metadata is what provenance.json records about the set beyond its mode.
 	metadata map[string]string
 }
@@ -108,6 +114,8 @@ func (s receiverSet) counts() map[string]int {
 		facadeProposedCountKey:      s.proposed,
 		facadeAssumedHeightCountKey: s.assumedHeight,
 		facadeRejectedCountKey:      s.rejected,
+		sourceProposedCountKey:      s.sourceProposed,
+		sourceRejectedCountKey:      s.sourceRejected,
 	}
 }
 

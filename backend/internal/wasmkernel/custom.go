@@ -98,7 +98,7 @@ func CustomReceivers(input []byte) ([]byte, error) {
 
 	resp.ProposedCount, resp.AssumedHeightCount = listed.CountUnconfirmed()
 	if req.AllowUnconfirmed {
-		resp.Metadata["allow_unconfirmed"] = "true"
+		resp.Metadata[allowUnconfirmedKey] = metadataTrue
 	}
 
 	for _, receiver := range listed.Receivers {

@@ -413,6 +413,36 @@ func maskFootprintsFunc(_ js.Value, args []js.Value) any {
 	}))
 }
 
+// reviewSourcesFunc settles which of a run's sources it computes: a rejected
+// source is left out, and a normative run over a proposed one is refused
+// unless it opted in (P18 E2).
+// Signature: (json: string) => Promise<string> (JSON)
+//
+// A Promise like customReceivers, which it precedes in every browser run; a
+// refusal rejects with the words `aconiq run` refuses in.
+func reviewSourcesFunc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsReject("reviewSources: expected exactly 1 JSON string argument")
+	}
+
+	input := args[0].String()
+
+	return js.Global().Get("Promise").New(js.FuncOf(func(_ js.Value, promArgs []js.Value) any {
+		resolve, reject := promArgs[0], promArgs[1]
+
+		out, err := wasmkernel.ReviewSources([]byte(input))
+		if err != nil {
+			reject.Invoke(js.ValueOf(err.Error()))
+
+			return nil
+		}
+
+		resolve.Invoke(js.ValueOf(string(out)))
+
+		return nil
+	}))
+}
+
 // customReceiversFunc settles a custom run's receivers: which of the placed
 // points a run keeps, and whether it may run at all.
 // Signature: (json: string) => Promise<string> (JSON)
@@ -787,6 +817,7 @@ func main() {
 	aconiq.Set("maskFootprints", js.FuncOf(maskFootprintsFunc))
 	aconiq.Set("facadeReceivers", js.FuncOf(facadeReceiversFunc))
 	aconiq.Set("customReceivers", js.FuncOf(customReceiversFunc))
+	aconiq.Set("reviewSources", js.FuncOf(reviewSourcesFunc))
 	aconiq.Set("facadeElevation", js.FuncOf(facadeElevationFunc))
 	aconiq.Set("placeWindow", js.FuncOf(placeWindowFunc))
 	aconiq.Set("rectifyFacade", js.FuncOf(rectifyFacadeFunc))

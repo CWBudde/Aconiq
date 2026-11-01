@@ -36,6 +36,11 @@ type runSummaryEnvelope struct {
 	FacadeProposedCount      *int
 	FacadeAssumedHeightCount *int
 	FacadeRejectedCount      *int
+
+	// The sources mapped from imagery nobody confirmed, and the rejected ones
+	// the run left out; absent when a run had none.
+	SourceProposedCount *int
+	SourceRejectedCount *int
 }
 
 type modelDumpEnvelope struct {
@@ -168,6 +173,9 @@ func loadRunSummary(path string) (runSummaryEnvelope, bool, error) {
 		FacadeProposedCount:      optionalInt(parsed["facade_proposed_count"]),
 		FacadeAssumedHeightCount: optionalInt(parsed["facade_assumed_height_count"]),
 		FacadeRejectedCount:      optionalInt(parsed["facade_rejected_count"]),
+
+		SourceProposedCount: optionalInt(parsed["source_proposed_count"]),
+		SourceRejectedCount: optionalInt(parsed["source_rejected_count"]),
 	}
 	if hashText, ok := parsed["output_hash"].(string); ok {
 		out.OutputHash = strings.TrimSpace(hashText)

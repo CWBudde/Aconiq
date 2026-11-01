@@ -132,6 +132,13 @@ func executeRunEstimate(cmd *cobra.Command, state commandState, req runCommandRe
 		return err
 	}
 
+	// The run's gates, in the run's order: an estimate of a run that would be
+	// refused is refused in the same words.
+	inputs, _, err = reviewRunSources(inputs, standard, req.facade.allowUnconfirmed)
+	if err != nil {
+		return err
+	}
+
 	receivers, err := resolveRunReceivers(req.receiverMode, req.facade, standard, inputs.model)
 	if err != nil {
 		return err

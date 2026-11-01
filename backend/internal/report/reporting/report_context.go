@@ -44,6 +44,12 @@ type reportContext struct {
 	FacadeRejectedCount      string `json:"facade_rejected_count,omitempty"`
 	AllowUnconfirmed         bool   `json:"allow_unconfirmed,omitempty"`
 
+	// SourceProposedCount and SourceRejectedCount are the sources mapped from
+	// imagery the run computed although nobody confirmed them, and the
+	// rejected ones it left out (P18 E2).
+	SourceProposedCount string `json:"source_proposed_count,omitempty"`
+	SourceRejectedCount string `json:"source_rejected_count,omitempty"`
+
 	InputFiles      []inputFileView `json:"input_files"`
 	ModelSourcePath string          `json:"model_source_path,omitempty"`
 	ModelFeatureCnt string          `json:"model_feature_count,omitempty"`
@@ -293,6 +299,10 @@ func appendContextNotes(ctx *reportContext) {
 		ctx.Notes = append(ctx.Notes, note)
 	}
 
+	if note := unconfirmedSourceNote(*ctx); note != "" {
+		ctx.Notes = append(ctx.Notes, note)
+	}
+
 	if len(ctx.Maps) == 0 {
 		ctx.Notes = append(ctx.Notes, "No raster map artifacts were found in the export bundle.")
 	}
@@ -308,6 +318,32 @@ func appendContextNotes(ctx *reportContext) {
 	if ctx.Assessment == nil && (ctx.StandardID == "rls19-road" || ctx.StandardID == "schall03") {
 		ctx.Notes = append(ctx.Notes, "No 16. BImSchV assessment artifact was generated. This usually means the run used no explicit receivers with area-category properties.")
 	}
+}
+
+// unconfirmedSourceNote says how many of the run's sources mapped from
+// imagery nobody confirmed, and how many rejected ones it left out, or ""
+// when there were none. It names the opt-in only when the facade note has
+// not already: one run, one opt-in.
+func unconfirmedSourceNote(ctx reportContext) string {
+	var sentences []string
+
+	if ctx.SourceProposedCount != "" {
+		sentences = append(sentences, fmt.Sprintf(
+			"This run computed %s proposed source(s): nobody has confirmed these sources, so levels computed from them are not an assessment.",
+			ctx.SourceProposedCount,
+		))
+
+		facadeNamedIt := ctx.FacadeProposedCount != "" || ctx.FacadeAssumedHeightCount != ""
+		if ctx.AllowUnconfirmed && !facadeNamedIt {
+			sentences = append(sentences, "The run was started with --allow-unconfirmed.")
+		}
+	}
+
+	if ctx.SourceRejectedCount != "" {
+		sentences = append(sentences, ctx.SourceRejectedCount+" rejected source(s) were left out.")
+	}
+
+	return strings.Join(sentences, " ")
 }
 
 // unconfirmedFacadeNote says how many of the run's facade receivers nobody

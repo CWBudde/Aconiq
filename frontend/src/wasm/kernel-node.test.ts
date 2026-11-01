@@ -496,6 +496,55 @@ describe.skipIf(skipReason !== null)("Node WASM kernel loader", () => {
     ).rejects.toThrow(/--allow-unconfirmed/);
   });
 
+  it("reviews a run's sources as `aconiq run` does", async () => {
+    const kernel = await getNodeKernel();
+    const road = (id: string, y: number, status: string) => ({
+      type: "Feature",
+      id,
+      properties: {
+        kind: "source",
+        source_type: "line",
+        review_status: status,
+      },
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [0, y],
+          [100, y],
+        ],
+      },
+    });
+    const model = {
+      type: "FeatureCollection",
+      features: [road("traced", 0, "proposed"), road("gone", -20, "rejected")],
+    };
+
+    await expect(
+      kernel.reviewSources({
+        crs: "EPSG:25832",
+        model,
+        standard_id: "rls19-road",
+      }),
+    ).rejects.toThrow(/1 proposed source\(s\).*--allow-unconfirmed/);
+
+    const reviewed = await kernel.reviewSources({
+      crs: "EPSG:25832",
+      model,
+      standard_id: "rls19-road",
+      allow_unconfirmed: true,
+    });
+    expect(reviewed).toEqual({
+      excluded_ids: ["gone"],
+      proposed_count: 1,
+      rejected_count: 1,
+      metadata: {
+        source_proposed_count: "1",
+        source_rejected_count: "1",
+        allow_unconfirmed: "true",
+      },
+    });
+  });
+
   it("rejects a malformed request rather than answering it", async () => {
     const kernel = await getNodeKernel();
 

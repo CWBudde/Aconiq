@@ -479,7 +479,7 @@ export interface components {
         };
         CreateRunRequest: {
             /**
-             * @description Required for a normative run over facade receivers that are still proposed or whose slab height is assumed; their counts are then stamped into provenance, the run summary and the report.
+             * @description Required for a normative run over facade receivers that are still proposed or whose slab height is assumed, or over sources that are still proposed; their counts are then stamped into provenance, the run summary and the report.
              * @default false
              */
             allow_unconfirmed?: boolean;
