@@ -43,6 +43,15 @@ interface MapState {
    */
   layerVisibility: LayerVisibility;
   toggleLayer: (groupId: string) => void;
+
+  /**
+   * The orthophoto overlay's tiles have failed — offline, or LGLN's WMS down.
+   * Its own flag, not `tilesFailed`: the overlay failing is no reason to drop
+   * the basemap, so the layer control says so and nothing else happens.
+   */
+  orthophotoFailed: boolean;
+  reportOrthophotoFailed: () => void;
+  clearOrthophotoFailed: () => void;
   setLayerVisible: (groupId: string, visible: boolean) => void;
   resetLayerVisibility: () => void;
 
@@ -78,6 +87,14 @@ export const useMapStore = create<MapState>((set) => ({
   },
   clearTilesFailed: () => {
     set({ tilesFailed: false });
+  },
+
+  orthophotoFailed: false,
+  reportOrthophotoFailed: () => {
+    set({ orthophotoFailed: true });
+  },
+  clearOrthophotoFailed: () => {
+    set({ orthophotoFailed: false });
   },
 
   layerVisibility: readStoredLayerVisibility(),

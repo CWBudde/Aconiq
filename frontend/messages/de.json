@@ -739,6 +739,8 @@
   "label_bimschv16_area_category": "Gebietskategorie (16. BImSchV)",
   "msg_bimschv16_area_category_absent": "Nicht gesetzt = dieser Immissionsort wird von der Beurteilung nach 16. BImSchV übersprungen; eine Vorgabekategorie gibt es nicht.",
   "section_basemap": "Hintergrundkarte",
+  "label_orthophoto": "Luftbild (LGLN)",
+  "msg_orthophoto_failed": "Das Luftbild konnte nicht geladen werden. Es braucht eine Verbindung zum LGLN.",
   "label_basemap_light": "Hell",
   "label_basemap_bright": "Kräftig",
   "label_basemap_dark": "Dunkel",

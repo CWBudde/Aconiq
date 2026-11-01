@@ -11,6 +11,7 @@ import {
   readStoredBasemap,
   storeBasemap,
 } from "./basemap";
+import { ORTHOPHOTO_LAYER_ID, ORTHOPHOTO_SOURCE_ID } from "./orthophoto";
 import { DEFAULT_TILE_URL, setTileURLOverride } from "./tile-source";
 
 /**
@@ -148,6 +149,27 @@ describe("basemapStyle", () => {
 
     expect(bright["raster-saturation"]).toBeLessThanOrEqual(0.2);
     expect(bright["raster-contrast"]).toBeLessThanOrEqual(0.1);
+  });
+});
+
+describe("the orthophoto overlay", () => {
+  it("sits directly over the basemap tiles, under everything added later", () => {
+    for (const id of BASEMAP_IDS) {
+      const style = basemapStyle(id, undefined, { orthophoto: true });
+      expect(style.layers.map((layer) => layer.id)).toEqual([
+        "background",
+        "osm-raster",
+        ORTHOPHOTO_LAYER_ID,
+      ]);
+      expect(style.sources[ORTHOPHOTO_SOURCE_ID]).toBeDefined();
+    }
+  });
+
+  it("is in every style but hidden unless asked for, so a toggle needs no rebuild", () => {
+    const layer = basemapStyle("light").layers.find(
+      (l) => l.id === ORTHOPHOTO_LAYER_ID,
+    );
+    expect(layer?.layout).toEqual({ visibility: "none" });
   });
 });
 

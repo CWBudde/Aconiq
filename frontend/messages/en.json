@@ -739,6 +739,8 @@
   "label_bimschv16_area_category": "Area category (16. BImSchV)",
   "msg_bimschv16_area_category_absent": "Not set = this receiver is skipped by the 16. BImSchV assessment; there is no default category.",
   "section_basemap": "Basemap",
+  "label_orthophoto": "Orthophoto (LGLN)",
+  "msg_orthophoto_failed": "The orthophoto could not be loaded. It needs a connection to LGLN.",
   "label_basemap_light": "Light",
   "label_basemap_bright": "Bright",
   "label_basemap_dark": "Dark",
