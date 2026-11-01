@@ -568,6 +568,7 @@
   "msg_validation_receiver_coordinates_invalid": "Receiver coordinates must be finite",
   "msg_validation_receiver_height_invalid": "Receiver height_m must be greater than 0",
   "msg_validation_window_invalid": "Window property {field} is missing or malformed",
+  "msg_validation_source_review_invalid": "Source review field {field} is malformed",
   "msg_validation_window_geometry_invalid": "Window geometry must be Point",
   "msg_validation_window_facade_unresolved": "The window's facade key names no building in the model",
   "msg_validation_window_facade_moved": "The window's facade key no longer names an edge of its building",

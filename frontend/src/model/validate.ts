@@ -131,6 +131,14 @@ function validateFeature(
           },
         });
       }
+      for (const field of reviewFieldProblems(feature.properties ?? {})) {
+        errors.push({
+          level: "error",
+          code: "source.review.invalid",
+          featureId: id,
+          params: { field },
+        });
+      }
       validateRLS19SourceAcoustics(feature, errors, warnings);
       break;
     }
@@ -372,8 +380,38 @@ function validateGroundZone(
   }
 }
 
-// The review states a window, like a facade receiver, can be in.
-const WINDOW_REVIEW_STATUSES = ["proposed", "confirmed", "rejected"];
+// The review states a window, a facade receiver or a source mapped from
+// imagery can be in.
+const REVIEW_STATUSES = ["proposed", "confirmed", "rejected"];
+
+/**
+ * The malformed review fields of a window or a source, in the shapes
+ * `modelgeojson.reviewProblems` requires: `review_status` one of the three
+ * states, `evidence` a list of objects. Both are optional. The evidence
+ * entries' own fields — a content hash, a photo transform — are the Go
+ * validator's to check.
+ */
+function reviewFieldProblems(props: Record<string, unknown>): string[] {
+  const problems: string[] = [];
+
+  const status = props["review_status"];
+  if (
+    status != null &&
+    !(typeof status === "string" && REVIEW_STATUSES.includes(status))
+  ) {
+    problems.push("review_status");
+  }
+
+  const evidence = props["evidence"];
+  if (
+    evidence != null &&
+    !(Array.isArray(evidence) && evidence.every(isPlainObject))
+  ) {
+    problems.push("evidence");
+  }
+
+  return problems;
+}
 
 // The id citygmlimport mints for a building without a gml:id: an index into
 // the file, which a facade key must not name (`modelgeojson.parseFacadeKey`).
@@ -416,20 +454,8 @@ function validateWindow(
     invalid("sensitive");
   }
 
-  const status = props["review_status"];
-  if (
-    status != null &&
-    !(typeof status === "string" && WINDOW_REVIEW_STATUSES.includes(status))
-  ) {
-    invalid("review_status");
-  }
-
-  const evidence = props["evidence"];
-  if (
-    evidence != null &&
-    !(Array.isArray(evidence) && evidence.every(isPlainObject))
-  ) {
-    invalid("evidence");
+  for (const field of reviewFieldProblems(props)) {
+    invalid(field);
   }
 
   if (!isWindowFrame(props["window"])) {

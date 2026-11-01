@@ -568,6 +568,7 @@
   "msg_validation_receiver_coordinates_invalid": "Koordinaten des Immissionsorts müssen endlich sein",
   "msg_validation_receiver_height_invalid": "height_m des Immissionsorts muss größer als 0 sein",
   "msg_validation_window_invalid": "Fenstereigenschaft {field} fehlt oder ist fehlerhaft",
+  "msg_validation_source_review_invalid": "Prüfangabe {field} der Quelle ist fehlerhaft",
   "msg_validation_window_geometry_invalid": "Geometrie des Fensters muss Point sein",
   "msg_validation_window_facade_unresolved": "Der Fassadenschlüssel des Fensters benennt kein Gebäude des Modells",
   "msg_validation_window_facade_moved": "Der Fassadenschlüssel des Fensters benennt keine Kante seines Gebäudes mehr",

@@ -112,6 +112,12 @@ const ISSUES: {
     featureId: "w1",
     params: { field: "review_status" },
   },
+  "source.review.invalid": {
+    level: "error",
+    code: "source.review.invalid",
+    featureId: "src-1",
+    params: { field: "evidence" },
+  },
   "window.geometry.invalid": {
     level: "error",
     code: "window.geometry.invalid",

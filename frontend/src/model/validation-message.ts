@@ -67,6 +67,8 @@ export function validationIssueText(issue: ValidationIssue): string {
 
     case "window.invalid":
       return m.msg_validation_window_invalid(issue.params);
+    case "source.review.invalid":
+      return m.msg_validation_source_review_invalid(issue.params);
     case "window.geometry.invalid":
       return m.msg_validation_window_geometry_invalid();
     case "window.facade.unresolved":

@@ -617,6 +617,37 @@ describe("self-intersection", () => {
 // the shape of what it carries, so a malformed one shows before the save does
 // rather than when the kernel refuses the facade run. Where it sits on its
 // edge is the Go validator's to say: the canonical edge exists only there.
+describe("source review fields", () => {
+  function sourceFindings(properties: Record<string, unknown> | undefined) {
+    const feature: ModelFeature =
+      properties === undefined ? validSource : { ...validSource, properties };
+    const report = validateProjectModel([feature], []);
+    return report.errors.map((issue) => [issue.code, issue.params]);
+  }
+
+  it("accepts a source with or without them, as modelgeojson does", () => {
+    expect(sourceFindings(undefined)).toEqual([]);
+    expect(
+      sourceFindings({
+        review_status: "proposed",
+        evidence: [{ kind: "orthophoto", source_id: "https://example" }],
+      }),
+    ).toEqual([]);
+    expect(sourceFindings({ review_status: "rejected" })).toEqual([]);
+  });
+
+  it.each([
+    ["review_status", { review_status: "maybe" }],
+    ["review_status", { review_status: true }],
+    ["evidence", { evidence: { kind: "orthophoto" } }],
+    ["evidence", { evidence: ["orthophoto"] }],
+  ])("names the malformed %s", (field, properties) => {
+    expect(sourceFindings(properties)).toEqual([
+      ["source.review.invalid", { field }],
+    ]);
+  });
+});
+
 describe("window validation", () => {
   const facade = {
     building_ref: "bld-1",
